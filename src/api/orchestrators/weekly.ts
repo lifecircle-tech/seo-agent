@@ -439,12 +439,12 @@ async function runWeeklyTasks(siteId: number) {
 
   // ── Step 1: Keyword rankings ──────────────────────────────────────
   let keywordData = {};
-  // try {
-  //   keywordData = await step1KeywordRankings(client, siteId);
-  // } catch (exc: any) {
-  //   errors.step1 = exc.message;
-  //   console.log(`[step1] ERROR: ${exc.message}`);
-  // }
+  try {
+    keywordData = await step1KeywordRankings(client, siteId);
+  } catch (exc: any) {
+    errors.step1 = exc.message;
+    console.log(`[step1] ERROR: ${exc.message}`);
+  }
 
   // ── Step 2: CMS connector — low-CTR page analysis ────────────────
   let cmsData = {};
@@ -457,21 +457,21 @@ async function runWeeklyTasks(siteId: number) {
 
   // ── Step 3: Schema manager ────────────────────────────────────────
   let schemaData = {};
-  // try {
-  //   schemaData = await step3SchemaManager(client, siteId, cmsData);
-  // } catch (exc: any) {
-  //   errors.step3 = exc.message;
-  //   console.log(`[step3] ERROR: ${exc.message}`);
-  // }
+  try {
+    schemaData = await step3SchemaManager(client, siteId, cmsData);
+  } catch (exc: any) {
+    errors.step3 = exc.message;
+    console.log(`[step3] ERROR: ${exc.message}`);
+  }
 
   // ── Step 4: Competitor intel ──────────────────────────────────────
   let competitorData: any[] = [];
-  // try {
-  //   competitorData = await step4CompetitorIntel(client, siteId);
-  // } catch (exc: any) {
-  //   errors.step4 = exc.message;
-  //   console.log(`[step4] ERROR: ${exc.message}`);
-  // }
+  try {
+    competitorData = await step4CompetitorIntel(client, siteId);
+  } catch (exc: any) {
+    errors.step4 = exc.message;
+    console.log(`[step4] ERROR: ${exc.message}`);
+  }
 
   // ── Timeout check ─────────────────────────────────────────────────
   let elapsedSeconds = (Date.now() - startTime) / 1000;
@@ -484,17 +484,17 @@ async function runWeeklyTasks(siteId: number) {
   }
 
   // ── Step 5: Reporting ─────────────────────────────────────────────
-  // try {
-  //   await step5Reporting(client, siteId, {
-  //     keywords: keywordData,
-  //     cmsData,
-  //     schemaData,
-  //     competitorData,
-  //   });
-  // } catch (exc: any) {
-  //   errors.step5 = exc.message;
-  //   console.log(`[step5] ERROR: ${exc.message}`);
-  // }
+  try {
+    await step5Reporting(client, siteId, {
+      keywords: keywordData,
+      cmsData,
+      schemaData,
+      competitorData,
+    });
+  } catch (exc: any) {
+    errors.step5 = exc.message;
+    console.log(`[step5] ERROR: ${exc.message}`);
+  }
 
   elapsedSeconds = (Date.now() - startTime) / 1000;
   printSummary(errors, elapsedSeconds);
