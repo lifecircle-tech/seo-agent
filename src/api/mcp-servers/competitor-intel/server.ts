@@ -9,7 +9,7 @@ const SERVER_VERSION = "1.0.0";
 // ── Rate-limit delay ──────────────────────────────────────────────────
 const AHREFS_DELAY_MS = Number(process.env.AHREFS_DELAY_MS ?? 1500);
 
-async function ahrefsDelay() {
+export async function ahrefsDelay() {
   if (AHREFS_DELAY_MS > 0) {
     await new Promise((resolve) => setTimeout(resolve, AHREFS_DELAY_MS));
   }

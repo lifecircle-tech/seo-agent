@@ -203,6 +203,47 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
   };
 }
 
+export function createMonthlyDiscoveryDigest(
+  siteId: number,
+  data: Record<string, any>,
+) {
+  const today = new Date().toISOString().split("T")[0];
+  const { summary } = data || {};
+
+  // Header blocks
+  const blocks = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: `Monthly City wise Keyword Discovery — ${sites[String(siteId)] ?? `Site ${siteId}`}`,
+        emoji: true,
+      },
+    },
+    {
+      type: "context",
+      elements: [{ type: "mrkdwn", text: `*Report date:* ${today}` }],
+    },
+    { type: "divider" },
+    sectionBlock(
+      "Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y_t3TXp1iI7S3ZidQf6VHtH8UQTY/edit?usp=sharing\n",
+    ),
+    { type: "divider" },
+  ];
+
+  blocks.push(...summary.map((item: string) => sectionBlock(item)));
+
+  console.log("========== Monthly Discovery Digest Created **********");
+
+  return {
+    site_id: siteId,
+    date: today,
+    blocks,
+    fallback_text: `Monthly City wise Keyword Discovery — Site ${sites[String(siteId)] ?? `Site ${siteId}`} — ${today}`,
+    message: "",
+  };
+}
+
 export async function writeToSheet(
   siteId: number,
   tabName: string,
@@ -243,11 +284,22 @@ export async function logRecommendation(
   return writeToSheet(siteId, "Recommendation Outcomes", rows);
 }
 
-const postMessageToSlack = async (
+const postWeeklyMessageToSlack = async (
   site_id: number,
   data: Record<string, any>,
 ) => {
   const messageData = createWeeklyDigest(site_id, data);
+
+  const { message = "", blocks = [], fallback_text } = messageData;
+
+  return await postSlackMessage(message, blocks);
+};
+
+const postMonthlyDiscoveryToSlack = async (
+  site_id: number,
+  data: Record<string, any>,
+) => {
+  const messageData = createMonthlyDiscoveryDigest(site_id, data);
 
   const { message = "", blocks = [], fallback_text } = messageData;
 
@@ -292,7 +344,8 @@ const writeRecommendationsToSheet = async (
 };
 
 export {
-  postMessageToSlack,
+  postWeeklyMessageToSlack,
+  postMonthlyDiscoveryToSlack,
   writeKeywordRankingsToSheet,
   writeRecommendationsToSheet,
 };

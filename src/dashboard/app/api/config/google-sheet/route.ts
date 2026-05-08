@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     const sheets = google.sheets({ version: "v4", auth: getAuth() });
     const { data } = await sheets.spreadsheets.values.batchGet({
       spreadsheetId: getSpreadsheetId(1),
-      ranges: ["Sites Config!A:E", "Cities Config!A:E", "Keywords!A:C", "Competitors Config!A:C"]
+      ranges: ["Sites Config!A:E", "Cities Config!A:E", "Keywords Config!A:C", "Competitors Config!A:C"]
     });
 
     return NextResponse.json(data.valueRanges);

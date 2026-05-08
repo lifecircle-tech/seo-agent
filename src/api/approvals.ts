@@ -21,13 +21,29 @@ import { createUsersTable } from "./controllers/users.controller.js";
 import pool from "./db.js";
 
 import { weeklyTasks } from "./orchestrators/weekly.js";
+import { monthlyDiscovery } from "./orchestrators/monthly-discovery.js";
 
-cron.schedule("0 8 * * 1", () => {
-  weeklyTasks()
-}, {
-  timezone: "IST",
-  name: "Weekly Tasks"
-});
+cron.schedule(
+  "0 8 * * 1",
+  () => {
+    weeklyTasks();
+  },
+  {
+    timezone: "IST",
+    name: "Weekly Tasks",
+  },
+);
+
+cron.schedule(
+  "0 7 11 * *",
+  () => {
+    monthlyDiscovery();
+  },
+  {
+    timezone: "IST",
+    name: "Monthly Discovery",
+  },
+);
 
 // ── App + Socket.io ───────────────────────────────────────────────────
 const app = express();
