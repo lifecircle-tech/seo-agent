@@ -79,12 +79,17 @@ function EditApproveDialog({
   onClose: () => void;
   onApprove: (content: Record<string, unknown>) => void;
 }) {
-  const [title, setTitle] = useState(approval.updated_content.suggested_title);
+  const [title, setTitle] = useState(
+    approval.updated_content?.suggested_title ||
+      approval.original_content.suggested_title,
+  );
   const [description, setDescription] = useState(
-    approval.updated_content.suggested_description,
+    approval.updated_content?.suggested_description ||
+      approval.original_content.suggested_description,
   );
 
-  const reasoning = approval.updated_content.reasoning;
+  const reasoning =
+    approval.updated_content?.reasoning || approval.original_content.reasoning;
 
   function handleApprove() {
     try {

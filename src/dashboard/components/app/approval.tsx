@@ -83,15 +83,15 @@ export function MetaRewrite({
               </div>
             </ScrollArea>
             {/* {approval.preview_url && (
-          <a
-            href={approval.preview_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-1 block text-xs text-blue-600 hover:underline"
-          >
-            Preview →
-          </a>
-        )} */}
+              <a
+                href={approval.preview_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 block text-xs text-blue-600 hover:underline"
+              >
+                Preview →
+              </a>
+            )} */}
           </div>
         )}
       </div>
