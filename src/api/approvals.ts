@@ -19,6 +19,7 @@ import { createApprovalsTable } from "./controllers/approvals.controller.js";
 import { createAlertsTable } from "./controllers/alerts.controller.js";
 import { createUsersTable } from "./controllers/users.controller.js";
 import pool from "./db.js";
+import { maltiRouter, initMalti } from "./malti/index.js";
 
 import { weeklyTasks } from "./orchestrators/weekly.js";
 import { monthlyDiscovery } from "./orchestrators/monthly-discovery.js";
@@ -73,6 +74,7 @@ app.use(express.json());
 app.use("/approvals", approvalsRouter(io));
 app.use("/alerts", requireAuth, alertsRouter(io));
 app.use("/users", usersRouter);
+app.use("/malti", maltiRouter);
 
 // ── Health ────────────────────────────────────────────────────────────
 app.get("/health", async (_req: Request, res: Response) => {
@@ -114,7 +116,7 @@ io.on("connection", (socket) => {
 const PORT = Number(process.env.PORT ?? 3002);
 
 if (process.env.NODE_ENV !== "test") {
-  Promise.all([createApprovalsTable(), createAlertsTable(), createUsersTable()])
+  Promise.all([createApprovalsTable(), createAlertsTable(), createUsersTable(), initMalti()])
     .then(() => {
       console.log("[db] tables ready");
       httpServer.listen(PORT, () =>

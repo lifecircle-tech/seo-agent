@@ -1,0 +1,40 @@
+import { Router } from "express";
+import authRoutes         from "./auth.js";
+import claudeRoutes       from "./claude.js";
+import campaignsRoutes    from "./campaigns.js";
+import contactsRoutes     from "./contacts.js";
+import inboundRoutes      from "./inbound.js";
+import ozonetelRoutes     from "./ozonetel.js";
+import whatsappRoutes     from "./whatsapp.js";
+import slackRoutes        from "./slack.js";
+import emailRoutes        from "./email.js";
+import dbWritesRoutes     from "./dbWrites.js";
+import careJobsRoutes     from "./careJobs.js";
+import voiceRoutes        from "./voice.js";
+import voiceMessagesRoutes from "./voiceMessages.js";
+import trainingRoutes     from "./training.js";
+import agentHistoryRoutes from "./agentHistory.js";
+import cronRoutes         from "./cron.js";
+import agentsRoutes       from "./agents.js";
+
+const router = Router();
+
+router.use("/auth",           authRoutes);
+router.use("/claude",         claudeRoutes);
+router.use("/campaigns",      campaignsRoutes);
+router.use("/contacts",       contactsRoutes);
+router.use("/inbound",        inboundRoutes);
+router.use("/ozonetel",       ozonetelRoutes);
+router.use("/whatsapp",       whatsappRoutes);
+router.use("/slack",          slackRoutes);
+router.use("/email",          emailRoutes);
+router.use("/db-writes",      dbWritesRoutes);
+router.use("/care-jobs",      careJobsRoutes);
+router.use("/voice",          voiceRoutes);
+router.use("/voice-messages", voiceMessagesRoutes);
+router.use("/training",       trainingRoutes);
+router.use("/agent-history",  agentHistoryRoutes);
+router.use("/cron",           cronRoutes);
+router.use("/agents",         agentsRoutes);
+
+export default router;
