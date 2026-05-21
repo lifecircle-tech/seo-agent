@@ -14,11 +14,13 @@ import cron from "node-cron";
 import { approvalsRouter } from "./routes/approvals.routes.js";
 import { alertsRouter } from "./routes/alerts.routes.js";
 import { usersRouter } from "./routes/users.routes.js";
-import { requireAuth } from "./middleware/auth.middleware.js";
+import { configRouter } from "./routes/config.routes.js";
+import { sitesRouter } from "./routes/sites.routes.js";
 import { createApprovalsTable } from "./controllers/approvals.controller.js";
 import { createAlertsTable } from "./controllers/alerts.controller.js";
 import { createUsersTable } from "./controllers/users.controller.js";
 import pool from "./db.js";
+import { maltiRouter, initMalti } from "./malti/index.js";
 
 import { weeklyTasks } from "./orchestrators/weekly.js";
 import { monthlyDiscovery } from "./orchestrators/monthly-discovery.js";
@@ -45,34 +47,48 @@ cron.schedule(
   },
 );
 
+// ── CORS — allow DASHBOARD_URL explicitly; in dev allow any localhost port
+//    so Next.js hot-reload port changes never break the dashboard
+const DASHBOARD_ORIGIN = process.env.DASHBOARD_URL ?? "http://localhost:3001";
+
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) return true; // server-to-server calls have no Origin header
+  if (origin === DASHBOARD_ORIGIN) return true;
+  if (process.env.NODE_ENV !== "production" && /^http:\/\/localhost:\d+$/.test(origin)) return true;
+  return false;
+}
+
+const corsOptions = {
+  origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) =>
+    cb(null, isAllowedOrigin(origin)),
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+};
+
 // ── App + Socket.io ───────────────────────────────────────────────────
 const app = express();
 const httpServer = createServer(app);
 
 const io = new SocketIOServer(httpServer, {
-  cors: {
-    origin: [
-      process.env.DASHBOARD_URL ?? "http://localhost:3001",
-      "http://localhost:3001",
-    ],
-    methods: ["GET", "POST"],
-  },
+  cors: { ...corsOptions, methods: ["GET", "POST"] },
 });
 
-app.use(
-  cors({
-    origin: [
-      process.env.DASHBOARD_URL ?? "http://localhost:3001",
-      "http://localhost:3001",
-    ],
-  }),
-);
+app.use(cors(corsOptions));
 app.use(express.json());
+
+app.use((req, _res, next) => {
+  console.log(`[${req.method}] ${req.path}`);
+  next();
+});
 
 // ── Routes ────────────────────────────────────────────────────────────
 app.use("/approvals", approvalsRouter(io));
-app.use("/alerts", requireAuth, alertsRouter(io));
+app.use("/alerts", alertsRouter(io));
 app.use("/users", usersRouter);
+app.use("/config", configRouter);
+app.use("/sites", sitesRouter);
+app.use("/malti", maltiRouter);
 
 // ── Health ────────────────────────────────────────────────────────────
 app.get("/health", async (_req: Request, res: Response) => {
@@ -112,19 +128,43 @@ io.on("connection", (socket) => {
 
 // ── Start ─────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT ?? 3002);
+console.log(`[startup] CORS: DASHBOARD_URL=${DASHBOARD_ORIGIN}, dev-localhost wildcard=${process.env.NODE_ENV !== "production"}`);
 
 if (process.env.NODE_ENV !== "test") {
-  Promise.all([createApprovalsTable(), createAlertsTable(), createUsersTable()])
-    .then(() => {
-      console.log("[db] tables ready");
-      httpServer.listen(PORT, () =>
-        console.log(`[approvals-api] listening on port ${PORT}`),
-      );
-    })
-    .catch((err) => {
-      console.error("[db] failed to initialise:", err);
+  // Run each table init separately so we can log exactly which step fails
+  const initSteps: Array<[string, () => Promise<void>]> = [
+    ["approvals table", createApprovalsTable],
+    ["alerts table",    createAlertsTable],
+    ["users table",     createUsersTable],
+    ["malti tables",    initMalti],
+  ];
+
+  (async () => {
+    // Startup DB reachability check — log before any table work
+    try {
+      await pool.query("SELECT 1");
+      console.log(`[startup] ✓ DB connected → ${process.env.DATABASE_URL?.replace(/:[^@]+@/, ":***@") ?? "mysql://localhost/seo_agent"}`);
+    } catch (err) {
+      console.error("[startup] ✗ DB connection FAILED:", (err as Error).message);
+      console.error("[startup]   → Check DATABASE_URL env var");
       process.exit(1);
-    });
+    }
+
+    for (const [label, fn] of initSteps) {
+      try {
+        await fn();
+        console.log(`[startup] ✓ ${label} ready`);
+      } catch (err) {
+        console.error(`[startup] ✗ ${label} init FAILED:`, (err as Error).message);
+        process.exit(1);
+      }
+    }
+
+    console.log("[db] tables ready");
+    httpServer.listen(PORT, () =>
+      console.log(`[approvals-api] listening on port ${PORT}`),
+    );
+  })();
 }
 
 export { app, httpServer, io };
