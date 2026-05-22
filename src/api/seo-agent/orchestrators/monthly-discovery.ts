@@ -1,5 +1,5 @@
 import * as dotenv from "dotenv";
-import { getSheetsClient, getSpreadsheetId } from "../libs/google.js";
+import { getSheetsClient, getSpreadsheetId } from "../../libs/google.js";
 import {
   discoverCityKeywords,
   getKeywordClusters,

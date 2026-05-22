@@ -1,4 +1,4 @@
-import { wpFetch } from "../../libs/wordpress.js";
+import { wpFetch } from "../../../libs/wordpress.js";
 
 // ── Page type detection ────────────────────────────────────────────────
 export type PageType =

@@ -1,5 +1,5 @@
-import { getSearchConsoleClient } from "../../libs/google.js";
-import { getWpAuth, wpFetch } from "../../libs/wordpress.js";
+import { getSearchConsoleClient } from "../../../libs/google.js";
+import { getWpAuth, wpFetch } from "../../../libs/wordpress.js";
 
 // ── GSC date helpers ──────────────────────────────────────────────────
 function fmtDate(d: Date): string {

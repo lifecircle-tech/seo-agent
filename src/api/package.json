@@ -1,11 +1,11 @@
 {
-  "name": "seo-agent-approvals-api",
-  "version": "1.0.0",
+  "name": "ai-agent",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node dist/approvals.js",
-    "dev": "tsx watch approvals.ts",
+    "start": "node dist/server.js",
+    "dev": "tsx watch server.ts",
     "build": "tsc"
   },
   "dependencies": {

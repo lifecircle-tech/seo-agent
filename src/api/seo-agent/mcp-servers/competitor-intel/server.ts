@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { getSearchConsoleClient } from "../../libs/google.js";
+import { getSearchConsoleClient } from "../../../libs/google.js";
 
 // ── Rate-limit delay ──────────────────────────────────────────────────
 const AHREFS_DELAY_MS = Number(process.env.AHREFS_DELAY_MS ?? 1500);

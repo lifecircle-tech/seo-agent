@@ -1,5 +1,5 @@
 import https from "node:https";
-import { getSheetsClient } from "../../libs/google.js";
+import { getSheetsClient } from "../../../libs/google.js";
 
 type SlackResponse = {
   ok: boolean;

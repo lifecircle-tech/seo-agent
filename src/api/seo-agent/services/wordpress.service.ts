@@ -2,7 +2,7 @@
  * WordPress service — HTTP calls to the WordPress REST API.
  */
 
-import { getWpAuth } from "../libs/wordpress.js";
+import { getWpAuth } from "../../libs/wordpress.js";
 
 
 // ── Result types ──────────────────────────────────────────────────────

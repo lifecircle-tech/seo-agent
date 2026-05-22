@@ -3,7 +3,7 @@ import {
   getSearchConsoleClient,
   getSheetsClient,
   getSpreadsheetId,
-} from "../../libs/google.js";
+} from "../../../libs/google.js";
 
 export interface KeywordOpportunity {
   keyword: string;

@@ -9,7 +9,7 @@
 
 import { Router, Request, Response } from "express";
 import { google } from "googleapis";
-import pool from "../db.js";
+import pool from "../../db.js";
 import { RowDataPacket } from "mysql2/promise";
 
 const router = Router();

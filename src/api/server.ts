@@ -11,19 +11,16 @@ import { Server as SocketIOServer } from "socket.io";
 import cors from "cors";
 import cron from "node-cron";
 
-import { approvalsRouter } from "./routes/approvals.routes.js";
-import { alertsRouter } from "./routes/alerts.routes.js";
-import { usersRouter } from "./routes/users.routes.js";
-import { configRouter } from "./routes/config.routes.js";
-import { sitesRouter } from "./routes/sites.routes.js";
-import { createApprovalsTable } from "./controllers/approvals.controller.js";
-import { createAlertsTable } from "./controllers/alerts.controller.js";
-import { createUsersTable } from "./controllers/users.controller.js";
+import { approvalsRouter } from "./seo-agent/routes/approvals.routes.js";
+import { alertsRouter } from "./seo-agent/routes/alerts.routes.js";
+import { configRouter } from "./seo-agent/routes/config.routes.js";
+import { sitesRouter } from "./seo-agent/routes/sites.routes.js";
+import { initSEOModels } from "./seo-agent/models/index.js";
 import pool from "./db.js";
 import { maltiRouter, initMalti } from "./malti/index.js";
 
-import { weeklyTasks } from "./orchestrators/weekly.js";
-import { monthlyDiscovery } from "./orchestrators/monthly-discovery.js";
+import { weeklyTasks } from "./seo-agent/orchestrators/weekly.js";
+import { monthlyDiscovery } from "./seo-agent/orchestrators/monthly-discovery.js";
 
 cron.schedule(
   "0 8 * * 1",
@@ -54,13 +51,19 @@ const DASHBOARD_ORIGIN = process.env.DASHBOARD_URL ?? "http://localhost:3001";
 function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return true; // server-to-server calls have no Origin header
   if (origin === DASHBOARD_ORIGIN) return true;
-  if (process.env.NODE_ENV !== "production" && /^http:\/\/localhost:\d+$/.test(origin)) return true;
+  if (
+    process.env.NODE_ENV !== "production" &&
+    /^http:\/\/localhost:\d+$/.test(origin)
+  )
+    return true;
   return false;
 }
 
 const corsOptions = {
-  origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) =>
-    cb(null, isAllowedOrigin(origin)),
+  origin: (
+    origin: string | undefined,
+    cb: (err: Error | null, allow?: boolean) => void,
+  ) => cb(null, isAllowedOrigin(origin)),
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
@@ -85,7 +88,6 @@ app.use((req, _res, next) => {
 // ── Routes ────────────────────────────────────────────────────────────
 app.use("/approvals", approvalsRouter(io));
 app.use("/alerts", alertsRouter(io));
-app.use("/users", usersRouter);
 app.use("/config", configRouter);
 app.use("/sites", sitesRouter);
 app.use("/malti", maltiRouter);
@@ -128,24 +130,29 @@ io.on("connection", (socket) => {
 
 // ── Start ─────────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT ?? 3002);
-console.log(`[startup] CORS: DASHBOARD_URL=${DASHBOARD_ORIGIN}, dev-localhost wildcard=${process.env.NODE_ENV !== "production"}`);
+console.log(
+  `[startup] CORS: DASHBOARD_URL=${DASHBOARD_ORIGIN}, dev-localhost wildcard=${process.env.NODE_ENV !== "production"}`,
+);
 
 if (process.env.NODE_ENV !== "test") {
   // Run each table init separately so we can log exactly which step fails
   const initSteps: Array<[string, () => Promise<void>]> = [
-    ["approvals table", createApprovalsTable],
-    ["alerts table",    createAlertsTable],
-    ["users table",     createUsersTable],
-    ["malti tables",    initMalti],
+    ["seo-agent table", initSEOModels],
+    ["malti tables", initMalti],
   ];
 
   (async () => {
     // Startup DB reachability check — log before any table work
     try {
       await pool.query("SELECT 1");
-      console.log(`[startup] ✓ DB connected → ${process.env.DATABASE_URL?.replace(/:[^@]+@/, ":***@") ?? "mysql://localhost/seo_agent"}`);
+      console.log(
+        `[startup] ✓ DB connected → ${process.env.DATABASE_URL?.replace(/:[^@]+@/, ":***@") ?? "mysql://localhost/seo_agent"}`,
+      );
     } catch (err) {
-      console.error("[startup] ✗ DB connection FAILED:", (err as Error).message);
+      console.error(
+        "[startup] ✗ DB connection FAILED:",
+        (err as Error).message,
+      );
       console.error("[startup]   → Check DATABASE_URL env var");
       process.exit(1);
     }
@@ -155,7 +162,10 @@ if (process.env.NODE_ENV !== "test") {
         await fn();
         console.log(`[startup] ✓ ${label} ready`);
       } catch (err) {
-        console.error(`[startup] ✗ ${label} init FAILED:`, (err as Error).message);
+        console.error(
+          `[startup] ✗ ${label} init FAILED:`,
+          (err as Error).message,
+        );
         process.exit(1);
       }
     }

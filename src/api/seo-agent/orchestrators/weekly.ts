@@ -5,7 +5,7 @@ import {
   MessageCreateParamsNonStreaming,
 } from "@anthropic-ai/sdk/resources/beta.js";
 
-import { getSheetsClient, getSpreadsheetId } from "../libs/google.js";
+import { getSheetsClient, getSpreadsheetId } from "../../libs/google.js";
 
 import { getKeywordRankings } from "../mcp-servers/keyword-tracker/server.js";
 import {

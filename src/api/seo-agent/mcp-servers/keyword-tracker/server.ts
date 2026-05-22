@@ -1,4 +1,4 @@
-import { getSearchConsoleClient } from "../../libs/google.js";
+import { getSearchConsoleClient } from "../../../libs/google.js";
 
 export function validateSiteId(siteId: unknown): number {
   const id = Number(siteId);
