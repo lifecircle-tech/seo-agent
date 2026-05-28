@@ -1,7 +1,8 @@
 import { Router } from "express";
 import {
   getLeads, getOneLead, updateLead, getStats,
-  logBolnaActivity, updateBolnaActivity, sendWhatsAppFallback
+  logBolnaActivity, updateBolnaActivity, sendWhatsAppFallback,
+
 } from "../controllers/careJobsController.js";
 import { requireAuth } from "../middleware/auth.js";
 

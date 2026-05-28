@@ -139,8 +139,10 @@ export async function runScheduledAgents() {
     ]);
 
     for (const [key, agent] of Object.entries(allAgents)) {
-      // Must have prompt and channels to be schedulable
-      if (!agent.prompt || !agent.channels?.length) { skipped[key] = "no_prompt_or_channels"; continue; }
+      // Slack monitor agents need channels; DB report agents only need a prompt
+      const needsChannels = agent.type === "slack_channel_monitor" || agent.type === "slack_bot";
+      if (!agent.prompt) { skipped[key] = "no_prompt"; continue; }
+      if (needsChannels && !agent.channels?.length) { skipped[key] = "no_channels"; continue; }
 
       const sched = schedules[key];
       if (!sched?.enabled) { skipped[key] = "disabled"; continue; }
@@ -186,9 +188,15 @@ export async function runScheduledAgents() {
       try {
         const report = await generateReport(key, false, allAgents);
         if (report.status === "ok") {
-          const slackMsg = formatReportForSlack(agent, report);
-          const r = await postReportToSlack(targetChannel, slackMsg, agent.personality?.display_name ?? "LifeCircle AI", agent.icon ?? ":robot_face:");
-          results[key] = r.ok ? `posted to #${targetChannel}` : `post_failed: ${r.error ?? ""}`;
+          // Slack monitor/bot agents post to Slack internally — skip double-posting
+          const postsInternally = agent.type === "slack_channel_monitor" || agent.type === "slack_bot";
+          if (postsInternally) {
+            results[key] = `handled internally by agent`;
+          } else {
+            const slackMsg = formatReportForSlack(agent, report);
+            const r = await postReportToSlack(targetChannel, slackMsg, agent.personality?.display_name ?? "LifeCircle AI", agent.icon ?? ":robot_face:");
+            results[key] = r.ok ? `posted to #${targetChannel}` : `post_failed: ${r.error ?? ""}`;
+          }
           await AgentModel.logRun(key, "success", { duration_s: report.duration_s, msg_count: report.msg_count ?? 0, channel: targetChannel });
         } else {
           results[key] = `error: ${report.errors?.join("; ") ?? "unknown"}`;
