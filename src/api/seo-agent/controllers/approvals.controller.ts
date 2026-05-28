@@ -5,7 +5,7 @@
 
 import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { Approval, ApprovalJSON } from "../models/approval.model.js";
-import pool from "../../db.js";
+import { lc_pool, pool } from "../../db.js";
 import { updatePageMeta } from "../services/wordpress.service.js";
 
 // ── Row serialiser ────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ export async function listApprovals(filters: {
   const order =
     filters.sort === "priority"
       ? "ORDER BY priority ASC"
-      : "ORDER BY ap.created_at DESC";
+      : "ORDER BY created_at ASC";
 
   const limit = Math.min(filters.limit ?? 10, 100);
   const offset = filters.offset ?? 0;
@@ -107,13 +107,39 @@ export async function listApprovals(filters: {
       params,
     ),
     pool.query<Approval[]>(
-      `SELECT ap.*, u.name AS actioned_user_name FROM approvals ap LEFT JOIN users u ON ap.actioned_by = u.id ${where} ${order} LIMIT ? OFFSET ?`,
+      `SELECT * FROM approvals ${where} ${order} LIMIT ? OFFSET ?`,
       [...params, limit, offset],
     ),
   ]);
 
+  const userIds = new Set();
+  rows.forEach((row) => {
+    if (row.actioned_by) {
+      userIds.add(row.actioned_by);
+    }
+  });
+
+  const userMap = {} as Record<string, string>;
+  if (userIds.size > 0) {
+    const [users] = await lc_pool.query<any[]>(
+      `SELECT emp_name, det_id from life_emp_details WHERE det_id IN (?)`,
+      [[...userIds]],
+    );
+
+    users.forEach((user) => {
+      userMap[user.det_id] = user.emp_name;
+    });
+  }
+
   const total = Number((countRow as RowDataPacket[])[0].count);
-  const approvals = (rows as Approval[]).map(toJSON);
+  const approvals = (rows as Approval[]).map(toJSON).map((approval) => {
+    return {
+      ...approval,
+      actioned_user_name: approval.actioned_by
+        ? userMap[approval.actioned_by]
+        : null,
+    };
+  });
   return { approvals, total, limit, offset };
 }
 

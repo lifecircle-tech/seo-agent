@@ -15,7 +15,7 @@ import {
   rejectApproval,
   deferApproval,
 } from "../controllers/approvals.controller.js";
-import { requireAuth } from "../../middleware/auth.middleware.js";
+import { AuthRequest, requireAuth } from "../../middleware/auth.middleware.js";
 
 interface CreateApprovalBody {
   site_id?: number;
@@ -114,10 +114,11 @@ export function approvalsRouter(io: SocketIOServer): Router {
     requireAuth,
     async (req: Request, res: Response) => {
       const { content } = req.body as { content?: Record<string, unknown> };
+      const { userId } = (req as AuthRequest).user!;
       try {
         const approval = await approveApproval(
           req.params.id,
-          "operator",
+          String(userId) ?? "operator",
           content,
         );
         if (!approval) {
@@ -134,43 +135,60 @@ export function approvalsRouter(io: SocketIOServer): Router {
   );
 
   // POST /approvals/:id/reject
-  router.post("/:id/reject", requireAuth, async (req: Request, res: Response) => {
-    const { reason } = req.body as { reason?: string };
-    if (!reason) {
-      res
-        .status(400)
-        .json({ success: false, error: "Reject reason is required" });
-      return;
-    }
-    try {
-      const approval = await rejectApproval(req.params.id, "operator", reason);
-      if (!approval) {
-        res.status(404).json({ success: false, error: "Approval not found" });
+  router.post(
+    "/:id/reject",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      const { reason } = req.body as { reason?: string };
+      const { userId } = (req as AuthRequest).user!;
+      if (!reason) {
+        res
+          .status(400)
+          .json({ success: false, error: "Reject reason is required" });
         return;
       }
-      io.emit("approval:updated", approval);
-      res.json({ success: true, ...approval });
-    } catch (err) {
-      console.error("[approvals] reject error:", err);
-      res.status(500).json({ success: false, error: "Database error" });
-    }
-  });
+      try {
+        const approval = await rejectApproval(
+          req.params.id,
+          String(userId) ?? "operator",
+          reason,
+        );
+        if (!approval) {
+          res.status(404).json({ success: false, error: "Approval not found" });
+          return;
+        }
+        io.emit("approval:updated", approval);
+        res.json({ success: true, ...approval });
+      } catch (err) {
+        console.error("[approvals] reject error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
+      }
+    },
+  );
 
   // POST /approvals/:id/defer
-  router.post("/:id/defer", requireAuth, async (req: Request, res: Response) => {
-    try {
-      const approval = await deferApproval(req.params.id, "operator");
-      if (!approval) {
-        res.status(404).json({ success: false, error: "Approval not found" });
-        return;
+  router.post(
+    "/:id/defer",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const { userId } = (req as AuthRequest).user!;
+        const approval = await deferApproval(
+          req.params.id,
+          String(userId) ?? "operator",
+        );
+        if (!approval) {
+          res.status(404).json({ success: false, error: "Approval not found" });
+          return;
+        }
+        io.emit("approval:updated", approval);
+        res.json({ success: true, ...approval });
+      } catch (err) {
+        console.error("[approvals] defer error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
       }
-      io.emit("approval:updated", approval);
-      res.json({ success: true, ...approval });
-    } catch (err) {
-      console.error("[approvals] defer error:", err);
-      res.status(500).json({ success: false, error: "Database error" });
-    }
-  });
+    },
+  );
 
   return router;
 }

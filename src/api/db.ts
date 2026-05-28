@@ -12,4 +12,11 @@ const pool = mysql.createPool({
   timezone: "Z",
 });
 
-export default pool;
+const lc_pool = mysql.createPool({
+  uri: process.env.LC_DATABASE_URL ?? "mysql://root:@localhost:3306/seo_agent",
+  waitForConnections: true,
+  connectionLimit: 10,
+  timezone: "Z",
+});
+
+export { pool, lc_pool };

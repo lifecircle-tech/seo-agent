@@ -16,7 +16,7 @@ import { alertsRouter } from "./seo-agent/routes/alerts.routes.js";
 import { configRouter } from "./seo-agent/routes/config.routes.js";
 import { sitesRouter } from "./seo-agent/routes/sites.routes.js";
 import { initSEOModels } from "./seo-agent/models/index.js";
-import pool from "./db.js";
+import { pool } from "./db.js";
 import { maltiRouter, initMalti } from "./malti/index.js";
 
 import { weeklyTasks } from "./seo-agent/orchestrators/weekly.js";
@@ -81,7 +81,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 app.use((req, _res, next) => {
-  console.log(`[${req.method}] ${req.path}`);
+  console.log(`[${req.method}] ${req.originalUrl}, ${JSON.stringify(req.query)}`);
   next();
 });
 

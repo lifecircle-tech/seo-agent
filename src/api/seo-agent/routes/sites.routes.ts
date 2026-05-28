@@ -9,7 +9,7 @@
 
 import { Router, Request, Response } from "express";
 import { google } from "googleapis";
-import pool from "../../db.js";
+import { pool } from "../../db.js";
 import { RowDataPacket } from "mysql2/promise";
 
 const router = Router();
@@ -18,9 +18,9 @@ const SITE_URL_MAP: Record<string, string> = {
   "1": "https://lifecircle.in",
 };
 
-function getGscAuth(siteId: string) {
-  const raw = process.env[`GSC_OAUTH_SITE_${siteId}`];
-  if (!raw) throw new Error(`Missing GSC_OAUTH_SITE_${siteId} env var`);
+function getGscAuth() {
+  const raw = process.env[`GSC_OAUTH_SITE`];
+  if (!raw) throw new Error(`Missing GSC_OAUTH_SITE env var`);
   return new google.auth.GoogleAuth({
     credentials: JSON.parse(raw) as object,
     scopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
@@ -55,7 +55,7 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
     const siteUrl = SITE_URL_MAP[site_id];
     if (!siteUrl) throw new Error(`Unknown site_id=${site_id}`);
 
-    const sc = google.searchconsole({ version: "v1", auth: getGscAuth(site_id) });
+    const sc = google.searchconsole({ version: "v1", auth: getGscAuth() });
 
     const end = new Date();
     const start = new Date();

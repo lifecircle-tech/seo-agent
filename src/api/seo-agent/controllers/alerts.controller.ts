@@ -5,7 +5,7 @@
 
 import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { Alert, AlertJSON } from "../models/alert.model.js";
-import pool from "../../db.js";
+import { pool } from "../../db.js";
 
 // ── Row serialiser ────────────────────────────────────────────────────
 function toJSON(row: Alert): AlertJSON {

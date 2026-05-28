@@ -1,5 +1,5 @@
 import { RowDataPacket } from "mysql2/promise";
-import pool from "../../db.js";
+import { pool } from "../../db.js";
 
 // ── TYPES ─────────────────────────────────────────────────────────────
 export interface Approval extends RowDataPacket {
