@@ -16,7 +16,7 @@ import * as AgentModel    from "../models/AgentModel.js";
 const LOG = "SLACK_MONITOR";
 const SLACK_API       = "https://slack.com/api";
 const OLLAMA_BASE_URL = (process.env.OLLAMA_BASE_URL || "http://localhost:11434").replace(/\/v1$/, "");
-const OLLAMA_MODEL    = "llama3.2:3b";
+const OLLAMA_MODEL    = process.env.OLLAMA_MODEL || "deepseek-r1:14b";
 
 // ── In-memory channel-name → ID cache (1 hour) ───────────────────────────
 const _channelIdCache  = new Map();
