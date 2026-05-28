@@ -142,65 +142,85 @@ export async function updateBolnaAgent(req, res) {
   }
 }
 
+function normalizeBolnaExecution(e) {
+  const telephony = e.telephony_data ?? {};
+  const phone = telephony.to_number ?? telephony.from_number ?? e.recipient_phone_number ?? e.user_number ?? e.to_number ?? e.phone ?? null;
+  return {
+    execution_id:     e.execution_id ?? e.id,
+    phone,
+    status:           (e.status ?? '').toLowerCase().replace(/-/g, '_'),
+    duration_seconds: e.conversation_duration ?? e.conversation_time ?? e.duration ?? e.duration_seconds ?? 0,
+    agent_type:       'voice_call',
+    has_error:        !!(e.error_info ?? e.error ?? e.error_message),
+    error_message:    e.error_info?.message ?? e.error_message ?? null,
+    recording_url:    telephony.recording_url ?? e.recording_url ?? e.audio_url ?? null,
+    call_summary:     e.summary ?? e.transcript_summary ?? null,
+    created_at:       e.created_at ?? e.initiated_at ?? e.start_time ?? null,
+    completed_at:     e.ended_at ?? e.end_time ?? null,
+    ...e,
+  };
+}
+
 export async function getBolnaHistory(req, res) {
-  const { agent_type, status, phone, page = 1, limit = 50 } = req.query;
+  const { status, phone, page = 1, limit = 50 } = req.query;
+  if (!process.env.BOLNA_API_KEY) {
+    return res.json({ success: true, data: [], total: 0, page: 1 });
+  }
   try {
-    const offset = (Number(page) - 1) * Number(limit);
-    let where = "WHERE 1=1";
-    const params = [];
-    if (agent_type) { where += " AND b.agent_type = ?"; params.push(agent_type); }
-    if (status)     { where += " AND b.status = ?";     params.push(status); }
-    if (phone)      { where += " AND b.phone LIKE ?";   params.push(`%${phone}%`); }
+    const agentIds = [process.env.BOLNA_AGENT_ID, process.env.BOLNA_SCREENING_AGENT_ID].filter(Boolean);
+    if (!agentIds.length) return res.json({ success: true, data: [], total: 0, page: Number(page) });
 
-    // LEFT JOIN candidates to get recording URL fallback (b.recording_url may be NULL)
-    const [rawRows] = await legacyPool.query(
-      `SELECT b.*, c.call_recording_url AS _cg_recording_url
-       FROM n_bolna_activity_log b
-       LEFT JOIN n_care_jobs_candidates c ON b.lead_id = c.id
-       ${where} ORDER BY b.created_at DESC LIMIT ? OFFSET ?`,
-      [...params, Number(limit), offset]
-    );
-    const [[{ total }]] = await legacyPool.query(
-      `SELECT COUNT(*) AS total FROM n_bolna_activity_log b ${where}`,
-      params
+    const pageSize = Math.min(Number(limit), 50);
+    const pageNum  = Number(page);
+
+    const qs = new URLSearchParams({ page_number: pageNum, page_size: pageSize });
+    if (status) qs.set('status', status);
+
+    const results = await Promise.all(
+      agentIds.map(id =>
+        bolnaV2Api("GET", `/v2/agent/${id}/executions?${qs}`)
+          .catch(() => ({ executions: [], total: 0 }))
+      )
     );
 
-    // Merge recording URL: prefer b.recording_url, fall back to c.call_recording_url
-    const rows = rawRows.map(({ _cg_recording_url, ...r }) => ({
-      ...r,
-      recording_url: r.recording_url || _cg_recording_url || null,
-    }));
+    let rows = results
+      .flatMap(r => Array.isArray(r) ? r : (r.executions ?? r.data ?? r.results ?? []))
+      .map(normalizeBolnaExecution);
 
-    return res.json({ success: true, data: rows, total, page: Number(page), limit: Number(limit) });
+    const total = results.reduce((sum, r) => sum + (r.total ?? r.total_count ?? 0), 0);
+
+    if (phone) rows = rows.filter((r) => (r.phone ?? '').includes(phone));
+
+    return res.json({ success: true, data: rows, total: total || rows.length, page: pageNum, limit: pageSize });
   } catch (err) {
     return res.status(500).json({ success: false, error: String(err.message ?? err) });
   }
 }
 
 export async function getBolnaErrors(req, res) {
-  const { agent_type, page = 1, limit = 50 } = req.query;
+  if (!process.env.BOLNA_API_KEY) {
+    return res.json({ success: true, data: [], total: 0, page: 1 });
+  }
   try {
-    const offset = (Number(page) - 1) * Number(limit);
-    let where = "WHERE b.has_error = 1";
-    const params = [];
-    if (agent_type) { where += " AND b.agent_type = ?"; params.push(agent_type); }
+    const { page = 1 } = req.query;
+    const agentIds = [process.env.BOLNA_AGENT_ID, process.env.BOLNA_SCREENING_AGENT_ID].filter(Boolean);
+    if (!agentIds.length) return res.json({ success: true, data: [], total: 0, page: 1 });
 
-    const [rawRows] = await legacyPool.query(
-      `SELECT b.*, c.call_recording_url AS _cg_recording_url
-       FROM n_bolna_activity_log b
-       LEFT JOIN n_care_jobs_candidates c ON b.lead_id = c.id
-       ${where} ORDER BY b.created_at DESC LIMIT ? OFFSET ?`,
-      [...params, Number(limit), offset]
+    const qs = new URLSearchParams({ page_number: Number(page), page_size: 50, status: 'error' });
+
+    const results = await Promise.all(
+      agentIds.map(id =>
+        bolnaV2Api("GET", `/v2/agent/${id}/executions?${qs}`)
+          .catch(() => ({ executions: [] }))
+      )
     );
-    const [[{ total }]] = await legacyPool.query(
-      `SELECT COUNT(*) AS total FROM n_bolna_activity_log b ${where}`,
-      params
-    );
-    const rows = rawRows.map(({ _cg_recording_url, ...r }) => ({
-      ...r,
-      recording_url: r.recording_url || _cg_recording_url || null,
-    }));
-    return res.json({ success: true, data: rows, total, page: Number(page), limit: Number(limit) });
+
+    const rows = results
+      .flatMap(r => Array.isArray(r) ? r : (r.executions ?? r.data ?? []))
+      .map(normalizeBolnaExecution)
+      .filter((r) => r.has_error || r.status === 'error' || r.status === 'failed');
+
+    return res.json({ success: true, data: rows, total: rows.length, page: Number(page), limit: 50 });
   } catch (err) {
     return res.status(500).json({ success: false, error: String(err.message ?? err) });
   }
