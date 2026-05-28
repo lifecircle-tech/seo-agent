@@ -70,3 +70,4 @@ export async function sendWhatsAppFallback(req, res) {
     return res.status(500).json({ success: false, error: String(err.message ?? err) });
   }
 }
+

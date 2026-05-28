@@ -2,88 +2,14 @@ import { callClaude }            from "./claudeController.js";
 import { runSlackMonitorAgent }  from "./slackMonitorController.js";
 import { maltiLogger }           from "../utils/maltiLogger.js";
 import * as AgentModel           from "../models/AgentModel.js";
+import { pool, legacyPool }      from "../models/db.js";
+
+const DB_POOLS = { main: pool, legacy: legacyPool };
 
 const LOG = "AGENT_REPORTS";
 
-// ── Static AGENTS config (mirrors PHP $CONFIG['AGENTS']) ──────────────────
+// ── Static AGENTS config ──────────────────────────────────────────────────
 export const STATIC_AGENTS = {
-  vapi_hourly_report: {
-    name: "VAPI Call Report",
-    version: "v1",
-    type: "vapi_report",
-    status: "operational",
-    icon: "📞",
-    color: "green",
-    tier: 1,
-    agent_type: "voice_intel",
-    channels: ["tech_testing"],
-    depends_on: [],
-    personality: { display_name: "VAPI Call Report", tone: "concise, actionable", style: "operational", avatar: "📞" },
-    prompt: `You are a voice call analyst for LifeCircle, India's home healthcare company.
-
-Analyse the VAPI call logs below and return a JSON report.
-
-Return ONLY valid JSON (no markdown):
-{
-  "report_date": "YYYY-MM-DD HH:MM IST",
-  "total_calls": 0,
-  "total_duration_min": 0,
-  "total_cost_usd": "0.0000",
-  "avg_duration_sec": 0,
-  "hot_leads": [{"phone":"+91...","duration_s":0,"summary":"brief","action":"call back"}],
-  "callbacks_needed": [{"phone":"+91...","reason":"brief"}],
-  "resolved": [{"phone":"+91...","outcome":"brief"}],
-  "unresolved": [{"phone":"+91...","issue":"brief"}],
-  "missed_short": [{"phone":"+91...","duration_s":0}],
-  "top_issues": ["issue 1","issue 2"],
-  "recommendations": ["action 1","action 2"],
-  "sentiment_summary": "Overall tone across calls",
-  "status": "Normal | Needs Attention | Critical"
-}
-
-Today: TODAY_DATE`,
-    output_channel: "tech_testing",
-  },
-
-  vapi_call_intelligence: {
-    name: "VAPI Call Intelligence",
-    version: "v1",
-    type: "vapi_live_report",
-    status: "operational",
-    icon: "📲",
-    color: "teal",
-    tier: 2,
-    agent_type: "voice_intel",
-    channels: ["tech_testing"],
-    depends_on: [],
-    call_limit: 50,
-    personality: { display_name: "VAPI Call Intelligence", tone: "concise, actionable", style: "data-driven, clear", avatar: "📲" },
-    prompt: `You are a voice call analyst for LifeCircle, India's home healthcare company.
-
-Analyse the VAPI call logs below and return a JSON report.
-
-Return ONLY valid JSON (no markdown):
-{
-  "report_date": "YYYY-MM-DD HH:MM IST",
-  "total_calls": 0,
-  "total_duration_min": 0,
-  "total_cost_usd": "0.0000",
-  "avg_duration_sec": 0,
-  "hot_leads": [{"phone":"+91...","duration_s":0,"summary":"brief","action":"call back"}],
-  "callbacks_needed": [{"phone":"+91...","reason":"brief"}],
-  "resolved": [{"phone":"+91...","outcome":"brief"}],
-  "unresolved": [{"phone":"+91...","issue":"brief"}],
-  "missed_short": [{"phone":"+91...","duration_s":0}],
-  "top_issues": ["issue 1","issue 2"],
-  "recommendations": ["action 1","action 2"],
-  "sentiment_summary": "Overall tone across calls",
-  "status": "Normal | Needs Attention | Critical"
-}
-
-Today: TODAY_DATE`,
-    output_channel: "tech_testing",
-  },
-
   bolna_hourly_report: {
     name: "Bolna Call Report",
     version: "v1",
@@ -236,6 +162,126 @@ Today: TODAY_DATE`,
   },
 };
 
+// ── Agent Type Schemas ────────────────────────────────────────────────────
+// These define what fields are required/optional when creating each agent type.
+// Used by the UI to render the correct creation form.
+export const AGENT_TYPE_SCHEMAS = {
+  db_report: {
+    label: "Database Report Agent",
+    description: "Queries a database table and uses Claude to analyse and post the results to Slack. Supports manual SQL or auto-query mode where Claude writes the SQL for you.",
+    icon: "🗄️",
+    query_modes: [
+      { value: "auto",   label: "Auto Query (Claude writes the SQL)" },
+      { value: "manual", label: "Manual SQL (you write the query)" },
+    ],
+    fields: [
+      { key: "name",           label: "Agent Name",    type: "text",   required: true,  placeholder: "e.g. Bench CG Daily Report" },
+      { key: "icon",           label: "Icon (emoji)",  type: "text",   required: false, placeholder: "e.g. 📊" },
+      { key: "db",             label: "Database",      type: "select", required: true,  options: [
+          { value: "legacy", label: "Legacy — main LifeCircle DB (life_cg_*, n_bookings, n_user, etc.)" },
+          { value: "main",   label: "Main — seo_agent DB (malti_* tables)" },
+          { value: "pulse",  label: "Pulse — lifecircle_pulse DB (campaigns, contacts)" },
+        ]
+      },
+      // ── Auto-query mode fields ──
+      { key: "tables",  label: "Tables",        type: "tags",     mode: "auto",   required: true,
+        placeholder: "Add table names, e.g. life_cg_details, life_cg_personal",
+        hint: "Claude will fetch the column list for each table and write the JOIN query automatically." },
+      { key: "task",    label: "What to fetch", type: "text",     mode: "auto",   required: true,
+        placeholder: "e.g. Show bench caregivers grouped by city with how long they've been on bench" },
+      { key: "limit",   label: "Row limit",     type: "number",   mode: "auto",   required: false, placeholder: "50", defaultValue: 50 },
+      // ── Manual SQL mode fields ──
+      { key: "query",   label: "SQL Query",     type: "textarea", mode: "manual", required: true,
+        placeholder: "SELECT fullname, city, current_status FROM life_cg_details JOIN life_cg_personal ... LIMIT 50" },
+      // ── Shared fields ──
+      { key: "prompt",         label: "AI Analysis Prompt", type: "textarea", required: false,
+        placeholder: "You are a data analyst for LifeCircle. Summarise the data below clearly.\n\nToday: TODAY_DATE",
+        hint: "If left blank, a default prompt is used. Use TODAY_DATE as a placeholder for current IST time." },
+      { key: "output_channel", label: "Post Results To",    type: "text",     required: true,
+        placeholder: "Slack channel name or webhook key, e.g. tech_testing" },
+      { key: "personality.display_name", label: "Bot Display Name", type: "text", required: false, placeholder: "e.g. Bench Report Bot" },
+      { key: "personality.tone",         label: "Tone",             type: "text", required: false, placeholder: "e.g. concise, factual" },
+    ],
+    notes: [
+      "AUTO mode: provide 'tables' (array) + 'task' (plain English). Claude fetches schemas and writes the SQL.",
+      "MANUAL mode: provide 'query' (raw SQL). Claude only does the analysis step.",
+      "Use TODAY_DATE in your prompt — replaced with current IST date/time at runtime.",
+      "Legacy DB has tables like: life_cg_details, life_cg_personal, n_bookings, n_user, n_hp_profile, life_cg_advance_payment, n_care_jobs_candidates.",
+    ],
+  },
+
+  slack_channel_monitor: {
+    label: "Slack Monitor Agent",
+    description: "Reads messages from one or more Slack channels, analyses them with Claude, and posts a structured report.",
+    icon: "💬",
+    fields: [
+      { key: "name",           label: "Agent Name",         type: "text",     required: true,  placeholder: "e.g. Ops Channel Daily Digest" },
+      { key: "icon",           label: "Icon (emoji)",       type: "text",     required: false, placeholder: "e.g. 📡" },
+      { key: "channels",       label: "Slack Channels to Monitor", type: "tags", required: true, placeholder: "Add channel names, e.g. operations, care-mgrs-team" },
+      { key: "lookback_hours", label: "Lookback Window (hours)", type: "number", required: false, placeholder: "24", defaultValue: 24 },
+      { key: "prompt",         label: "AI Prompt",          type: "textarea", required: true,  placeholder: "You are an ops analyst. Review these Slack messages and summarise...\n\nToday: TODAY_DATE" },
+      { key: "output_channel", label: "Post Report To",     type: "text",     required: true,  placeholder: "Slack channel name or webhook key, e.g. tech_testing" },
+      { key: "personality.display_name", label: "Bot Display Name", type: "text", required: false, placeholder: "e.g. Malti Ops Monitor" },
+      { key: "personality.tone",         label: "Tone",             type: "text", required: false, placeholder: "e.g. analytical, professional" },
+    ],
+    notes: [
+      "Use TODAY_DATE in your prompt — it is replaced with the current IST date/time.",
+      "Channels must be names the bot has access to (already joined). Use seedChannels to refresh the list.",
+      "The agent fetches up to 100 messages per channel within the lookback window.",
+    ],
+  },
+
+  whatsapp_outbound: {
+    label: "WhatsApp Outbound Agent",
+    description: "Runs a SQL query to get a phone number list, then sends a WhatsApp template message to each number via Interakt.",
+    icon: "📱",
+    fields: [
+      { key: "name",            label: "Agent Name",          type: "text",     required: true,  placeholder: "e.g. Weekly Bench CG WhatsApp Alert" },
+      { key: "icon",            label: "Icon (emoji)",        type: "text",     required: false, placeholder: "e.g. 📲" },
+      { key: "db",              label: "Database",            type: "select",   required: true,  options: [
+          { value: "legacy", label: "Legacy (lifecircle main DB)" },
+          { value: "main",   label: "Main (seo_agent DB)" },
+          { value: "pulse",  label: "Pulse (lifecircle_pulse DB)" },
+        ]
+      },
+      { key: "phone_query",     label: "SQL to Get Phone Numbers", type: "textarea", required: true, placeholder: "SELECT mobile AS phone, fullname AS name FROM life_cg_details WHERE ... LIMIT 100" },
+      { key: "template_name",   label: "Interakt Template Name",   type: "text",     required: true, placeholder: "e.g. bench_reminder" },
+      { key: "body_values_map", label: "Template Values (comma-separated column names)", type: "text", required: false, placeholder: "e.g. name,city  (maps SQL columns to template body values)" },
+      { key: "output_channel",  label: "Log Results To (Slack)",   type: "text",     required: false, placeholder: "e.g. tech_testing" },
+      { key: "personality.display_name", label: "Bot Display Name", type: "text", required: false, placeholder: "e.g. WhatsApp Notifier" },
+    ],
+    notes: [
+      "Requires INTERAKT_API_KEY in your environment.",
+      "Template must already be approved in your Interakt account.",
+      "phone_query must return a 'phone' column (10-digit mobile). Optional 'name' column used for body_values.",
+    ],
+  },
+
+  bolna_report: {
+    label: "Bolna IVR Report Agent",
+    description: "Fetches recent IVR call executions from Bolna, analyses them with Claude, and posts a report to Slack.",
+    icon: "🤖",
+    fields: [
+      { key: "name",           label: "Agent Name",        type: "text",     required: true,  placeholder: "e.g. IVR Screening Report" },
+      { key: "icon",           label: "Icon (emoji)",      type: "text",     required: false, placeholder: "e.g. 🤖" },
+      { key: "call_limit",     label: "Max Executions to Fetch", type: "number", required: false, placeholder: "30", defaultValue: 30 },
+      { key: "prompt",         label: "AI Prompt",         type: "textarea", required: true,  placeholder: "You are an IVR analyst. Analyse these Bolna executions...\n\nToday: TODAY_DATE" },
+      { key: "output_channel", label: "Post Report To",    type: "text",     required: true,  placeholder: "e.g. tech_testing" },
+      { key: "personality.display_name", label: "Bot Display Name", type: "text", required: false, placeholder: "e.g. IVR Report Bot" },
+    ],
+    notes: [
+      "Requires BOLNA_API_KEY in your environment.",
+      "Uses a cursor to only process new executions since the last run.",
+    ],
+  },
+};
+
+// Returns the schema for one type, or all types
+export function getAgentTypeSchema(type = null) {
+  if (type) return AGENT_TYPE_SCHEMAS[type] ?? null;
+  return AGENT_TYPE_SCHEMAS;
+}
+
 // ── Merge static + DB custom agents with personality/channel overrides ────
 export async function getAllAgents() {
   const [custom, personalities, channelOverrides] = await Promise.all([
@@ -255,18 +301,6 @@ export async function getAllAgents() {
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────
-async function fetchVapiCalls(limit = 50) {
-  const apiKey = process.env.VAPI_API_KEY;
-  if (!apiKey) throw new Error("VAPI_API_KEY not set");
-  const res = await fetch(`https://api.vapi.ai/call?limit=${limit}`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!res.ok) throw new Error(`Vapi API ${res.status}`);
-  const json = await res.json();
-  return Array.isArray(json) ? json : (json.data ?? []);
-}
-
 async function fetchBolnaExecutions(limit = 50) {
   const apiKey = process.env.BOLNA_API_KEY;
   if (!apiKey) throw new Error("BOLNA_API_KEY not set");
@@ -299,34 +333,6 @@ async function claudeJSON(systemPrompt, userMsg) {
   try { return JSON.parse(cleaned); } catch { return null; }
 }
 
-// ── Vapi analysis (shared between vapi_report and vapi_live_report) ────────
-async function runVapiAnalysis(agentKey, agent, newCalls, cursorKey, start) {
-  let totalSec = 0, totalCost = 0;
-  const callLines = newCalls.map((c, i) => {
-    const phone = c.customer?.number ?? c.phoneNumber?.number ?? "unknown";
-    let dur = parseInt(c.duration ?? 0);
-    if (!dur && c.startedAt && c.endedAt)
-      dur = Math.max(0, Math.floor((new Date(c.endedAt) - new Date(c.startedAt)) / 1000));
-    const cost = parseFloat(c.cost ?? 0);
-    totalSec += dur; totalCost += cost;
-    const messages = c.artifact?.messages ?? [];
-    const transcript = c.artifact?.transcript ?? c.transcript ?? "";
-    const snippet = messages.length
-      ? messages.slice(0, 20).map(m => `[${(m.role ?? "?").toUpperCase()}] ${(m.message ?? m.content ?? "").slice(0, 120)}`).join("\n")
-      : transcript.slice(0, 600);
-    const dFmt = dur >= 60 ? `${Math.floor(dur / 60)}m ${dur % 60}s` : `${dur}s`;
-    return `--- Call ${i + 1} ---\nPhone: ${phone}\nDuration: ${dFmt}\nStatus: ${c.status ?? "ended"} | Reason: ${c.endedReason ?? "unknown"}\nCost: $${cost.toFixed(4)}\nStartedAt: ${c.startedAt ?? "—"}\n${snippet ? `Conversation:\n${snippet}\n` : "No transcript.\n"}`;
-  });
-
-  const istDate = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-  const prompt = (agent.prompt ?? "").replace(/TODAY_DATE/g, istDate);
-  let analysis = await claudeJSON(prompt, `Total new calls: ${newCalls.length}\n\n${callLines.join("\n")}`);
-  if (!analysis) analysis = { error: "Claude parse failed", total_calls: newCalls.length };
-
-  await AgentModel.setCursor(cursorKey, { last_run_ts: Math.floor(Date.now() / 1000) });
-  return makeReport(agentKey, agent, analysis, newCalls.length, start);
-}
-
 // ── Bolna analysis (shared between bolna_report, bolna_live_report, bolna_screening) ──
 async function runBolnaAnalysis(agentKey, agent, newCalls, latestId, cursorKey, start) {
   const callsSummary = newCalls.slice(0, 30).map(c => {
@@ -355,40 +361,6 @@ async function runBolnaAnalysis(agentKey, agent, newCalls, latestId, cursorKey, 
 }
 
 // ── Report generators by type ─────────────────────────────────────────────
-async function generateVapiReport(agentKey, agent) {
-  const start = Date.now();
-  let calls;
-  try { calls = await fetchVapiCalls(agent.call_limit ?? 50); }
-  catch (err) { return makeErrorReport(agentKey, agent, err, start); }
-
-  const cursor = await AgentModel.getCursor(`vapi_cursor_${agentKey}`);
-  const lastTs = cursor.last_run_ts ?? null;
-  const newCalls = lastTs ? calls.filter(c => new Date(c.startedAt ?? 0).getTime() / 1000 > lastTs) : calls;
-
-  if (!newCalls.length) {
-    await AgentModel.setCursor(`vapi_cursor_${agentKey}`, { last_run_ts: Math.floor(Date.now() / 1000) });
-    return makeEmptyReport(agentKey, agent, "_No new VAPI calls since last run._", start);
-  }
-  return runVapiAnalysis(agentKey, agent, newCalls, `vapi_cursor_${agentKey}`, start);
-}
-
-async function generateVapiLiveReport(agentKey, agent) {
-  const start = Date.now();
-  let calls;
-  try { calls = await fetchVapiCalls(agent.call_limit ?? 50); }
-  catch (err) { return makeErrorReport(agentKey, agent, err, start); }
-
-  const cursor = await AgentModel.getCursor(`vapi_live_cursor_${agentKey}`);
-  const lastTs = cursor.last_run_ts ?? null;
-  const newCalls = lastTs ? calls.filter(c => new Date(c.startedAt ?? 0).getTime() / 1000 > lastTs) : calls;
-
-  if (!newCalls.length) {
-    await AgentModel.setCursor(`vapi_live_cursor_${agentKey}`, { last_run_ts: Math.floor(Date.now() / 1000) });
-    return makeEmptyReport(agentKey, agent, "_No new VAPI calls since last run._", start);
-  }
-  return runVapiAnalysis(agentKey, agent, newCalls, `vapi_live_cursor_${agentKey}`, start);
-}
-
 async function generateBolnaReport(agentKey, agent) {
   const start = Date.now();
   let allCalls;
@@ -452,6 +424,101 @@ async function generateBolnaScreeningReport(agentKey, agent) {
   return runBolnaAnalysis(agentKey, agent, newCalls, allCalls[0]?.id, `bolna_screening_cursor_${agentKey}`, start);
 }
 
+// ── DB Report Agent ───────────────────────────────────────────────────────
+
+// Fetches column names for each requested table so Claude can write accurate SQL
+async function fetchTableSchemas(dbPool, tables) {
+  const schemas = {};
+  for (const table of tables) {
+    // Sanitise: only allow word chars and dots (schema.table)
+    if (!/^[\w.]+$/.test(table)) continue;
+    try {
+      const [cols] = await dbPool.query(`SHOW COLUMNS FROM \`${table.replace(".", "`.`")}\``);
+      schemas[table] = cols.map(c => ({
+        column: c.Field,
+        type:   c.Type,
+        null:   c.Null,
+        key:    c.Key,
+      }));
+    } catch {
+      schemas[table] = "table_not_found";
+    }
+  }
+  return schemas;
+}
+
+// Asks Claude to write a SQL SELECT query given table schemas and a plain-English task
+async function generateSQLFromTask(schemas, task, limit = 50) {
+  const schemaBlock = Object.entries(schemas)
+    .filter(([, v]) => v !== "table_not_found")
+    .map(([tbl, cols]) =>
+      `Table: ${tbl}\nColumns: ${cols.map(c => `${c.column} (${c.type})`).join(", ")}`
+    )
+    .join("\n\n");
+
+  const system = `You are a MySQL expert. Write a single safe SELECT query based on the task below.
+Rules:
+- Output ONLY the raw SQL, no markdown, no explanation
+- Use JOINs if needed across the provided tables
+- Always include LIMIT ${limit} at the end
+- Never use UPDATE, DELETE, INSERT, DROP, or ALTER
+- Use column aliases for clarity
+
+Tables available:
+${schemaBlock}`;
+
+  const user = `Task: ${task}`;
+  const raw  = await callClaude(system, user, 512);
+  // Strip any accidental markdown fences
+  return raw.replace(/^```(?:sql)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+}
+
+async function generateDbReport(agentKey, agent) {
+  const start  = Date.now();
+  const dbPool = DB_POOLS[agent.db ?? "legacy"] ?? legacyPool;
+
+  let finalQuery = agent.query ?? null;
+
+  // Auto-query mode: tables + task provided instead of a hardcoded SQL query
+  if (!finalQuery && agent.tables?.length && agent.task) {
+    maltiLogger.info(LOG, `Auto-query mode: fetching schemas`, { agentKey, tables: agent.tables });
+    try {
+      const schemas = await fetchTableSchemas(dbPool, agent.tables);
+      finalQuery    = await generateSQLFromTask(schemas, agent.task, agent.limit ?? 50);
+      maltiLogger.info(LOG, `AI-generated SQL`, { agentKey, sql: finalQuery.slice(0, 200) });
+    } catch (err) {
+      maltiLogger.error(LOG, `SQL generation failed`, { agentKey, error: String(err.message ?? err) });
+      return makeErrorReport(agentKey, agent, new Error(`SQL generation failed: ${err.message}`), start);
+    }
+  }
+
+  if (!finalQuery) {
+    return makeErrorReport(agentKey, agent, new Error("Agent needs either 'query' or both 'tables' and 'task'"), start);
+  }
+
+  let rows;
+  try {
+    const [results] = await dbPool.query(finalQuery);
+    rows = results;
+    maltiLogger.info(LOG, `DB query returned ${rows.length} rows`, { agentKey });
+  } catch (err) {
+    maltiLogger.error(LOG, `DB query failed`, { agentKey, sql: finalQuery.slice(0, 200), error: String(err.message ?? err) });
+    return makeErrorReport(agentKey, agent, err, start);
+  }
+
+  if (!rows.length) {
+    return makeEmptyReport(agentKey, agent, "_No data found for this report._", start);
+  }
+
+  const istDate     = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  const systemPrompt = (agent.prompt ?? "You are a data analyst. Summarise the data below clearly. Today: TODAY_DATE")
+    .replace(/TODAY_DATE/g, istDate);
+  const userMsg     = `Total records: ${rows.length}\n\n${JSON.stringify(rows, null, 2)}`;
+
+  const text = await callClaude(systemPrompt, userMsg, 2048);
+  return makeReport(agentKey, agent, text, rows.length, start);
+}
+
 // ── Report dispatcher ─────────────────────────────────────────────────────
 export async function generateReport(agentKey, forceRefresh = false, agentsParam = null) {
   const agents = agentsParam ?? await getAllAgents();
@@ -461,13 +528,12 @@ export async function generateReport(agentKey, forceRefresh = false, agentsParam
   maltiLogger.info(LOG, `generateReport called`, { agentKey, type: agent.type, forceRefresh });
 
   switch (agent.type) {
-    case "vapi_report":            return generateVapiReport(agentKey, agent);
-    case "vapi_live_report":       return generateVapiLiveReport(agentKey, agent);
     case "bolna_report":           return generateBolnaReport(agentKey, agent);
     case "bolna_live_report":      return generateBolnaLiveReport(agentKey, agent);
     case "bolna_screening":        return generateBolnaScreeningReport(agentKey, agent);
     case "slack_channel_monitor":  return runSlackMonitorAgent(agentKey, agent);
     case "slack_bot":              return runSlackMonitorAgent(agentKey, agent);
+    case "db_report":              return generateDbReport(agentKey, agent);
     default: throw new Error(`Unknown agent type: ${agent.type}`);
   }
 }
@@ -588,13 +654,46 @@ export async function getAgentsList(req, res) {
   try {
     const [agents, schedules] = await Promise.all([getAllAgents(), AgentModel.getAllSchedules()]);
     const result = Object.entries(agents).map(([key, ag]) => ({
-      key, name: ag.name, type: ag.type, icon: ag.icon ?? "🤖",
-      status: ag.status ?? "operational", tier: ag.tier ?? 1,
-      agent_type: ag.agent_type,
-      personality: ag.personality ?? {},
-      schedule: schedules[key] ?? { enabled: false, times: [], days: [1,2,3,4,5], target_channel: "tech_testing" },
+      ...ag,
+      key,
+      icon:    ag.icon   ?? "🤖",
+      status:  ag.status ?? "operational",
+      tier:    ag.tier   ?? 1,
+      personality:    ag.personality    ?? {},
+      schedule:       schedules[key]    ?? { enabled: false, times: [], days: [1,2,3,4,5], target_channel: "tech_testing" },
+      description:    ag.description    ?? "",
+      output_channel: ag.output_channel ?? "",
+      channels:       ag.channels       ?? [],
+      prompt:         ag.prompt         ?? "",
     }));
     return res.json({ success: true, agents: result, count: result.length });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: String(err.message ?? err) });
+  }
+}
+
+export async function getAgentDetail(req, res) {
+  const { key } = req.params;
+  try {
+    const [agents, schedules] = await Promise.all([getAllAgents(), AgentModel.getAllSchedules()]);
+    const ag = agents[key];
+    if (!ag) return res.status(404).json({ success: false, error: `Agent '${key}' not found` });
+    return res.json({
+      success: true,
+      agent: {
+        ...ag,
+        key,
+        icon:    ag.icon   ?? "🤖",
+        status:  ag.status ?? "operational",
+        tier:    ag.tier   ?? 1,
+        personality:    ag.personality    ?? {},
+        schedule:       schedules[key]    ?? { enabled: false, times: [], days: [1,2,3,4,5], target_channel: "tech_testing" },
+        description:    ag.description    ?? "",
+        output_channel: ag.output_channel ?? "",
+        channels:       ag.channels       ?? [],
+        prompt:         ag.prompt         ?? "",
+      },
+    });
   } catch (err) {
     return res.status(500).json({ success: false, error: String(err.message ?? err) });
   }
