@@ -5,7 +5,7 @@
  */
 
 import "dotenv/config";
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import { createServer } from "node:http";
 import { Server as SocketIOServer } from "socket.io";
 import cors from "cors";
@@ -48,9 +48,15 @@ cron.schedule(
 //    so Next.js hot-reload port changes never break the dashboard
 const DASHBOARD_ORIGIN = process.env.DASHBOARD_URL ?? "http://localhost:3001";
 
+const EXTRA_ORIGINS = (process.env.ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return true; // server-to-server calls have no Origin header
   if (origin === DASHBOARD_ORIGIN) return true;
+  if (EXTRA_ORIGINS.includes(origin)) return true;
   if (
     process.env.NODE_ENV !== "production" &&
     /^http:\/\/localhost:\d+$/.test(origin)
@@ -81,7 +87,9 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 app.use((req, _res, next) => {
-  console.log(`[${req.method}] ${req.originalUrl}, ${JSON.stringify(req.query)}`);
+  console.log(
+    `[${req.method}] ${req.originalUrl}, ${JSON.stringify(req.query)}`,
+  );
   next();
 });
 
@@ -126,6 +134,24 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () =>
     console.log(`[socket] disconnected: ${socket.id}`),
   );
+});
+
+// ── Global error handler ──────────────────────────────────────────────
+// body-parser / raw-body throws "BadRequestError: request aborted" when the
+// browser drops the connection before the body is fully received (tab close,
+// navigate-away, React StrictMode double-fetch cleanup, etc.).
+// Without this middleware Express logs a full stack trace for every one.
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  if (err?.type === "request.aborted" || err?.message === "request aborted") {
+    // Client closed the connection — nothing to respond to, just swallow it.
+    return;
+  }
+  console.error("[express error]", err?.message ?? err);
+  if (!res.headersSent) {
+    res
+      .status(err?.status ?? 500)
+      .json({ success: false, error: err?.message ?? "Internal server error" });
+  }
 });
 
 // ── Start ─────────────────────────────────────────────────────────────
