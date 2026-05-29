@@ -14,10 +14,6 @@ import { RowDataPacket } from "mysql2/promise";
 
 const router = Router();
 
-const SITE_URL_MAP: Record<string, string> = {
-  "1": "https://lifecircle.in",
-};
-
 function getGscAuth() {
   const raw = process.env[`GSC_OAUTH_SITE`];
   if (!raw) throw new Error(`Missing GSC_OAUTH_SITE env var`);
@@ -34,6 +30,7 @@ function fmt(d: Date): string {
 // GET /sites/:site_id/overview
 router.get("/:site_id/overview", async (req: Request, res: Response) => {
   const { site_id } = req.params;
+  const { site_url } = req.query as { site_url?: string   };
 
   // Open alerts count — direct DB query instead of internal fetch
   let open_alerts = 0;
@@ -52,7 +49,7 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
   const traffic_sparkline: Array<{ date: string; clicks: number }> = [];
 
   try {
-    const siteUrl = SITE_URL_MAP[site_id];
+    const siteUrl = site_url;
     if (!siteUrl) throw new Error(`Unknown site_id=${site_id}`);
 
     const sc = google.searchconsole({ version: "v1", auth: getGscAuth() });

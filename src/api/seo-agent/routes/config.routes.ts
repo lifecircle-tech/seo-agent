@@ -52,7 +52,7 @@ router.get("/sites", async (req: Request, res: Response) => {
       offset,
     });
 
-    res.json({ sites, total, limit: actualLimit, offset: actualOffset });
+    res.json(sites);
   } catch (err) {
     console.error("[sites GET]", err);
     res.status(500).json({ error: String(err) });
@@ -149,7 +149,7 @@ router.get("/cities", async (req: Request, res: Response) => {
       limit,
       offset,
     });
-    res.json({ cities, total, limit: actualLimit, offset: actualOffset });
+    res.json(cities);
   } catch (err) {
     console.error("[cities GET]", err);
     res.status(500).json({ error: String(err) });
@@ -248,7 +248,7 @@ router.get("/keywords", async (req: Request, res: Response) => {
       limit,
       offset,
     });
-    res.json({ keywords, total, limit: actualLimit, offset: actualOffset });
+    res.json(keywords);
   } catch (err) {
     console.error("[keywords GET]", err);
     res.status(500).json({ error: String(err) });
@@ -339,7 +339,7 @@ router.get("/competitors", async (req: Request, res: Response) => {
       offset,
     });
 
-    res.json({ competitors, total, limit: actualLimit, offset: actualOffset });
+    res.json(competitors);
   } catch (err) {
     console.error("[competitors GET]", err);
     res.status(500).json({ error: String(err) });
