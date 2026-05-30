@@ -9,13 +9,14 @@ import {
 } from "../mcp-servers/keyword-researcher/server.js";
 import { postMonthlyDiscoveryToSlack } from "../mcp-servers/reporting/server.js";
 import ollama from "ollama";
+import { listSitesConfigs } from "../controllers/sites.controller.js";
 
 dotenv.config();
 
 interface SiteDiscoveryConfig {
-  siteId: number;
+  site_id: number;
   domain: string;
-  brandName: string;
+  brand_name: string;
   industry: string;
   cities: string[];
 }
@@ -84,7 +85,7 @@ async function analyzeWithAI(
   keywords: KeywordOpportunity[],
 ) {
   const prompt = `You are a world-class SEO strategist.
-Analyze these prioritized keywords for ${site.brandName} (${site.industry}) in ${city}.
+Analyze these prioritized keywords for ${site.brand_name} (${site.industry}) in ${city}.
 
 Data:
 ${JSON.stringify(keywords.slice(0, 30), null, 2)}
@@ -125,36 +126,20 @@ Return ONLY a JSON object with an "opportunities" array.
 async function runMonthlyDiscovery() {
   const startTime = Date.now();
 
-  const sheets = getSheetsClient();
-  const spreadsheetId = getSpreadsheetId();
-
   console.log(`[monthly-discovery] ══════════════════════════════════════════`);
   console.log(`[monthly-discovery] Starting Monthly Discovery...`);
   console.log(`[monthly-discovery] DRY_RUN=${DRY_RUN}`);
   console.log(`[monthly-discovery] ══════════════════════════════════════════`);
 
-  // 1. Fetch Config
-  const configRes = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: "'Sites Config'!A:E",
-  });
-
-  // Get row from Google sheet and structure it
-  const rows = configRes.data.values?.slice(1) || [];
-  const sites: SiteDiscoveryConfig[] = rows.map((r) => ({
-    siteId: Number(r[0]),
-    domain: r[1],
-    brandName: r[2],
-    industry: r[3],
-    cities: r[4]?.split(",").map((c: string) => c.trim()) || [],
-  }));
+  // 1. Fetch Config from Database
+  const { sites } = await listSitesConfigs({ limit: 1000 });
 
   const overallSummary: string[] = [];
 
   // 2. Loop Sites and Cities
   // const site = sites[0];
   for (const site of sites) {
-    console.log(`\n[site] ${site.domain} (${site.brandName})`);
+    console.log(`\n[site] ${site.domain} (${site.brand_name})`);
     let siteKeywordsTotal = 0;
     let siteOpportunitiesTotal = 0;
 
@@ -165,7 +150,7 @@ async function runMonthlyDiscovery() {
 
         // Call keyword-researcher MCP logic
         const rawKeywords = await discoverCityKeywords(
-          site.siteId,
+          site.site_id,
           site.domain,
           city,
           site.industry,
@@ -177,7 +162,7 @@ async function runMonthlyDiscovery() {
 
         if (!DRY_RUN) {
           // Write to Keywords Matrix
-          await writeKeywordMatrix(site.siteId, city, prioritised);
+          await writeKeywordMatrix(site.site_id, city, prioritised);
 
           // AI Analysis
           const { opportunities } = await analyzeWithAI(
@@ -188,7 +173,7 @@ async function runMonthlyDiscovery() {
           siteOpportunitiesTotal += opportunities.length;
 
           if (opportunities.length > 0) {
-            await writeToContentCalendar(site.siteId, city, opportunities);
+            await writeToContentCalendar(site.site_id, city, opportunities);
           }
         }
       } catch (err: any) {
@@ -196,10 +181,10 @@ async function runMonthlyDiscovery() {
       }
     }
 
-    const siteReport = `${site.brandName}(${site.domain}): Discovered ${siteKeywordsTotal} keywords across ${site.cities.length} cities. Created ${siteOpportunitiesTotal} content ideas.`;
+    const siteReport = `${site.brand_name}(${site.domain}): Discovered ${siteKeywordsTotal} keywords across ${site.cities.length} cities. Created ${siteOpportunitiesTotal} content ideas.`;
     overallSummary.push(siteReport);
     console.log(
-      `[monthly-discovery] All Cities for site_id ${site.siteId} Finished`,
+      `[monthly-discovery] All Cities for site_id ${site.site_id} Finished`,
     );
   }
 

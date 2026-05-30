@@ -23,7 +23,7 @@ import { weeklyTasks } from "./seo-agent/orchestrators/weekly.js";
 import { monthlyDiscovery } from "./seo-agent/orchestrators/monthly-discovery.js";
 
 cron.schedule(
-  "0 8 * * 1",
+  "0 8 * * 1,3,5",
   () => {
     weeklyTasks();
   },

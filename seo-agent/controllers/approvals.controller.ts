@@ -96,7 +96,7 @@ export async function listApprovals(filters: {
   const order =
     filters.sort === "priority"
       ? "ORDER BY priority ASC"
-      : "ORDER BY created_at ASC";
+      : "ORDER BY created_at DESC";
 
   const limit = Math.min(filters.limit ?? 10, 100);
   const offset = filters.offset ?? 0;

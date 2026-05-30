@@ -5,8 +5,12 @@ import {
   MessageCreateParamsNonStreaming,
 } from "@anthropic-ai/sdk/resources/beta.js";
 
-import { getSheetsClient, getSpreadsheetId } from "../../libs/google.js";
+// Import controllers for database operations
+import { listSitesConfigs } from "../controllers/sites.controller.js";
+import { listKeywordsConfigs } from "../controllers/keywords.controller.js";
+import { listCompetitorConfigs } from "../controllers/competitor.controller.js";
 
+// MCP Server Imports
 import { getKeywordRankings } from "../mcp-servers/keyword-tracker/server.js";
 import {
   createApprovalQueue,
@@ -259,10 +263,10 @@ async function step3SchemaManager(
 
   const improvements = await suggestSchemaImprovementsForPages(topPages);
 
-  const paaQuestions = await getPaaQuestionsForKeywords(siteId, [
-    "home care services",
-    "homecare",
-  ]);
+  const paaQuestions = await getPaaQuestionsForKeywords(
+    siteId,
+    sitesKeywordsConfig[siteId].keywords.slice(0, 5),
+  );
 
   console.log(`[step3] Done`);
   return {
@@ -359,6 +363,10 @@ async function step5Reporting(
     domain: competitor.competitor_domain,
     contentGaps: competitor.contentGaps || [],
   }));
+  const competitorBacklinks = (competitorData || []).map((competitor) => ({
+    domain: competitor.competitor_domain,
+    backlinks: competitor.backlinks || [],
+  }));
 
   const response = await callWithRetry(client, "step5", {
     model: "claude-sonnet-4-5",
@@ -383,6 +391,7 @@ async function step5Reporting(
   ## Module 4 — Competitor Intelligence
   Competitors Keyword gaps: ${competitorKeywordGaps.length ? JSON.stringify(competitorKeywordGaps.slice(0, 5), null, 2) : "No gaps identified."}
   Competitors Content gaps: ${competitorContentGaps.length ? JSON.stringify(competitorContentGaps.slice(0, 5), null, 2) : "No content gaps."}
+  Competitors Backlinks: ${competitorBacklinks.length ? JSON.stringify(competitorBacklinks.slice(0, 5), null, 2) : "No backlinks."}
 
   Please do all of the following in order:
   1. From above data, create a concise summary of key insights and recommendations for next week (3-5 sentences).
@@ -395,6 +404,9 @@ async function step5Reporting(
     ],
     betas: ["mcp-client-2025-04-04"],
   });
+
+  console.log("Stop Reason: ", response.stop_reason);
+  console.log("Usage: ", response.usage);
 
   const text = response.content
     .filter((block) => block.type === "text")
@@ -521,61 +533,46 @@ async function runWeeklyTasks(siteId: number) {
 }
 
 export async function weeklyTasks() {
-  // Getting Google sheets data
-  const sheets = getSheetsClient();
-  const spreadsheetId = getSpreadsheetId();
+  console.log(`[weekly] Fetching configuration from database...`);
 
-  const { data } = await sheets.spreadsheets.values.batchGet({
-    spreadsheetId: spreadsheetId,
-    ranges: [
-      "Sites Config!A:E",
-      "Cities Config!A:E",
-      "Keywords Config!A:C",
-      "Competitors Config!A:C",
-    ],
-  });
+  // Fetch all configuration data from MySQL via controllers
+  // Using a large limit to ensure all configs are loaded for the pipeline
+  const [sitesRes, keywordsRes, competitorsRes] = await Promise.all([
+    listSitesConfigs({ limit: 1000 }),
+    listKeywordsConfigs({ limit: 1000 }),
+    listCompetitorConfigs({ limit: 1000 }),
+  ]);
 
-  const datas = (data.valueRanges || []).map((tabs) => {
-    const tabName = tabs?.range?.split("!")[0] || "";
-    const rows = tabs.values?.slice(1);
+  // 1. Populate Sites Configuration
+  sitesConfig = sitesRes.sites;
 
-    return {
-      tabName,
-      rows,
+  // 2. Populate Keywords Configuration (Mapped to site_id)
+  sitesKeywordsConfig = {};
+  keywordsRes.keywords.forEach((config) => {
+    sitesKeywordsConfig[config.site_id] = {
+      site_id: config.site_id,
+      domain: config.domain,
+      keywords: config.target_keywords, // Map target_keywords from DB to keywords interface
     };
   });
 
-  sitesConfig =
-    datas
-      .find((item) => item.tabName === "'Sites Config'")
-      ?.rows?.map((site) => ({
-        site_id: Number(site[0]),
-        domain: site[1],
-        brand_name: site[2],
-        industry: site[3],
-        cities: site[4]?.split(","),
-      })) || [];
+  // 3. Populate Competitors Configuration (Mapped to site_id)
+  sitesCompetitorsConfig = {};
+  competitorsRes.competitors.forEach((config) => {
+    // Note: The database model uses competitor_domain (singular)
+    // while the internal pipeline uses competitors_domain (plural).
+    sitesCompetitorsConfig[config.site_id] = {
+      site_id: config.site_id,
+      domain: config.domain || "", // Ensure domain exists if needed by the interface
+      competitors_domain: config.competitor_domain,
+    };
+  });
 
-  datas
-    .find((item) => item.tabName === "'Keywords Config'")
-    ?.rows?.forEach((site) => {
-      sitesKeywordsConfig[site[0]] = {
-        site_id: Number(site[0]),
-        domain: site[1],
-        keywords: site[2]?.split(","),
-      };
-    }) || [];
+  console.log(
+    `[weekly] Loaded ${sitesConfig.length} sites. Starting processing...`,
+  );
 
-  datas
-    .find((item) => item.tabName === "'Competitors Config'")
-    ?.rows?.forEach((site) => {
-      sitesCompetitorsConfig[site[0]] = {
-        site_id: Number(site[0]),
-        domain: site[1],
-        competitors_domain: site[2]?.split(","),
-      };
-    }) || [];
-
+  // Run pipeline for each configured site
   for (const site of sitesConfig) {
     await runWeeklyTasks(site.site_id);
   }

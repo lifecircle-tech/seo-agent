@@ -59,7 +59,7 @@ export async function listCitiesConfigs(filters: {
   // }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-  const limit = Math.min(filters.limit ?? 10, 100);
+  const limit = Math.min(filters.limit ?? 100, 100);
   const offset = filters.offset ?? 0;
 
   const [[countRow], [rows]] = await Promise.all([

@@ -74,7 +74,7 @@ export async function getPaaQuestions(siteId: number, keyword: string) {
   if (!apiKey) throw new Error("Missing env var SERPAPI_KEY");
 
   console.log("========== Calling SerpAPI **********");
-  const serpUrl = `https://www.searchapi.io/api/v1/search?engine=google&q=${encodeURIComponent(keyword)}&api_key=${apiKey}&location="India"`;
+  const serpUrl = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(keyword)}&api_key=${apiKey}&location="India"`;
   const res = await fetch(serpUrl);
   if (!res.ok) {
     throw new Error(`SerpAPI error ${res.status}: ${res.statusText}`);
