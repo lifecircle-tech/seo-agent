@@ -71,7 +71,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function extractJson(text: string) {
   try {
-    return JSON.parse(text);
+    return JSON.parse(text.replace(/```json|```/g, "").trim());
   } catch (e) {
     // Claude might return explanation text alongside JSON — extract the JSON block
     const match = text.match(/\{[\s\S]*\}/);
@@ -147,10 +147,7 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
   const pages = await Promise.all(
     impressionsVsCtr.map(async (row: any) => {
       const page = await getPage(siteId, row.url);
-      const primaryKeywords = page.primary_keywords;
-      const secondaryKeywords = page.secondary_keywords;
-
-      return { ...page, ...row, primaryKeywords, secondaryKeywords };
+      return { ...page, ...row };
     }),
   );
 
@@ -167,20 +164,29 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
     return { opportunities: [], summary: "No pages identified." };
   }
 
+  const promptPages = pages.map((page) => ({
+    id: page.id,
+    primary_keyword: page.primary_keyword,
+    secondary_keywords: page.secondary_keywords,
+    title: page.title,
+    meta_description: page.meta_description,
+  }));
+
   const prompt = `You are an SEO content analyst for site_id=${siteId}, site name is ${site?.brand_name}.
   Here are the rules for SEO content:
   - primary keywords must be present in title
   - primary keywords must be present in meta description
 
-  ${JSON.stringify(pages)}
+  ${JSON.stringify(promptPages, null, 2)}
 
   For each page from data above, follow the rules
-  - write an improved title (max 60 chars) and meta description (max 155 chars) to increase CTR
+  - write an improved title (max 60 chars) and meta description (max 155 chars)
 
   Return ONLY a JSON object with keys:
-  - opportunities: array of objects with keywords(secondary keywords), url, current_ctr, impressions, current_title, current_description, suggested_title, suggested_description, reasoning, priority (1-3 based on potential impact)
+  - opportunities: array of objects with id, suggested_title, suggested_description, reasoning, priority (1-3 based on potential impact)
   - summary: string with 2-3 overall action items
 
+  Do NOT omit any pages.
   No extra text.`;
 
   const response = await callWithRetry(client, "step2", {
@@ -214,26 +220,27 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
 
   await createApprovalQueue(
     parsed.opportunities.map((opp: any) => {
+      const page = pages.find((p: any) => p.id === opp.id);
       return {
         site_id: siteId,
         module: "cms-connector",
         type: "meta_rewrite",
         priority: opp.priority,
-        title: opp.current_title,
+        title: page.title,
         original_content: {
-          focus_keywords: opp.keywords,
-          url: opp.url,
-          type: opp.type,
-          current_title: opp.current_title,
-          current_description: opp.current_description,
+          focus_keywords: page.secondary_keywords,
+          url: page.url,
+          type: page.type,
+          current_title: page.title,
+          current_description: page.meta_description,
         },
         suggested_content: {
-          type: opp.type,
+          type: page.type,
           suggested_title: opp.suggested_title,
           suggested_description: opp.suggested_description,
           reasoning: opp.reasoning,
         },
-        preview_url: opp.url,
+        preview_url: page.url,
       };
     }),
   );

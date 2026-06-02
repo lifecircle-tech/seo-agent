@@ -370,7 +370,7 @@ const getPagesWithHighImpressionLowCtr = async (
   pages = pages.opportunities.sort(
     (a: any, b: any) => b.impressions - a.impressions,
   );
-  return pages.slice(0, 10);
+  return pages.slice(0,30);
 };
 
 export { getPagesWithHighImpressionLowCtr };
