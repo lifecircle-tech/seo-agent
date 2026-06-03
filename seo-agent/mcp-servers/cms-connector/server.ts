@@ -1,5 +1,6 @@
 import { getSearchConsoleClient } from "../../../libs/google.js";
 import { getWpAuth, wpFetch } from "../../../libs/wordpress.js";
+import { getStartIndex } from "../../../libs/functions.js";
 
 // ── GSC date helpers ──────────────────────────────────────────────────
 function fmtDate(d: Date): string {
@@ -370,7 +371,15 @@ const getPagesWithHighImpressionLowCtr = async (
   pages = pages.opportunities.sort(
     (a: any, b: any) => b.impressions - a.impressions,
   );
-  return pages.slice(0,30);
+
+  const numberOfExtractionsPerDay = 30;
+  const startIndex = getStartIndex(new Date(), numberOfExtractionsPerDay) ?? 0;
+
+  if (typeof startIndex === "number" && startIndex < pages.length) {
+    return pages.slice(startIndex, startIndex + numberOfExtractionsPerDay);
+  }
+
+  return [];
 };
 
 export { getPagesWithHighImpressionLowCtr };
