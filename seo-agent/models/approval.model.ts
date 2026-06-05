@@ -17,6 +17,7 @@ export interface Approval extends RowDataPacket {
   actioned_at: Date | null; // DATETIME(3) | NULL
   actioned_by: string | null; // VARCHAR(64) | NULL
   reject_reason: string | null; // VARCHAR(255) | NULL
+  remark: string;
 }
 
 export interface ApprovalJSON {
@@ -34,6 +35,7 @@ export interface ApprovalJSON {
   actioned_at: string | null;
   actioned_by: string | null;
   reject_reason: string | null;
+  remark: string;
 }
 
 // ── SCHEMA BOOTSTRAP ──────────────────────────────────────────────────
@@ -55,6 +57,7 @@ export async function createApprovalsTable(): Promise<void> {
       actioned_at   DATETIME(3)   NULL,
       actioned_by   VARCHAR(64)   NULL,
       reject_reason VARCHAR(255)  NULL,
+      remark        TEXT          NULL,
       INDEX idx_approvals_status_priority (status, priority),
       INDEX idx_approvals_site_id (site_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

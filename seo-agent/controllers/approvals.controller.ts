@@ -217,12 +217,13 @@ export async function rejectApproval(
   id: string,
   actionedBy: string,
   reason: string,
+  remark?: string,
 ): Promise<ApprovalJSON | null> {
   const [result] = await pool.query<ResultSetHeader>(
     `UPDATE approvals
-     SET status = 'rejected', actioned_at = NOW(3), actioned_by = ?, reject_reason = ?
+     SET status = 'rejected', actioned_at = NOW(3), actioned_by = ?, reject_reason = ?, remark = ?
      WHERE id = ?`,
-    [actionedBy, reason, id],
+    [actionedBy, reason, remark, id],
   );
   if (result.affectedRows === 0) return null;
   return getApprovalById(id);

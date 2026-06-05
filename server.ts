@@ -97,7 +97,7 @@ app.use((req, _res, next) => {
 // ── Routes ────────────────────────────────────────────────────────────
 app.use("/approvals", approvalsRouter(io));
 app.use("/alerts", alertsRouter(io));
-app.use("/content", pageContentRouter(io));
+app.use("/contents", pageContentRouter(io));
 app.use("/config", configRouter);
 app.use("/sites", sitesRouter);
 app.use("/malti", maltiRouter);

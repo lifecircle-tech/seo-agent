@@ -139,7 +139,7 @@ export function approvalsRouter(io: SocketIOServer): Router {
     "/:id/reject",
     requireAuth,
     async (req: Request, res: Response) => {
-      const { reason } = req.body as { reason?: string };
+      const { reason, remark } = req.body as { reason?: string, remark?: string };
       const { userId } = (req as AuthRequest).user!;
       if (!reason) {
         res
@@ -152,6 +152,7 @@ export function approvalsRouter(io: SocketIOServer): Router {
           req.params.id,
           String(userId) ?? "operator",
           reason,
+          remark,
         );
         if (!approval) {
           res.status(404).json({ success: false, error: "Approval not found" });

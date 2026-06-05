@@ -8,6 +8,7 @@ import {
   updatePageContentBody,
   acknowledgePageContent,
   updatePageContentError,
+  updateRemark,
 } from "../controllers/page-content.controller.js";
 import { AuthRequest, requireAuth } from "../../middleware/auth.middleware.js";
 
@@ -38,9 +39,10 @@ export function pageContentRouter(io: SocketIOServer): Router {
   // GET /content
   router.get("/", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { site_id, limit, offset } = req.query;
+      const { site_id, limit, offset, status } = req.query;
       const result = await listPageContents({
         site_id: site_id ? Number(site_id) : undefined,
+        status: status as string | undefined,
         limit: limit ? Number(limit) : undefined,
         offset: offset ? Number(offset) : undefined,
       });
@@ -102,6 +104,7 @@ export function pageContentRouter(io: SocketIOServer): Router {
             .json({ success: false, error: "Record not found" });
 
         io.emit("content:updated", record);
+        console.log("Content socket triggered");
         res.json({ success: true, record });
       } catch (err) {
         console.error("[page-content] acknowledge error:", err);
@@ -117,6 +120,29 @@ export function pageContentRouter(io: SocketIOServer): Router {
     async (req: Request, res: Response) => {
       try {
         const record = await updatePageContentError(req.params.id);
+        if (!record)
+          return res
+            .status(404)
+            .json({ success: false, error: "Record not found" });
+
+        io.emit("content:updated", record);
+        res.json({ success: true, record });
+      } catch (err) {
+        console.error("[page-content] error error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
+      }
+    },
+  );
+
+  // POST /content/:id/error
+  router.post(
+    "/:id/add-remark",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const { remark } = req.body;
+
+        const record = await updateRemark(req.params.id, remark);
         if (!record)
           return res
             .status(404)

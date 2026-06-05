@@ -50,6 +50,7 @@ export async function createPageContent(
 // ── LIST ──────────────────────────────────────────────────────────────
 export async function listPageContents(filters: {
   site_id?: number;
+  status?: string;
   limit?: number;
   offset?: number;
 }): Promise<{
@@ -59,13 +60,19 @@ export async function listPageContents(filters: {
   offset: number;
 }> {
   const params: unknown[] = [];
-  let where = "";
+  const conditions: string[] = [];
 
-  if (filters.site_id) {
-    where = "WHERE site_id = ?";
-    params.push(filters.site_id);
+  if (filters.status) {
+    conditions.push("status = ?");
+    params.push(filters.status);
   }
 
+  if (filters.site_id) {
+    conditions.push("site_id = ?");
+    params.push(filters.site_id);
+  }
+  
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const limit = Math.min(filters.limit ?? 10, 100);
   const offset = filters.offset ?? 0;
 
@@ -152,6 +159,18 @@ export async function updatePageContentError(
   const [result] = await pool.query<ResultSetHeader>(
     `UPDATE page_content SET status = 'error' WHERE id = ?`,
     [id],
+  );
+  if (result.affectedRows === 0) return null;
+  return getPageContentById(id);
+}
+
+export async function updateRemark(
+  id: string,
+  remark: string,
+): Promise<PageContentJSON | null> {
+  const [result] = await pool.query<ResultSetHeader>(
+    `UPDATE page_content SET remark = ? WHERE id = ?`,
+    [remark, id],
   );
   if (result.affectedRows === 0) return null;
   return getPageContentById(id);
