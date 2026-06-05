@@ -4,6 +4,7 @@ import { createCitiesConfigTable } from "./cities-config.model.js";
 import { createCompetitorConfigTable } from "./competitor-config.model.js";
 import { createKeywordsConfigTable } from "./keywords-config.model.js";
 import { createSitesConfigTable } from "./sites-config.model.js";
+import { createPageContentTable } from "./page-content.model.js";
 
 export async function initSEOModels() {
   await Promise.all([
@@ -13,6 +14,7 @@ export async function initSEOModels() {
     createKeywordsConfigTable(),
     createCitiesConfigTable(),
     createCompetitorConfigTable(),
+    createPageContentTable(),
   ]);
   console.log("[seo-agent] tables ready");
 }

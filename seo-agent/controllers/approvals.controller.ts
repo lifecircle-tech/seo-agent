@@ -8,6 +8,8 @@ import { Approval, ApprovalJSON } from "../models/approval.model.js";
 import { lc_pool, pool } from "../../db.js";
 import { updatePageMeta } from "../services/wordpress.service.js";
 
+import { runPageContentAgent } from "../services/page-content.service.js";
+
 // ── Row serialiser ────────────────────────────────────────────────────
 function toJSON(row: Approval): ApprovalJSON {
   return {
@@ -177,6 +179,8 @@ export async function approveApproval(
 
   // If the approved item is a meta_rewrite, push the change to WordPress.
   if (approval.type === "meta_rewrite") {
+    if (approval.original_content.type === "post") runPageContentAgent(id);
+
     const c = (approval.updated_content ?? approval.original_content) as {
       // Use updated_content if present, else original
       url?: string;

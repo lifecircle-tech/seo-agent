@@ -144,20 +144,11 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
     site?.domain as string,
     28,
   );
-  const pages = await Promise.all(
-    impressionsVsCtr.map(async (row: any) => {
-      const page = await getPage(siteId, row.url);
-      return { ...page, ...row };
-    }),
-  );
-
-  /*
-  - primary keyword should be present in h1 heading tag
-  - secondary keywords should me present in subheading
-  - primary and secondary keywords should be present in contents
-  - primary keyword should be present in the first 10% of the content
-  - minimum content should be 1500 words
-  */
+  const pages:any[] = [];
+  for await(const row of impressionsVsCtr) {
+    const page = await getPage(siteId, row.url);
+    pages.push({ ...page, ...row });
+  }
 
   if (pages.length === 0) {
     console.log(`[step2] No pages found for site_id=${siteId}.`);
@@ -580,9 +571,9 @@ export async function weeklyTasks() {
   );
 
   // Run pipeline for each configured site
-  for (const site of sitesConfig) {
-    await runWeeklyTasks(site.site_id);
-  }
+  // for (const site of sitesConfig) {
+    await runWeeklyTasks(1);
+  // }
 }
 
 // ── Execute ───────────────────────────────────────────────────────────

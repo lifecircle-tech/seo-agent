@@ -15,6 +15,7 @@ import { approvalsRouter } from "./seo-agent/routes/approvals.routes.js";
 import { alertsRouter } from "./seo-agent/routes/alerts.routes.js";
 import { configRouter } from "./seo-agent/routes/config.routes.js";
 import { sitesRouter } from "./seo-agent/routes/sites.routes.js";
+import { pageContentRouter } from "./seo-agent/routes/page-content.routes.js";
 import { initSEOModels } from "./seo-agent/models/index.js";
 import { pool } from "./db.js";
 import { maltiRouter, initMalti } from "./malti/index.js";
@@ -96,6 +97,7 @@ app.use((req, _res, next) => {
 // ── Routes ────────────────────────────────────────────────────────────
 app.use("/approvals", approvalsRouter(io));
 app.use("/alerts", alertsRouter(io));
+app.use("/content", pageContentRouter(io));
 app.use("/config", configRouter);
 app.use("/sites", sitesRouter);
 app.use("/malti", maltiRouter);
