@@ -153,6 +153,21 @@ export async function acknowledgePageContent(
   return getPageContentById(id);
 }
 
+export async function rejectPageContent(
+  id: string,
+  userId: string,
+  remark?: string,
+): Promise<PageContentJSON | null> {
+  const [result] = await pool.query<ResultSetHeader>(
+    `UPDATE page_content 
+     SET status = 'rejected', acknowledged_by = ?, acknowledged_at = NOW(3), remark = COALESCE(?, remark)
+     WHERE id = ?`,
+    [userId, remark ?? null, id],
+  );
+  if (result.affectedRows === 0) return null;
+  return getPageContentById(id);
+}
+
 export async function updatePageContentError(
   id: string,
 ): Promise<PageContentJSON | null> {
@@ -171,6 +186,18 @@ export async function updateRemark(
   const [result] = await pool.query<ResultSetHeader>(
     `UPDATE page_content SET remark = ? WHERE id = ?`,
     [remark, id],
+  );
+  if (result.affectedRows === 0) return null;
+  return getPageContentById(id);
+}
+
+export async function updateUpdatedPageDetails(
+  id: string,
+  update_details: Record<string, any>,
+): Promise<PageContentJSON | null> {
+  const [result] = await pool.query<ResultSetHeader>(
+    `UPDATE page_content SET update_details = ? WHERE id = ?`,
+    [JSON.stringify(update_details), id],
   );
   if (result.affectedRows === 0) return null;
   return getPageContentById(id);

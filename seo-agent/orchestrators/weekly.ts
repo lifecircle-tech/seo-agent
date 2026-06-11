@@ -174,15 +174,15 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
   - write an improved title (max 60 chars) and meta description (max 155 chars)
 
   Return ONLY a JSON object with keys:
-  - opportunities: array of objects with id, suggested_title, suggested_description, reasoning, priority (1-3 based on potential impact)
+  - opportunities: array of objects with id, suggested_title, suggested_description, reasoning (detailed reason for change with impact), priority (1-3 based on potential impact)
   - summary: string with 2-3 overall action items
 
   Do NOT omit any pages.
   No extra text.`;
 
   const response = await callWithRetry(client, "step2", {
-    model: "claude-haiku-4-5",
-    max_tokens: 10000,
+    model: "claude-sonnet-4-6",
+    max_tokens: 15000,
     messages: [
       {
         role: "user",

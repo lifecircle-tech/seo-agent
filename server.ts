@@ -22,6 +22,7 @@ import { maltiRouter, initMalti } from "./malti/index.js";
 
 import { weeklyTasks } from "./seo-agent/orchestrators/weekly.js";
 import { monthlyDiscovery } from "./seo-agent/orchestrators/monthly-discovery.js";
+import { checkPageContents } from "./seo-agent/services/schedulers.service.js";
 
 cron.schedule(
   "0 8 * * 1,3,5",
@@ -42,6 +43,17 @@ cron.schedule(
   {
     timezone: "IST",
     name: "Monthly Discovery",
+  },
+);
+
+cron.schedule(
+  "0 17 * * *",
+  () => {
+    checkPageContents();
+  },
+  {
+    timezone: "IST",
+    name: "Check Page Contents",
   },
 );
 

@@ -97,7 +97,7 @@ export async function getCompetitorKeywords(
   console.log("========== Calling Ahrefs API **********");
   const raw = (await ahrefsFetch("/site-explorer/organic-keywords", {
     target: competitorDomain,
-    limit: "50",
+    limit: "10",
     mode: "domain",
     output: "json",
     date: new Date().toISOString().split("T")[0], // Use current date for freshest data
@@ -232,7 +232,7 @@ export async function getCompetitorBacklinks(
 
   const raw = (await ahrefsFetch("/site-explorer/all-backlinks", {
     target: competitorDomain,
-    limit: "50",
+    limit: "10",
     mode: "domain",
     output: "json",
     select: "anchor,url_from,url_to,domain_rating_source,domain_rating_target",

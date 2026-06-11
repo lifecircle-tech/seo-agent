@@ -9,6 +9,7 @@ import {
   acknowledgePageContent,
   updatePageContentError,
   updateRemark,
+  rejectPageContent,
 } from "../controllers/page-content.controller.js";
 import { AuthRequest, requireAuth } from "../../middleware/auth.middleware.js";
 
@@ -104,7 +105,34 @@ export function pageContentRouter(io: SocketIOServer): Router {
             .json({ success: false, error: "Record not found" });
 
         io.emit("content:updated", record);
-        console.log("Content socket triggered");
+        res.json({ success: true, record });
+      } catch (err) {
+        console.error("[page-content] acknowledge error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
+      }
+    },
+  );
+
+  // POST /content/:id/reject
+  router.post(
+    "/:id/reject",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const { userId } = (req as AuthRequest).user!;
+        const { remark } = req.body;
+
+        const record = await rejectPageContent(
+          req.params.id,
+          String(userId),
+          remark,
+        );
+        if (!record)
+          return res
+            .status(404)
+            .json({ success: false, error: "Record not found" });
+
+        io.emit("content:updated", record);
         res.json({ success: true, record });
       } catch (err) {
         console.error("[page-content] acknowledge error:", err);
