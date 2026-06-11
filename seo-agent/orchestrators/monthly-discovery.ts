@@ -137,8 +137,8 @@ async function runMonthlyDiscovery() {
   const overallSummary: string[] = [];
 
   // 2. Loop Sites and Cities
-  // const site = sites[0];
-  for (const site of sites) {
+  const site = sites[0];
+  // for (const site of sites) {
     console.log(`\n[site] ${site.domain} (${site.brand_name})`);
     let siteKeywordsTotal = 0;
     let siteOpportunitiesTotal = 0;
@@ -186,7 +186,7 @@ async function runMonthlyDiscovery() {
     console.log(
       `[monthly-discovery] All Cities for site_id ${site.site_id} Finished`,
     );
-  }
+  // }
 
   // 3. Post to Slack
   if (!DRY_RUN) {

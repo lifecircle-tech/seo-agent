@@ -54,7 +54,7 @@ export async function discoverCityKeywords(
   const ahrefsData = (await ahrefsFetch("/keywords-explorer/matching-terms", {
     keywords: seedKeyword,
     country: "in",
-    limit: "50",
+    limit: "20",
     select: "keyword,volume,difficulty",
   })) as { keywords?: any[] };
 

@@ -6,6 +6,7 @@ import { wpFetch } from "../../libs/wordpress.js";
 import { getApprovalById } from "../controllers/approvals.controller.js";
 import {
   createPageContent,
+  getPageContentById,
   updatePageContentBody,
   updatePageContentError,
 } from "../controllers/page-content.controller.js";
@@ -130,6 +131,55 @@ export async function updatePageContent(
   });
 
   return response.json();
+}
+
+/**
+ * Fetches the stored content for a page-content record and compares it
+ * against the live WordPress content, returning the overlap percentage.
+ */
+export async function verifyPageUpdate(
+  id: string,
+): Promise<{ matchPercentage: number; }> {
+  const record = await getPageContentById(id);
+  if (!record) throw new Error(`Page content record not found: ${id}`);
+
+  const { site_id, url, content: storedContent } = record;
+
+  const liveContent = await getPageContent(site_id, url);
+
+  const tokenize = (text: string) =>
+    text
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length > 0);
+
+  const storedTokens = tokenize(storedContent);
+  const liveTokens = tokenize(liveContent);
+
+  if (storedTokens.length === 0) {
+    return { matchPercentage: 0 };
+  }
+
+  // LCS via 1-D rolling DP — O(m×n) time, O(n) space
+  const lcsLength = (a: string[], b: string[]): number => {
+    let prev = new Array(b.length + 1).fill(0);
+    for (let i = 1; i <= a.length; i++) {
+      const curr = new Array(b.length + 1).fill(0);
+      for (let j = 1; j <= b.length; j++) {
+        curr[j] =
+          a[i - 1] === b[j - 1]
+            ? prev[j - 1] + 1
+            : Math.max(prev[j], curr[j - 1]);
+      }
+      prev = curr;
+    }
+    return prev[b.length];
+  };
+
+  const matched = lcsLength(storedTokens, liveTokens);
+  const matchPercentage = Math.round((matched / storedTokens.length) * 100);
+
+  return { matchPercentage };
 }
 
 export async function runPageContentAgent(id: string) {
