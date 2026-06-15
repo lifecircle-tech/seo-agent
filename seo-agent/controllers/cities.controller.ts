@@ -10,6 +10,12 @@ function toJSON(row: CityConfig): CityConfigJSON {
       typeof row.target_keywords === "string"
         ? JSON.parse(row.target_keywords)
         : row.target_keywords,
+    services:
+      row.services === null || row.services === undefined
+        ? null
+        : typeof row.services === "string"
+          ? JSON.parse(row.services)
+          : row.services,
     created_at:
       row.created_at instanceof Date
         ? row.created_at.toISOString()
@@ -21,12 +27,18 @@ function toJSON(row: CityConfig): CityConfigJSON {
 export async function createCityConfig(
   data: Pick<
     CityConfig,
-    "id" | "site_id" | "city" | "state" | "country" | "target_keywords"
+    | "id"
+    | "site_id"
+    | "city"
+    | "state"
+    | "country"
+    | "target_keywords"
+    | "services"
   >,
 ): Promise<CityConfigJSON> {
   await pool.query<ResultSetHeader>(
-    `INSERT INTO cities_config (id, site_id, city, state, country, target_keywords, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, NOW(3))`,
+    `INSERT INTO cities_config (id, site_id, city, state, country, target_keywords, services, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NOW(3))`,
     [
       data.id,
       data.site_id,
@@ -34,6 +46,7 @@ export async function createCityConfig(
       data.state,
       data.country,
       JSON.stringify(data.target_keywords),
+      data.services != null ? JSON.stringify(data.services) : null,
     ],
   );
   const config = await getCityConfigById(data.id);
@@ -93,7 +106,10 @@ export async function getCityConfigById(
 export async function updateCityConfig(
   id: string,
   data: Partial<
-    Pick<CityConfig, "city" | "state" | "country" | "target_keywords">
+    Pick<
+      CityConfig,
+      "city" | "state" | "country" | "target_keywords" | "services"
+    >
   >,
 ): Promise<CityConfigJSON | null> {
   const fields: string[] = [];
@@ -114,6 +130,10 @@ export async function updateCityConfig(
   if (data.target_keywords !== undefined) {
     fields.push("target_keywords = ?");
     params.push(JSON.stringify(data.target_keywords));
+  }
+  if ("services" in data) {
+    fields.push("services = ?");
+    params.push(data.services != null ? JSON.stringify(data.services) : null);
   }
 
   if (fields.length === 0) return getCityConfigById(id);

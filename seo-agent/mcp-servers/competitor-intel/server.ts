@@ -350,10 +350,11 @@ const getKeywordsGapForCompetitorDomain = async (
   siteUrl: string,
   competitorDomains: string[],
 ) => {
-  const keywordGaps = await Promise.all(
-    competitorDomains.map((domain) => getKeywordGaps(siteId, siteUrl, domain)),
-  );
-
+  const keywordGaps = [] as any[];
+  for (let domain in competitorDomains) {
+    const res = await getKeywordGaps(siteId, siteUrl, domain);
+    keywordGaps.push(res);
+  }
   return keywordGaps;
 };
 
@@ -362,9 +363,11 @@ const getContentsGapForCompetitorDomain = async (
   siteUrl: string,
   competitorDomains: string[],
 ) => {
-  const contentGaps = await Promise.all(
-    competitorDomains.map((domain) => getContentGaps(siteId, siteUrl, domain)),
-  );
+  const contentGaps = [] as any[];
+  for (let domain in competitorDomains){
+    const res = await getContentGaps(siteId, siteUrl, domain);
+    contentGaps.push(res);
+  }
   return contentGaps;
 };
 
@@ -372,9 +375,11 @@ const getBacklinksForCompetitorDomain = async (
   siteId: number,
   competitorDomains: string[],
 ) => {
-  const backlinks = await Promise.all(
-    competitorDomains.map((domain) => getCompetitorBacklinks(siteId, domain)),
-  );
+  const backlinks = [] as any[];
+  for (let domain in competitorDomains) {
+    const res = await getCompetitorBacklinks(siteId, domain);
+    backlinks.push(res);
+  }
   return backlinks;
 };
 
