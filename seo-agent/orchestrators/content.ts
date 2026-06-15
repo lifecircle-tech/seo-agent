@@ -62,15 +62,15 @@ export async function analyseWithAI(
   Analyze the following content(in markdown format) and rewrite the content for better readability and SEO that matches the context above.:
   ${content}
 
-  Exclude Customer Reviews, Related Blogs, Recent Blogs, Testimonials, and FAQs from the rewritten content.
+  Exclude Customer Reviews, Related Blogs, Recent Blogs and Testimonials from the rewritten content.
   
   Return the JSON object with keys:
   - content: Markdown format, preserving the structure and any important details,
-  - reason: reason for any changes.
+  - reason: reason for any changes, provide detailed reason and its impact.
   `;
 
     const response = await callWithRetry(client, "step2", {
-      model: "claude-haiku-4-5",
+      model: "claude-sonnet-4-6",
       max_tokens: 10000,
       messages: [
         {
