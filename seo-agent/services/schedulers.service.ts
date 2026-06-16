@@ -4,18 +4,13 @@ import { updateUpdatedPageDetails } from "../controllers/page-content.controller
 import { verifyPageUpdate } from "./page-content.service.js";
 
 export async function checkPageContents(): Promise<void> {
-  // Compute today's date in IST (UTC+05:30)
-  const nowIST = new Date(Date.now() + (5.5 * 60 * 60 * 1000));
-  const todayIST = nowIST.toISOString().slice(0, 10);
-
   const [rows] = await pool.query<PageContent[]>(
     `SELECT * FROM page_content
-     WHERE DATE(CONVERT_TZ(acknowledged_at, '+00:00', '+05:30')) = ?`,
-    [todayIST],
+     WHERE acknowledged_at >= NOW() - INTERVAL 24 HOUR`,
   );
 
   console.log(
-    `[schedulers] checkPageContents: ${rows.length} record(s) acknowledged on ${todayIST}`,
+    `[schedulers] checkPageContents: ${rows.length} record(s) acknowledged in the last 24 hours`,
   );
 
   for (const row of rows) {

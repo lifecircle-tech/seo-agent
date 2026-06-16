@@ -24,6 +24,7 @@ import { weeklyTasks } from "./seo-agent/orchestrators/weekly.js";
 import { monthlyDiscovery } from "./seo-agent/orchestrators/monthly-discovery.js";
 import { monthlyAudit } from "./seo-agent/orchestrators/monthly_audit.js";
 import { weeklyPageChecker } from "./seo-agent/orchestrators/weekly_page_checker.js";
+import { dailyTechnicalAudit } from "./seo-agent/orchestrators/daily.js";
 import { checkPageContents } from "./seo-agent/services/schedulers.service.js";
 
 cron.schedule(
@@ -67,6 +68,17 @@ cron.schedule(
   {
     timezone: "IST",
     name: "Weekly Page Checker",
+  },
+);
+
+cron.schedule(
+  "0 10 * * *",
+  () => {
+    dailyTechnicalAudit();
+  },
+  {
+    timezone: "IST",
+    name: "Daily Technical SEO Audit",
   },
 );
 
