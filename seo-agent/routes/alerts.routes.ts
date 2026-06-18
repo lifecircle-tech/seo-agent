@@ -15,7 +15,7 @@ import {
 } from "../controllers/alerts.controller.js";
 
 import type { Alert } from "../models/alert.model.js";
-import { requireAuth } from "../../middleware/auth.middleware.js";
+import { AuthRequest, requireAuth } from "../../middleware/auth.middleware.js";
 
 // Request body shape for POST /alerts (all strings from JSON body)
 interface CreateAlertBody {
@@ -60,12 +60,16 @@ export function alertsRouter(io: SocketIOServer): Router {
 
   // GET /alerts
   router.get("/", requireAuth, async (req: Request, res: Response) => {
-    const { status, severity, site_id } = req.query as Record<string, string>;
+    const { status, severity, module, site_id, limit, offset } =
+      req.query as Record<string, string>;
     try {
       const result = await listAlerts({
         status,
         severity,
+        module,
         site_id: site_id ? Number(site_id) : undefined,
+        limit: limit ? Number(limit) : undefined,
+        offset: offset ? Number(offset) : undefined,
       });
       res.json({ success: true, ...result });
     } catch (err) {
@@ -75,36 +79,52 @@ export function alertsRouter(io: SocketIOServer): Router {
   });
 
   // POST /alerts/:id/acknowledge
-  router.post("/:id/acknowledge", requireAuth, async (req: Request, res: Response) => {
-    try {
-      const alert = await acknowledgeAlert(req.params.id);
-      if (!alert) {
-        res.status(404).json({ success: false, error: "Alert not found" });
-        return;
+  router.post(
+    "/:id/acknowledge",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const { userId } = (req as AuthRequest).user!;
+        const alert = await acknowledgeAlert(
+          req.params.id,
+          String(userId) ?? "operator",
+        );
+        if (!alert) {
+          res.status(404).json({ success: false, error: "Alert not found" });
+          return;
+        }
+        io.emit("alert:updated", alert);
+        res.json({ success: true, ...alert });
+      } catch (err) {
+        console.error("[alerts] acknowledge error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
       }
-      io.emit("alert:updated", alert);
-      res.json({ success: true, ...alert });
-    } catch (err) {
-      console.error("[alerts] acknowledge error:", err);
-      res.status(500).json({ success: false, error: "Database error" });
-    }
-  });
+    },
+  );
 
   // POST /alerts/:id/resolve
-  router.post("/:id/resolve", requireAuth, async (req: Request, res: Response) => {
-    try {
-      const alert = await resolveAlert(req.params.id);
-      if (!alert) {
-        res.status(404).json({ success: false, error: "Alert not found" });
-        return;
+  router.post(
+    "/:id/resolve",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const { userId } = (req as AuthRequest).user!;
+        const alert = await resolveAlert(
+          req.params.id,
+          String(userId) ?? "operator",
+        );
+        if (!alert) {
+          res.status(404).json({ success: false, error: "Alert not found" });
+          return;
+        }
+        io.emit("alert:updated", alert);
+        res.json({ success: true, ...alert });
+      } catch (err) {
+        console.error("[alerts] resolve error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
       }
-      io.emit("alert:updated", alert);
-      res.json({ success: true, ...alert });
-    } catch (err) {
-      console.error("[alerts] resolve error:", err);
-      res.status(500).json({ success: false, error: "Database error" });
-    }
-  });
+    },
+  );
 
   return router;
 }

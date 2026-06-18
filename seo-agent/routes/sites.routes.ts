@@ -74,6 +74,7 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
           startDate: fmt(start),
           endDate:   fmt(end),
           dimensions: ["date"],
+          dataState: 'all',
           rowLimit: 28,
         },
       }),
