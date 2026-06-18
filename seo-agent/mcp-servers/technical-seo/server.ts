@@ -4,10 +4,10 @@ import { pool } from "../../../db.js";
 
 // ── Thresholds ────────────────────────────────────────────────────────
 const THRESHOLDS = {
-  desktop_score: 90,  // alert if desktop score < 90
-  mobile_score: 70,  // alert if mobile score < 70
-  lcp_ms: 2500,      // alert if LCP > 2.5s
-  cls: 0.1,          // alert if CLS > 0.1
+  desktop_score: 90, // alert if desktop score < 90
+  mobile_score: 70, // alert if mobile score < 70
+  lcp_ms: 2500, // alert if LCP > 2.5s
+  cls: 0.1, // alert if CLS > 0.1
 };
 
 // ── PageSpeed Insights helper ─────────────────────────────────────────
@@ -29,7 +29,10 @@ const IMPACT_AUDITS = new Set([
   "efficiently-animate-contents",
 ]);
 
-async function fetchPsi(url: string, strategy: "mobile" | "desktop"): Promise<any> {
+async function fetchPsi(
+  url: string,
+  strategy: "mobile" | "desktop",
+): Promise<any> {
   const apiUrl = new URL(PSI_BASE);
   apiUrl.searchParams.set("url", url);
   apiUrl.searchParams.set("strategy", strategy);
@@ -85,6 +88,7 @@ export type CrawlErrorItem = {
   url?: string;
   sitemap?: string;
   detail: string;
+  info?: string;
 };
 
 export type CrawlErrorResult = {
@@ -140,7 +144,9 @@ export async function runPagespeedAudit(
   ]);
 
   const parseScore = (raw: any): number =>
-    Math.round((raw.lighthouseResult?.categories?.performance?.score ?? 0) * 100);
+    Math.round(
+      (raw.lighthouseResult?.categories?.performance?.score ?? 0) * 100,
+    );
 
   const parseAuditValue = (raw: any, auditId: string): number =>
     raw.lighthouseResult?.audits?.[auditId]?.numericValue ?? 0;
@@ -185,9 +191,7 @@ export async function runPagespeedAudit(
     );
   }
   if (cls > THRESHOLDS.cls) {
-    alerts.push(
-      `CLS is ${cls.toFixed(3)} (threshold: ${THRESHOLDS.cls})`,
-    );
+    alerts.push(`CLS is ${cls.toFixed(3)} (threshold: ${THRESHOLDS.cls})`);
   }
 
   console.log(
@@ -227,7 +231,9 @@ export async function checkCrawlErrors(
     const sitemapRes = await searchConsole.sitemaps.list({ siteUrl });
     sitemaps = sitemapRes.data.sitemap ?? [];
   } catch (err: any) {
-    console.warn(`[check_crawl_errors] Could not list sitemaps: ${err.message}`);
+    console.warn(
+      `[check_crawl_errors] Could not list sitemaps: ${err.message}`,
+    );
   }
 
   for (const sitemap of sitemaps) {
@@ -294,27 +300,28 @@ export async function checkCrawlErrors(
       );
 
       // Sitemap URLs not appearing in GSC = potentially not indexed
-      const notIndexed = sitemapUrls
-        .filter((u) => !indexedUrls.has(u.toLowerCase()))
-        .slice(0, 20); // cap at 20 to avoid noise
+      const notIndexed = sitemapUrls.filter(
+        (u) => !indexedUrls.has(u.toLowerCase()),
+      );
 
       for (const url of notIndexed) {
         errors.push({
           type: "not_indexed",
           url,
-          detail: "URL is in sitemap but has no GSC impressions in 28 days",
+          detail: "URL is in sitemap but not indexed in GSC",
+          info: "URL is in sitemap but not indexed in GSC : " + url,
         });
       }
     } catch (err: any) {
-      console.warn(
-        `[check_crawl_errors] GSC query failed: ${err.message}`,
-      );
+      console.warn(`[check_crawl_errors] GSC query failed: ${err.message}`);
     }
   }
-  
+
   const errorCount = errors.filter((e) => e.type !== "sitemap_warning").length;
-  const warningCount = errors.filter((e) => e.type === "sitemap_warning").length;
-  
+  const warningCount = errors.filter(
+    (e) => e.type === "sitemap_warning",
+  ).length;
+
   console.log("[check_crawl_errors] Errors ", errors);
   console.log(
     `[check_crawl_errors] ${errorCount} errors, ${warningCount} warnings`,
@@ -375,7 +382,9 @@ export async function checkIndexCoverage(
       indexedCount = (gscRes.data.rows ?? []).length;
       submittedCount = indexedCount; // best estimate when sitemap data is unavailable
     } catch (err: any) {
-      console.warn(`[check_index_coverage] GSC analytics failed: ${err.message}`);
+      console.warn(
+        `[check_index_coverage] GSC analytics failed: ${err.message}`,
+      );
     }
   }
 
@@ -424,9 +433,12 @@ export async function checkIndexCoverage(
     // non-fatal
   }
 
-  const notIndexedCount = submittedCount > 0 ? submittedCount - indexedCount : notIndexedUrls.length;
+  const notIndexedCount =
+    submittedCount > 0 ? submittedCount - indexedCount : notIndexedUrls.length;
   const coveragePct =
-    submittedCount > 0 ? Math.round((indexedCount / submittedCount) * 100) : 100;
+    submittedCount > 0
+      ? Math.round((indexedCount / submittedCount) * 100)
+      : 100;
 
   const alerts: string[] = [];
   if (coveragePct < 80 && submittedCount > 0) {
@@ -491,9 +503,15 @@ export async function getCoreWebVitals(
 
   if (!hasFieldData) {
     const audits = raw.lighthouseResult?.audits ?? {};
-    finalLcp = Math.round(audits["largest-contentful-paint"]?.numericValue ?? 0);
-    finalCls = Number((audits["cumulative-layout-shift"]?.numericValue ?? 0).toFixed(4));
-    finalFid = Math.round((audits["total-blocking-time"]?.numericValue ?? 0) * 0.3);
+    finalLcp = Math.round(
+      audits["largest-contentful-paint"]?.numericValue ?? 0,
+    );
+    finalCls = Number(
+      (audits["cumulative-layout-shift"]?.numericValue ?? 0).toFixed(4),
+    );
+    finalFid = Math.round(
+      (audits["total-blocking-time"]?.numericValue ?? 0) * 0.3,
+    );
     finalFcp = Math.round(audits["first-contentful-paint"]?.numericValue ?? 0);
   }
 

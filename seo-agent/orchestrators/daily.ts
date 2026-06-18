@@ -1,4 +1,5 @@
 import * as dotenv from "dotenv";
+import { randomUUID } from "node:crypto";
 
 import { listSitesConfigs } from "../controllers/sites.controller.js";
 import {
@@ -9,6 +10,8 @@ import {
 } from "../mcp-servers/technical-seo/server.js";
 import { getFeatureOpportunities } from "../mcp-servers/serp-features/server.js";
 import { postSlackMessage } from "../mcp-servers/reporting/server.js";
+import { bulkCreateAlerts } from "../controllers/alerts.controller.js";
+import { Alert } from "../models/alert.model.js";
 
 dotenv.config();
 
@@ -82,6 +85,30 @@ async function runDailyCheckForSite(
     console.log(`[daily:crawl] Checking crawl errors...`);
     const crawl = await checkCrawlErrors(siteId);
 
+    const payload: Pick<
+      Alert,
+      "id" | "site_id" | "module" | "severity" | "title" | "details"
+    >[] = crawl.errors
+      .map((item) => {
+        return item.type !== "sitemap_warning"
+          ? {
+              id: randomUUID(),
+              site_id: siteId,
+              module: "crawl_error" as const,
+              severity: "critical" as const,
+              title: item.detail,
+              details: {
+                type: item.type,
+                url: item.url,
+                info: item.info || "",
+              },
+            }
+          : null;
+      })
+      .filter((item): item is Exclude<typeof item, null> => item !== null);
+
+    await bulkCreateAlerts(payload);
+
     if (crawl.error_count > 0) {
       issues.push({
         module: "Crawl Errors",
@@ -145,9 +172,7 @@ async function runDailyCheckForSite(
     console.error(`[daily:serp] ERROR: ${err.message}`);
   }
 
-  console.log(
-    `[daily] site_id=${siteId}: ${issues.length} issue(s) found`,
-  );
+  console.log(`[daily] site_id=${siteId}: ${issues.length} issue(s) found`);
   return issues;
 }
 
@@ -160,8 +185,7 @@ async function postDailyAlert(
   const warnings = issues.filter((i) => i.severity === "warning");
   const infos = issues.filter((i) => i.severity === "info");
 
-  const emoji =
-    critical.length > 0 ? "🚨" : warnings.length > 0 ? "⚠️" : "ℹ️";
+  const emoji = critical.length > 0 ? "🚨" : warnings.length > 0 ? "⚠️" : "ℹ️";
 
   const formatGroup = (label: string, items: SiteIssue[]): string =>
     items.length === 0
@@ -208,49 +232,45 @@ async function postDailyAlert(
 export async function dailyTechnicalAudit() {
   const startTime = Date.now();
 
-  console.log(
-    `[daily] ══════════════════════════════════════════`,
-  );
+  console.log(`[daily] ══════════════════════════════════════════`);
   console.log(`[daily] Starting daily technical SEO audit`);
   console.log(`[daily] DRY_RUN=${DRY_RUN}`);
-  console.log(
-    `[daily] ══════════════════════════════════════════`,
-  );
+  console.log(`[daily] ══════════════════════════════════════════`);
 
   const { sites } = await listSitesConfigs({ limit: 1000 });
   let sitesWithIssues = 0;
 
   const site = sites[0];
   // for (const site of sites) {
-    try {
-      const issues = await runDailyCheckForSite(site.site_id, site.domain);
+  try {
+    const issues = await runDailyCheckForSite(site.site_id, site.domain);
 
-      if (issues.length === 0) {
-        // ── SILENT on healthy days ──────────────────────────────
-        console.log(
-          `[daily] site_id=${site.site_id} (${site.domain}) is HEALTHY — no Slack message sent`,
-        );
-        return;
-        // continue;
-      }
+    if (issues.length === 0) {
+      // ── SILENT on healthy days ──────────────────────────────
+      console.log(
+        `[daily] site_id=${site.site_id} (${site.domain}) is HEALTHY — no Slack message sent`,
+      );
+      return;
+      // continue;
+    }
 
-      sitesWithIssues++;
+    sitesWithIssues++;
 
-      if (DRY_RUN) {
-        console.log(
-          `[daily] DRY_RUN — would post ${issues.length} issue(s) to Slack for ${site.domain}`,
-        );
-      } else {
-        await postDailyAlert(site.domain, issues);
-        console.log(
-          `[daily] Slack alert posted for ${site.domain} (${issues.length} issues)`,
-        );
-      }
-    } catch (err: any) {
-      console.error(
-        `[daily] Unhandled error for site_id=${site.site_id}: ${err.message}`,
+    if (DRY_RUN) {
+      console.log(
+        `[daily] DRY_RUN — would post ${issues.length} issue(s) to Slack for ${site.domain}`,
+      );
+    } else {
+      await postDailyAlert(site.domain, issues);
+      console.log(
+        `[daily] Slack alert posted for ${site.domain} (${issues.length} issues)`,
       );
     }
+  } catch (err: any) {
+    console.error(
+      `[daily] Unhandled error for site_id=${site.site_id}: ${err.message}`,
+    );
+  }
   // }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);

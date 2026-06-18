@@ -11,6 +11,7 @@ import { Server as SocketIOServer } from "socket.io";
 import cors from "cors";
 import cron from "node-cron";
 
+import { seoAgentRouter } from "./seo-agent/routes/index"
 import { approvalsRouter } from "./seo-agent/routes/approvals.routes.js";
 import { alertsRouter } from "./seo-agent/routes/alerts.routes.js";
 import { configRouter } from "./seo-agent/routes/config.routes.js";
@@ -143,6 +144,7 @@ app.use((req, _res, next) => {
 });
 
 // ── Routes ────────────────────────────────────────────────────────────
+app.use("/seo-agent", seoAgentRouter(io));
 app.use("/approvals", approvalsRouter(io));
 app.use("/alerts", alertsRouter(io));
 app.use("/contents", pageContentRouter(io));

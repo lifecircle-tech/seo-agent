@@ -8,9 +8,10 @@ export interface Alert extends RowDataPacket {
   module: string; // VARCHAR(64)
   severity: "critical" | "warning" | "info"; // VARCHAR(16)
   title: string; // VARCHAR(255)
-  detail: string; // TEXT
+  details:  Record<string, any>; // TEXT
   status: "open" | "acknowledged" | "resolved"; // VARCHAR(16)
   created_at: Date; // DATETIME(3)
+  actioned_by: string | null;
   resolved_at: Date | null; // DATETIME(3) | NULL
 }
 
@@ -20,9 +21,10 @@ export interface AlertJSON {
   module: string;
   severity: "critical" | "warning" | "info";
   title: string;
-  detail: string;
+  details: Record<string, any>;
   status: "open" | "acknowledged" | "resolved";
   created_at: string;
+  actioned_by: string | null;
   resolved_at: string | null;
 }
 
@@ -36,11 +38,13 @@ export async function createAlertsTable(): Promise<void> {
       module      VARCHAR(64)  NOT NULL,
       severity    VARCHAR(16)  NOT NULL,
       title       VARCHAR(255) NOT NULL,
-      detail      TEXT         NOT NULL,
+      details     JSON         NOT NULL,
       status      VARCHAR(16)  NOT NULL DEFAULT 'open',
       created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      actioned_by VARCHAR(64)  NULL,
       resolved_at DATETIME(3)  NULL,
       INDEX idx_alerts_status_severity (status, severity),
+      INDEX idx_alerts_module (module),
       INDEX idx_alerts_site_id (site_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
