@@ -253,7 +253,6 @@ if (process.env.NODE_ENV !== "test") {
     httpServer.listen(PORT, () =>
       console.log(`[approvals-api] listening on port ${PORT}`),
     );
-    runPageContentAgent("383b0c59-5f9a-4a61-a5b7-5bb2c4317bb1");
   })();
 }
 
