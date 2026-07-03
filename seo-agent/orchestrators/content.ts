@@ -62,6 +62,7 @@ export async function analyseWithAI(
   Analyze the following content(in markdown format) and rewrite the content for better readability and SEO that matches the context above.:
   ${content}
 
+  Include 3-4 FAQs at the end of the content with answers. The FAQs should be relevant to the content and should be in markdown format.
   Exclude Customer Reviews, Related Blogs, Recent Blogs and Testimonials from the rewritten content.
   
   Return the JSON object with keys:
@@ -91,11 +92,6 @@ export async function analyseWithAI(
       .trim();
 
     const structruredResponse = JSON.parse(text.replace(/```json|```/g, ""));
-
-    console.log(
-      "AI Rewritten Content:\n",
-      JSON.stringify(structruredResponse.content),
-    );
 
     return {
       content: JSON.stringify(structruredResponse.content),

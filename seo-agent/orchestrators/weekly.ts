@@ -144,10 +144,12 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
     site?.domain as string,
     28,
   );
-  const pages:any[] = [];
-  for await(const row of impressionsVsCtr) {
+  const pages: any[] = [];
+  for await (const row of impressionsVsCtr) {
     const page = await getPage(siteId, row.url);
-    pages.push({ ...page, ...row });
+    if (page) {
+      pages.push({ ...page, ...row });
+    }
   }
 
   if (pages.length === 0) {
@@ -163,7 +165,7 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
     meta_description: page.meta_description,
   }));
 
-  const prompt = `You are an SEO content analyst for site_id=${siteId}, site name is ${site?.brand_name}.
+  const prompt = `You are an SEO content analyst for site '${site?.brand_name}'.
   Here are the rules for SEO content:
   - primary keywords must be present in title
   - primary keywords must be present in meta description
@@ -174,10 +176,11 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
   - write an improved title (max 60 chars) and meta description (max 155 chars)
 
   Return ONLY a JSON object with keys:
-  - opportunities: array of objects with id, suggested_title, suggested_description, reasoning (detailed reason for change with impact), priority (1-3 based on potential impact)
+  - opportunities: array of objects with id, suggested_title, suggested_description, reasoning (detailed reason with impact), priority (1-3 based on potential impact)
   - summary: string with 2-3 overall action items
 
   Do NOT omit any pages.
+  Do NOT include about rules in reasoning, mention impacting reason.
   No extra text.`;
 
   const response = await callWithRetry(client, "step2", {
@@ -208,6 +211,11 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
     );
     return { opportunities: [], summary: text };
   }
+
+  parsed.opportunities = parsed.opportunities.map((opp: any) => {
+    const page = pages.find((p: any) => p.id === opp.id);
+    return { ...opp, url: page?.url };
+  });
 
   await createApprovalQueue(
     parsed.opportunities.map((opp: any) => {
@@ -366,13 +374,7 @@ async function step5Reporting(
     backlinks: competitor.backlinks || [],
   }));
 
-  const response = await callWithRetry(client, "step5", {
-    model: "claude-sonnet-4-5",
-    max_tokens: 8192,
-    messages: [
-      {
-        role: "user",
-        content: `You are an SEO reporting agent for site_id=${siteId}.
+  const prompt = `You are an SEO reporting agent for site_id=${siteId}.
 
   Here is all data collected this week:
 
@@ -397,7 +399,15 @@ async function step5Reporting(
 
   Return ONLY a JSON object with keys:
   - summary: string with concise insights and recommendations
-  - recommendations: array of objects with module, recommendation_text`,
+  - recommendations: array of objects with module, recommendation_text`;
+
+  const response = await callWithRetry(client, "step5", {
+    model: "claude-sonnet-4-6",
+    max_tokens: 8192,
+    messages: [
+      {
+        role: "user",
+        content: prompt,
       },
     ],
     betas: ["mcp-client-2025-04-04"],
@@ -572,7 +582,7 @@ export async function weeklyTasks() {
 
   // Run pipeline for each configured site
   // for (const site of sitesConfig) {
-    await runWeeklyTasks(1);
+  await runWeeklyTasks(1);
   // }
 }
 

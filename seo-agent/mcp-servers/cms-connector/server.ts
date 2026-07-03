@@ -38,7 +38,11 @@ export async function getPage(siteId: number, pageUrl: string) {
       break;
     }
   }
-  if (!wpPage) throw new Error(`Page not found for URL: ${pageUrl}`);
+  if (!wpPage) {
+    console.log(`[getPage] Page not found for URL: ${pageUrl}`);
+    return null;
+  }
+  
   console.log("============= CMS Page Found ***************");
 
   // Extract meta description (RankMath preferred, custom meta fallback)
@@ -368,9 +372,7 @@ const getPagesWithHighImpressionLowCtr = async (
   days: number,
 ) => {
   let pages: any = await getImpressionsVsCtr(siteId, siteUrl, days);
-  pages = pages.opportunities.sort(
-    (a: any, b: any) => b.impressions - a.impressions,
-  );
+  pages = pages.opportunities;
 
   const numberOfExtractionsPerDay = 30;
   const startIndex = getStartIndex(new Date(), numberOfExtractionsPerDay) ?? 0;

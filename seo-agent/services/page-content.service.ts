@@ -38,7 +38,7 @@ const WIDGET_SELECTORS = [
     label: "CARD",
     selector: '[class*="card"], [class*="feature-box"], [class*="icon-box"]',
   },
-  { label: "FAQ", selector: '[class*="faq"], [class*="accordion"]' },
+  // { label: "FAQ", selector: '[class*="faq"], [class*="accordion"]' },
   {
     label: "TEAM_MEMBER",
     selector: '[class*="team"], [class*="staff"], [class*="member"]',
@@ -107,10 +107,7 @@ export async function getPageContent(siteId: number, url: string) {
   if (!result.length) throw new Error(`Post not found for slug: ${slug}`);
 
   const rawContent = extractWordPressContent(result[0].content.rendered);
-  console.log(
-    `[page-content.service] Extracted Content for ${url}:\n`,
-    rawContent,
-  );
+  console.log(`[page-content.service] Extracted Content for ${url}`);
 
   return rawContent;
 }
@@ -139,7 +136,7 @@ export async function updatePageContent(
  */
 export async function verifyPageUpdate(
   id: string,
-): Promise<{ matchPercentage: number; }> {
+): Promise<{ matchPercentage: number }> {
   const record = await getPageContentById(id);
   if (!record) throw new Error(`Page content record not found: ${id}`);
 
@@ -214,7 +211,6 @@ export async function runPageContentAgent(id: string) {
 
     // fetch page content from WordPress
     const content = await getPageContent(site_id, url);
-    console.log("Page Content : ", content);
     // Here you would call your AI analysis/orchestrator functions with the content
     console.log(`[page-content.service] Running agent for ${url}...`);
 

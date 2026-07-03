@@ -27,6 +27,7 @@ import { monthlyAudit } from "./seo-agent/orchestrators/monthly_audit.js";
 import { weeklyPageChecker } from "./seo-agent/orchestrators/weekly_page_checker.js";
 import { dailyTechnicalAudit } from "./seo-agent/orchestrators/daily.js";
 import { checkPageContents } from "./seo-agent/services/schedulers.service.js";
+import { runPageContentAgent } from "./seo-agent/services/page-content.service";
 
 cron.schedule(
   "0 8 * * 1,3,5",
@@ -252,6 +253,7 @@ if (process.env.NODE_ENV !== "test") {
     httpServer.listen(PORT, () =>
       console.log(`[approvals-api] listening on port ${PORT}`),
     );
+    runPageContentAgent("383b0c59-5f9a-4a61-a5b7-5bb2c4317bb1");
   })();
 }
 

@@ -4,6 +4,7 @@ import {
   getSheetsClient,
   getSpreadsheetId,
 } from "../../../libs/google.js";
+import { getKeywordsSuggestions } from "../../services/dataForSEO.service.js";
 
 export interface KeywordOpportunity {
   keyword: string;
@@ -51,18 +52,26 @@ export async function discoverCityKeywords(
 
   // 1. Fetch related keywords from Ahrefs
   await ahrefsDelay();
-  const ahrefsData = (await ahrefsFetch("/keywords-explorer/matching-terms", {
-    keywords: seedKeyword,
-    country: "in",
-    limit: "20",
-    select: "keyword,volume,difficulty",
-  })) as { keywords?: any[] };
+  // const ahrefsData = (await ahrefsFetch("/keywords-explorer/matching-terms", {
+  //   keywords: seedKeyword,
+  //   country: "in",
+  //   limit: "20",
+  //   select: "keyword,volume,difficulty",
+  // })) as { keywords?: any[] };
 
-  const discovered = (ahrefsData.keywords ?? []).map((k) => ({
-    keyword: k.keyword,
-    volume: k.volume ?? 0,
-    difficulty: k.difficulty ?? 0,
-    current_position: null as number | null,
+  // const discovered = (ahrefsData.keywords ?? []).map((k) => ({
+  //   keyword: k.keyword,
+  //   volume: k.volume ?? 0,
+  //   difficulty: k.difficulty ?? 0,
+  //   current_position: null as number | null,
+  // }));
+
+  const suggestions = (await getKeywordsSuggestions(seedKeyword)) as [];
+
+  const discovered = suggestions.map((item: any) => ({
+    keyword: item.keyword,
+    volume: item.keyword_info.search_volume,
+    difficulty: item.keyword_properties.keyword_difficulty,
   }));
 
   // 2. Query SerpAPI for PAA/Related (Conceptual implementation)
@@ -207,4 +216,3 @@ export async function writeKeywordMatrix(
     throw error;
   }
 }
-
