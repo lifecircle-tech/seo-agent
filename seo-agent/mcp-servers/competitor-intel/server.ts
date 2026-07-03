@@ -1,5 +1,9 @@
 import fs from "node:fs";
 import { getSearchConsoleClient } from "../../../libs/google.js";
+import {
+  getCompetitorsKeywords,
+  getSitesBacklinks,
+} from "../../services/dataForSEO.service.js";
 
 // ── Rate-limit delay ──────────────────────────────────────────────────
 const AHREFS_DELAY_MS = Number(process.env.AHREFS_DELAY_MS ?? 1500);
@@ -201,8 +205,8 @@ export async function getKeywordGaps(
 export type AhrefsBacklink = {
   url_from: string;
   url_to: string;
-  domain_rating_source: number;
-  domain_rating_target: number;
+  domain_from_rank: number;
+  domain_to_rank: number;
   anchor: string;
 };
 
@@ -230,28 +234,38 @@ export async function getCompetitorBacklinks(
 
   await ahrefsDelay();
 
-  const raw = (await ahrefsFetch("/site-explorer/all-backlinks", {
-    target: competitorDomain,
-    limit: "10",
-    mode: "domain",
-    output: "json",
-    select: "anchor,url_from,url_to,domain_rating_source,domain_rating_target",
-  })) as {
-    backlinks?: Array<{
-      url_from?: string;
-      url_to?: string;
-      anchor?: string;
-      domain_rating_source?: number;
-      domain_rating_target?: number;
-    }>;
-  };
+  // const raw = (await ahrefsFetch("/site-explorer/all-backlinks", {
+  //   target: competitorDomain,
+  //   limit: "10",
+  //   mode: "domain",
+  //   output: "json",
+  //   select: "anchor,url_from,url_to,domain_rating_source,domain_rating_target",
+  // })) as {
+  //   backlinks?: Array<{
+  //     url_from?: string;
+  //     url_to?: string;
+  //     anchor?: string;
+  //     domain_rating_source?: number;
+  //     domain_rating_target?: number;
+  //   }>;
+  // };
 
-  const backlinks = (raw.backlinks ?? []).map((b) => ({
-    url_from: b.url_from ?? "",
-    url_to: b.url_to ?? "",
-    domain_rating_source: b.domain_rating_source ?? 0,
-    domain_rating_target: b.domain_rating_target ?? 0,
-    anchor: b.anchor ?? "",
+  // const backlinks = (raw.backlinks ?? []).map((b) => ({
+  //   url_from: b.url_from ?? "",
+  //   url_to: b.url_to ?? "",
+  //   domain_rating_source: b.domain_rating_source ?? 0,
+  //   domain_rating_target: b.domain_rating_target ?? 0,
+  //   anchor: b.anchor ?? "",
+  // }));
+
+  const results = await getSitesBacklinks(competitorDomain);
+
+  const backlinks = results.map((item: any) => ({
+    url_from: item.url_from,
+    url_to: item.url_to,
+    anchor: item.anchor,
+    domain_from_rank: item.domain_from_rank,
+    domain_to_rank: item.rank,
   }));
 
   writeCache(competitorDomain, "backlinks", backlinks);
@@ -312,8 +326,9 @@ export async function getContentGaps(
     avg_volume: number;
   }>;
 }> {
-  const gapResult = await getKeywordGaps(siteId, siteUrl, competitorDomain);
-  const gaps = gapResult.gaps;
+  // const gapResult = await getKeywordGaps(siteId, siteUrl, competitorDomain);
+  // const gaps = gapResult.gaps;
+  const gaps = await getCompetitorsKeywords(siteUrl, competitorDomain);
 
   // Cluster by first meaningful word
   const groupMap = new Map();
@@ -351,9 +366,10 @@ const getKeywordsGapForCompetitorDomain = async (
   competitorDomains: string[],
 ) => {
   const keywordGaps = [] as any[];
-  for (let domain in competitorDomains) {
-    const res = await getKeywordGaps(siteId, siteUrl, domain);
-    keywordGaps.push(res);
+  for (let domain of competitorDomains) {
+    // const res = await getKeywordGaps(siteId, siteUrl, domain);
+    const res = await getCompetitorsKeywords(siteUrl, domain);
+    keywordGaps.push({ site_id: siteId, competitor_domain: domain, gaps: res });
   }
   return keywordGaps;
 };
@@ -364,7 +380,7 @@ const getContentsGapForCompetitorDomain = async (
   competitorDomains: string[],
 ) => {
   const contentGaps = [] as any[];
-  for (let domain in competitorDomains){
+  for (let domain of competitorDomains) {
     const res = await getContentGaps(siteId, siteUrl, domain);
     contentGaps.push(res);
   }
@@ -376,7 +392,7 @@ const getBacklinksForCompetitorDomain = async (
   competitorDomains: string[],
 ) => {
   const backlinks = [] as any[];
-  for (let domain in competitorDomains) {
+  for (let domain of competitorDomains) {
     const res = await getCompetitorBacklinks(siteId, domain);
     backlinks.push(res);
   }

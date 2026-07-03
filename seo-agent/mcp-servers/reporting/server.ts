@@ -90,6 +90,7 @@ export function createWeeklyDigest(
   siteUrl: string,
   data: Record<string, any>,
 ) {
+  console.log("========== Creating Weekly Digest **********");
   const today = new Date().toISOString().split("T")[0];
   const { rankings, summary, cmsOpportunities, schemaGaps, competitorsAlerts } =
     data || {};
@@ -126,7 +127,7 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
             text += "    No keyword gaps identified.";
           } else {
             competitor.keywordGaps.map((gap: any) => {
-              text += `    • *${gap.keyword}* — competitor pos ${gap.competitor_position}, vol ${gap.competitor_volume.toLocaleString()}\n`;
+              text += `    • *${gap.keyword}* — competitor pos ${gap.competitor_position}, vol ${gap.search_volume.toLocaleString()}\n`;
             });
           }
           return text;
@@ -186,9 +187,7 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
   };
 }
 
-export function createMonthlyDiscoveryDigest(
-  data: Record<string, any>,
-) {
+export function createMonthlyDiscoveryDigest(data: Record<string, any>) {
   const today = new Date().toISOString().split("T")[0];
   const { summary } = data || {};
 
@@ -234,11 +233,12 @@ export async function writeToSheet(
   const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
 
-  console.log("========== Appending to Sheet **********");
+  console.log("========== Appending to Sheet **********", rows.length);
   const result = await sheets.spreadsheets.values.append({
     spreadsheetId,
-    range: `${tabName}!A1`,
+    range: `${tabName}!A3`,
     valueInputOption: "USER_ENTERED",
+    insertDataOption: "INSERT_ROWS",
     requestBody: { values: rows },
   });
 
@@ -270,6 +270,7 @@ const postWeeklyMessageToSlack = async (
   site_url: string,
   data: Record<string, any>,
 ) => {
+  console.log("========== Posting Weekly Message to Slack **********");
   const messageData = createWeeklyDigest(site_id, site_url, data);
 
   const { message = "", blocks = [], fallback_text } = messageData;
@@ -277,9 +278,7 @@ const postWeeklyMessageToSlack = async (
   return await postSlackMessage(message, blocks);
 };
 
-const postMonthlyDiscoveryToSlack = async (
-  data: Record<string, any>,
-) => {
+const postMonthlyDiscoveryToSlack = async (data: Record<string, any>) => {
   const messageData = createMonthlyDiscoveryDigest(data);
 
   const { message = "", blocks = [], fallback_text } = messageData;

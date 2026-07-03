@@ -85,6 +85,7 @@ export async function getPaaQuestions(siteId: number, keyword: string) {
       question: string;
       snippet?: string;
       answer?: string;
+      type: string;
     }>;
   };
 
@@ -92,6 +93,7 @@ export async function getPaaQuestions(siteId: number, keyword: string) {
     return {
       question: q.question,
       snippet: q.snippet ?? q.answer ?? null,
+      type: q.type
     };
   });
 
