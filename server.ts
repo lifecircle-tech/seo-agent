@@ -26,8 +26,8 @@ import { monthlyDiscovery } from "./seo-agent/orchestrators/monthly-discovery.js
 import { monthlyAudit } from "./seo-agent/orchestrators/monthly_audit.js";
 import { weeklyPageChecker } from "./seo-agent/orchestrators/weekly_page_checker.js";
 import { dailyTechnicalAudit } from "./seo-agent/orchestrators/daily.js";
+import { weeklyBacklinksMonitorTasks } from "./seo-agent/orchestrators/weekly_backlinks_monitor.js"
 import { checkPageContents } from "./seo-agent/services/schedulers.service.js";
-import { runPageContentAgent } from "./seo-agent/services/page-content.service";
 
 cron.schedule(
   "0 8 * * 1,3,5",
@@ -37,6 +37,17 @@ cron.schedule(
   {
     timezone: "IST",
     name: "Weekly Tasks",
+  },
+);
+
+cron.schedule(
+  "30 7 * * 1",
+  () => {
+    weeklyBacklinksMonitorTasks();
+  },
+  {
+    timezone: "IST",
+    name: "Weekly Backlink Monitor Tasks",
   },
 );
 
@@ -85,7 +96,7 @@ cron.schedule(
 );
 
 cron.schedule(
-  "0 17 * * *",
+  "0 18 * * *",
   () => {
     checkPageContents();
   },

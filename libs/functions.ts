@@ -48,3 +48,19 @@ export function getStartIndex(
 
   return startIndex;
 }
+
+// Extract domain from a URL, handling cases with or without protocol and optional 'www.'
+export function getDomain(url: string): string {
+  try {
+    // Ensure the URL has a protocol so the parser works correctly
+    if (!/^https?:\/\//i.test(url)) {
+      url = "http://" + url;
+    }
+    const hostname = new URL(url).hostname;
+
+    // Optional: Remove 'www.' if you don't want it
+    return hostname.replace(/^www\./, "");
+  } catch (e) {
+    return ""; // Invalid URL
+  }
+}

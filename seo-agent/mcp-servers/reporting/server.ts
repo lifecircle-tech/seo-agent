@@ -323,9 +323,100 @@ const writeRecommendationsToSheet = async (
   return await writeToSheet(site_id, "Recommendation Outcomes", rows);
 };
 
+export function createBacklinkDigest(
+  siteId: number,
+  siteUrl: string,
+  backlinkData: Record<string, any>,
+  prospectsData: Record<string, any> | null,
+) {
+  const today = new Date().toISOString().split("T")[0];
+  const { newLinks, lostLinks, toxicLinks, velocity } = backlinkData ?? {};
+
+  const newCount: number = newLinks?.count ?? 0;
+  const lostCount: number = lostLinks?.count ?? 0;
+  const toxicCount: number = toxicLinks?.count ?? 0;
+  const trend: string = velocity?.trend ?? "unknown";
+  const avgGain: number = velocity?.avg_weekly_gain ?? 0;
+  const avgLoss: number = velocity?.avg_weekly_loss ?? 0;
+
+  const topNew: any[] = (newLinks?.backlinks ?? []).slice(0, 5);
+  const topLost: any[] = (lostLinks?.backlinks ?? []).slice(0, 5);
+  const topToxic: any[] = (toxicLinks?.toxic_links ?? []).slice(0, 5);
+  const prospects: string[] = (prospectsData?.prospects ?? []);
+
+  const newLines = topNew.length
+    ? topNew
+        .map((b: any) => `• *${b.domain_from}* (rank ${b.domain_rank}) → ${b.url_to}`)
+        .join("\n")
+    : "None";
+
+  const lostLines = topLost.length
+    ? topLost
+        .map((b: any) => `• *${b.domain_from}* (rank ${b.domain_rank}) → ${b.url_to}`)
+        .join("\n")
+    : "None";
+
+  const toxicLines = topToxic.length
+    ? topToxic
+        .map((b: any) => `• *${b.domain_from}* — spam score ${b.spam_score}`)
+        .join("\n")
+    : "None";
+
+  const prospectLines = prospects.length
+    ? prospects.map((d: string) => `• ${d}`).join("\n")
+    : "No prospects found.";
+
+  const blocks = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: `Backlink Report — ${siteUrl ?? `Site ${siteId}`}`,
+        emoji: true,
+      },
+    },
+    {
+      type: "context",
+      elements: [{ type: "mrkdwn", text: `*Report date:* ${today}` }],
+    },
+    { type: "divider" },
+    // sectionBlock(
+    //   `*Link Velocity*\nTrend: *${trend}* | Avg gain/day: +${avgGain} | Avg loss/day: -${avgLoss}`,
+    // ),
+    // { type: "divider" },
+    sectionBlock(`*New Backlinks (last 7 days)* — ${newCount} total\n${newLines}`),
+    { type: "divider" },
+    sectionBlock(`*Lost Backlinks (last 7 days)* — ${lostCount} total\n${lostLines}`),
+    { type: "divider" },
+    sectionBlock(`*Toxic Links* — ${toxicCount} flagged (spam score > 60)\n${toxicLines}`),
+    { type: "divider" },
+    sectionBlock(`*Link Prospects* — domains linking to competitors, not us\n${prospectLines}`),
+  ];
+
+  return {
+    site_id: siteId,
+    date: today,
+    blocks,
+    fallback_text: `Backlink Report — ${siteUrl ?? `Site ${siteId}`} — ${today}`,
+  };
+}
+
+const postBacklinkDigestToSlack = async (
+  siteId: number,
+  siteUrl: string,
+  backlinkData: Record<string, any>,
+  prospectsData: Record<string, any> | null,
+) => {
+  console.log("========== Posting Backlink Digest to Slack **********");
+  const messageData = createBacklinkDigest(siteId, siteUrl, backlinkData, prospectsData);
+  const { blocks, fallback_text } = messageData;
+  return await postSlackMessage(fallback_text, blocks);
+};
+
 export {
   postWeeklyMessageToSlack,
   postMonthlyDiscoveryToSlack,
+  postBacklinkDigestToSlack,
   writeKeywordRankingsToSheet,
   writeRecommendationsToSheet,
 };
