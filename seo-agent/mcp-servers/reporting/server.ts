@@ -273,7 +273,7 @@ const postWeeklyMessageToSlack = async (
   console.log("========== Posting Weekly Message to Slack **********");
   const messageData = createWeeklyDigest(site_id, site_url, data);
 
-  const { message = "", blocks = [], fallback_text } = messageData;
+  const { message = "", blocks = [] } = messageData;
 
   return await postSlackMessage(message, blocks);
 };
@@ -281,7 +281,7 @@ const postWeeklyMessageToSlack = async (
 const postMonthlyDiscoveryToSlack = async (data: Record<string, any>) => {
   const messageData = createMonthlyDiscoveryDigest(data);
 
-  const { message = "", blocks = [], fallback_text } = messageData;
+  const { message = "", blocks = [] } = messageData;
 
   return await postSlackMessage(message, blocks);
 };
@@ -342,17 +342,23 @@ export function createBacklinkDigest(
   const topNew: any[] = (newLinks?.backlinks ?? []).slice(0, 5);
   const topLost: any[] = (lostLinks?.backlinks ?? []).slice(0, 5);
   const topToxic: any[] = (toxicLinks?.toxic_links ?? []).slice(0, 5);
-  const prospects: string[] = (prospectsData?.prospects ?? []);
+  const prospects: string[] = prospectsData?.prospects ?? [];
 
   const newLines = topNew.length
     ? topNew
-        .map((b: any) => `• *${b.domain_from}* (rank ${b.domain_rank}) → ${b.url_to}`)
+        .map(
+          (b: any) =>
+            `• *${b.domain_from}* (rank ${b.domain_rank}) → ${b.url_to}`,
+        )
         .join("\n")
     : "None";
 
   const lostLines = topLost.length
     ? topLost
-        .map((b: any) => `• *${b.domain_from}* (rank ${b.domain_rank}) → ${b.url_to}`)
+        .map(
+          (b: any) =>
+            `• *${b.domain_from}* (rank ${b.domain_rank}) → ${b.url_to}`,
+        )
         .join("\n")
     : "None";
 
@@ -384,13 +390,21 @@ export function createBacklinkDigest(
     //   `*Link Velocity*\nTrend: *${trend}* | Avg gain/day: +${avgGain} | Avg loss/day: -${avgLoss}`,
     // ),
     // { type: "divider" },
-    sectionBlock(`*New Backlinks (last 7 days)* — ${newCount} total\n${newLines}`),
+    sectionBlock(
+      `*New Backlinks (last 7 days)* — ${newCount} total\n${newLines}`,
+    ),
     { type: "divider" },
-    sectionBlock(`*Lost Backlinks (last 7 days)* — ${lostCount} total\n${lostLines}`),
+    sectionBlock(
+      `*Lost Backlinks (last 7 days)* — ${lostCount} total\n${lostLines}`,
+    ),
     { type: "divider" },
-    sectionBlock(`*Toxic Links* — ${toxicCount} flagged (spam score > 60)\n${toxicLines}`),
+    sectionBlock(
+      `*Toxic Links* — ${toxicCount} flagged (spam score > 60)\n${toxicLines}`,
+    ),
     { type: "divider" },
-    sectionBlock(`*Link Prospects* — domains linking to competitors, not us\n${prospectLines}`),
+    sectionBlock(
+      `*Link Prospects* — domains linking to competitors, not us\n${prospectLines}`,
+    ),
   ];
 
   return {
@@ -408,15 +422,145 @@ const postBacklinkDigestToSlack = async (
   prospectsData: Record<string, any> | null,
 ) => {
   console.log("========== Posting Backlink Digest to Slack **********");
-  const messageData = createBacklinkDigest(siteId, siteUrl, backlinkData, prospectsData);
+  const messageData = createBacklinkDigest(
+    siteId,
+    siteUrl,
+    backlinkData,
+    prospectsData,
+  );
   const { blocks, fallback_text } = messageData;
   return await postSlackMessage(fallback_text, blocks);
+};
+
+export function createSitemapAdsDigest(
+  siteId: number,
+  siteUrl: string,
+  sitemapData: Record<string, any> | null,
+  adsData: Record<string, any> | null,
+) {
+  const today = new Date().toISOString().split("T")[0];
+
+  // ── Sitemap section ───────────────────────────────────────────────────
+  const status = sitemapData?.status;
+  const detected = sitemapData?.detected;
+  const pingResult = sitemapData?.pingResult;
+
+  const coverageLine = status
+    ? `Coverage: *${status.coverage_pct ?? "?"}%* | GSC sitemaps: ${status.gsc_sitemaps?.length ?? 0}`
+    : "Sitemap data unavailable.";
+
+  const issueLines = status?.issues?.length
+    ? status.issues
+        .slice(0, 5)
+        .map((i: string) => `• ${i}`)
+        .join("\n")
+    : "No sitemap issues.";
+
+  const newPageCount: number = detected?.count ?? 0;
+  const alreadyPinged: number = detected?.already_pinged ?? 0;
+  const pingedOk: number = pingResult?.success_count ?? 0;
+  const pingedTotal: number = pingResult?.pinged?.length ?? 0;
+
+  const pingSummary =
+    newPageCount === 0
+      ? "No new pages detected in the last 24 h."
+      : `${newPageCount} new page(s) detected (${alreadyPinged} already pinged). Pinged: ${pingedOk}/${pingedTotal} to GSC + Bing.`;
+
+  // ── Ads section ───────────────────────────────────────────────────────
+  const topKeywords = adsData?.topKeywords;
+  const wastedSpend = adsData?.wastedSpend;
+  const qualityIssues = adsData?.qualityIssues;
+
+  const topKwLines = topKeywords?.keywords?.length
+    ? topKeywords.keywords
+        .slice(0, 5)
+        .map((k: any) => {
+          const cost = (k.cost_inr ?? 0).toFixed(2);
+          return `• *${k.keyword}* — ${k.conversions} conv, ₹${cost} spend`;
+        })
+        .join("\n")
+    : "No converting keywords found.";
+
+  const wastedLine = wastedSpend
+    ? `${wastedSpend.keyword_count ?? 0} keyword(s) with zero conversions — total wasted: *₹${wastedSpend.total_wasted_inr ?? 0}*`
+    : "No wasted spend data.";
+  const wastedKeywords = wastedSpend.keywords
+    .map((k: any) => {
+      const cost = (k.cost_inr ?? 0).toFixed(2);
+      return `• *${k.keyword}* — ₹${cost} spend, ${k.clicks} Click(s), ${k.impressions} impression(s)`;
+    })
+    .join("\n");
+
+  const qsLine = qualityIssues
+    ? `${qualityIssues.issues?.length ?? 0} issue(s) (${qualityIssues.critical_count ?? 0} critical) | Avg QS: *${qualityIssues.avg_quality_score ?? "?"}*`
+    : "No quality score data.";
+  const criticalQuality = qualityIssues
+    ? qualityIssues.issues.length
+      ? qualityIssues.issues
+          .filter((i:any) => i.quality_score <= 3)
+          .map((i: any) => {
+            return `• *${i.keyword}* — ${i.impressions} impression(s), Score: ${i.quality_score}, Quality: ${i.landing_page_quality}`;
+          })
+          .join("\n")
+      : ""
+    : "";
+
+  const blocks = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: `Sitemap & Ads Report — ${siteUrl ?? `Site ${siteId}`}`,
+        emoji: true,
+      },
+    },
+    {
+      type: "context",
+      elements: [{ type: "mrkdwn", text: `*Report date:* ${today}` }],
+    },
+    { type: "divider" },
+    sectionBlock(`*Sitemap Status*\n${coverageLine}\n${issueLines}`),
+    sectionBlock(`*Page Indexing*\n${pingSummary}`),
+    { type: "divider" },
+    sectionBlock(`*Top Converting Keywords (Last 30 Days)*\n${topKwLines}`),
+    { type: "divider" },
+    sectionBlock(`*Wasted Ad Spend (Last 30 Days)*\n${wastedLine}`),
+    sectionBlock(wastedKeywords),
+    { type: "divider" },
+    sectionBlock(`*Quality Score Issues (Last 30 Days)*\n${qsLine}`),
+    sectionBlock("*Critical Issue(s)*"),
+    sectionBlock(criticalQuality),
+  ];
+
+  return {
+    site_id: siteId,
+    date: today,
+    blocks,
+    fallback_text: `Sitemap & Ads Report — ${siteUrl ?? `Site ${siteId}`} — ${today}`,
+  };
+}
+
+const postSitemapAdsDigestToSlack = async (
+  siteId: number,
+  siteUrl: string,
+  sitemapData: Record<string, any> | null,
+  adsData: Record<string, any> | null,
+) => {
+  console.log("========== Posting Sitemap & Ads Digest to Slack **********");
+  const messageData = createSitemapAdsDigest(
+    siteId,
+    siteUrl,
+    sitemapData,
+    adsData,
+  );
+  return await postSlackMessage(messageData.fallback_text, messageData.blocks);
 };
 
 export {
   postWeeklyMessageToSlack,
   postMonthlyDiscoveryToSlack,
   postBacklinkDigestToSlack,
+  postSitemapAdsDigestToSlack,
   writeKeywordRankingsToSheet,
   writeRecommendationsToSheet,
 };

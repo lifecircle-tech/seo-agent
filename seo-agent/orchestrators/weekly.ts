@@ -4,6 +4,7 @@ import {
   BetaMessage,
   MessageCreateParamsNonStreaming,
 } from "@anthropic-ai/sdk/resources/beta.js";
+import { logger } from "../utils/logger.js";
 
 // Import controllers for database operations
 import { listSitesConfigs } from "../controllers/sites.controller.js";
@@ -101,12 +102,12 @@ async function callWithRetry(
       lastExc = exc as Error;
       if (attempt < MAX_RETRIES - 1) {
         const waitMs = RETRY_BACKOFF[attempt];
-        console.log(
+        logger.warn(
           `[${label}] attempt ${attempt + 1} failed: ${exc.message}. Retrying in ${waitMs / 1000}s...`,
         );
         await sleep(waitMs);
       } else {
-        console.log(`[${label}] all ${MAX_RETRIES} attempts failed.`);
+        logger.error(`[${label}] all ${MAX_RETRIES} attempts failed.`);
       }
     }
   }
@@ -115,7 +116,7 @@ async function callWithRetry(
 
 // ── Step 1: Keyword rankings ──────────────────────────────────────────
 async function step1KeywordRankings(client: Anthropic, siteId: number) {
-  console.log(`\n[step1] Getting keyword rankings for site_id=${siteId}...`);
+  logger.info(`[step1] Getting keyword rankings for site_id=${siteId}...`);
   const siteKeywords = sitesKeywordsConfig[siteId].keywords || [];
   const site = sitesConfig.find((site) => site.site_id === siteId);
 
@@ -125,7 +126,7 @@ async function step1KeywordRankings(client: Anthropic, siteId: number) {
     siteKeywords,
   );
 
-  console.log(`[step1] Done`);
+  logger.info(`[step1] Done`);
   return {
     rankings: keywordRanking.rankings || [],
     top_movers: { movers: [] },
@@ -136,7 +137,7 @@ async function step1KeywordRankings(client: Anthropic, siteId: number) {
 
 // ── Step 2: CMS Connector ─────────────────────────────────────────────
 async function step2CmsConnector(client: Anthropic, siteId: number) {
-  console.log(`\n[step2] Analyzing low-CTR pages for site_id=${siteId}...`);
+  logger.info(`[step2] Analyzing low-CTR pages for site_id=${siteId}...`);
   const site = sitesConfig.find((site) => site.site_id === siteId);
 
   const impressionsVsCtr = await getPagesWithHighImpressionLowCtr(
@@ -153,7 +154,7 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
   }
 
   if (pages.length === 0) {
-    console.log(`[step2] No pages found for site_id=${siteId}.`);
+    logger.warn(`[step2] No pages found for site_id=${siteId}.`);
     return { opportunities: [], summary: "No pages identified." };
   }
 
@@ -195,8 +196,8 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
     betas: ["mcp-client-2025-04-04"],
   });
 
-  console.log("Stop Reason: ", response.stop_reason);
-  console.log("Usage: ", response.usage);
+  logger.debug(`[step2] Stop reason`, { stop_reason: response.stop_reason });
+  logger.debug(`[step2] Usage`, { usage: response.usage });
 
   const text = response.content
     .filter((block) => block.type === "text")
@@ -206,9 +207,9 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
 
   const parsed = extractJson(text);
   if (!parsed) {
-    console.log(
-      `[step2] Warning: could not parse JSON from response. Raw: ${text.substring(0, 200)}`,
-    );
+    logger.warn(`[step2] Could not parse JSON from response`, {
+      raw: text.substring(0, 200),
+    });
     return { opportunities: [], summary: text };
   }
 
@@ -244,7 +245,7 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
     }),
   );
 
-  console.log(`[step2] Done`);
+  logger.info(`[step2] Done`);
   return parsed;
 }
 
@@ -254,7 +255,7 @@ async function step3SchemaManager(
   siteId: number,
   cmsData: any | null = null,
 ) {
-  console.log(`\n[step3] Analysing schema gaps for site_id=${siteId}...`);
+  logger.info(`[step3] Analysing schema gaps for site_id=${siteId}...`);
 
   let topPages = [];
   if (cmsData && cmsData.opportunities && cmsData.opportunities.length > 0) {
@@ -274,7 +275,7 @@ async function step3SchemaManager(
     sitesKeywordsConfig[siteId].keywords.slice(0, 5),
   );
 
-  console.log(`[step3] Done`);
+  logger.info(`[step3] Done`);
   return {
     pages: improvements || [],
     paa_questions: paaQuestions || [],
@@ -283,13 +284,13 @@ async function step3SchemaManager(
 
 // ── Step 4: Competitor Intel ──────────────────────────────────────────
 async function step4CompetitorIntel(client: Anthropic, siteId: number) {
-  console.log(`\n[step4] Running competitor analysis for site_id=${siteId}...`);
+  logger.info(`[step4] Running competitor analysis for site_id=${siteId}...`);
   const site = sitesConfig.find((site) => site.site_id === siteId);
 
   const siteCompetitors =
     sitesCompetitorsConfig[siteId].competitors_domain || [];
   if (siteCompetitors.length === 0) {
-    console.log(
+    logger.warn(
       `[step4] No competitors configured for site_id=${siteId}, skipping.`,
     );
     return [];
@@ -319,7 +320,7 @@ async function step4CompetitorIntel(client: Anthropic, siteId: number) {
     backlinks: backlinks[idx].backlinks || [],
   }));
 
-  console.log(`[step4] Done`);
+  logger.info(`[step4] Done`);
   return data;
 }
 
@@ -334,7 +335,7 @@ async function step5Reporting(
     competitorData: Array<any>;
   },
 ) {
-  console.log(`\n[step5] Posting weekly digest for site_id=${siteId}...`);
+  logger.info(`[step5] Posting weekly digest for site_id=${siteId}...`);
 
   const {
     keywords,
@@ -344,12 +345,12 @@ async function step5Reporting(
   } = data || {};
 
   if (DRY_RUN) {
-    console.log("[step5] DRY_RUN=true — skipping Slack post and Sheets writes");
-    console.log(
+    logger.info("[step5] DRY_RUN=true — skipping Slack post and Sheets writes");
+    logger.info(
       `[step5] Would post digest with ${(keywords.rankings || []).length} rankings`,
     );
     if (cmsData && cmsData.opportunities) {
-      console.log(
+      logger.info(
         `[step5] CMS step2 found ${cmsData.opportunities.length} low-CTR opportunities`,
       );
     }
@@ -413,8 +414,8 @@ async function step5Reporting(
     betas: ["mcp-client-2025-04-04"],
   });
 
-  console.log("Stop Reason: ", response.stop_reason);
-  console.log("Usage: ", response.usage);
+  logger.debug(`[step5] Stop reason`, { stop_reason: response.stop_reason });
+  logger.debug(`[step5] Usage`, { usage: response.usage });
 
   const text = response.content
     .filter((block) => block.type === "text")
@@ -438,22 +439,19 @@ async function step5Reporting(
     summary: parsed.summary || "No summary",
   });
 
-  console.log(`[step5] Done`);
+  logger.info(`[step5] Done`);
 }
 
 // ── Summary Printer ───────────────────────────────────────────────────
 function printSummary(errors: StepError, elapsed: number) {
-  console.log(`\n[weekly] ══════════════════════════════════════════`);
-  console.log(`[weekly] Pipeline complete in ${elapsed.toFixed(1)}s`);
+  logger.info(`[weekly] Pipeline complete in ${elapsed.toFixed(1)}s`);
   if (Object.keys(errors).length > 0) {
-    console.log(`[weekly] Errors encountered:`);
     for (const [step, msg] of Object.entries(errors)) {
-      console.log(`  ${step}: ${msg}`);
+      logger.error(`[weekly] ${step} failed`, { message: msg });
     }
   } else {
-    console.log(`[weekly] All steps succeeded ✓`);
+    logger.info(`[weekly] All steps succeeded`);
   }
-  console.log(`[weekly] ══════════════════════════════════════════`);
 }
 
 interface StepError {
@@ -472,10 +470,9 @@ async function runWeeklyTasks(siteId: number) {
   const startTime = Date.now();
   const errors = {} as StepError;
 
-  console.log(`[weekly] ══════════════════════════════════════════`);
-  console.log(`[weekly] Starting weekly pipeline — site_id=${siteId}`);
-  console.log(`[weekly] DRY_RUN=${DRY_RUN}`);
-  console.log(`[weekly] ══════════════════════════════════════════`);
+  logger.info(`[weekly] ══════════════════════════════════════════`);
+  logger.info(`[weekly] Starting weekly pipeline — site_id=${siteId}`);
+  logger.info(`[weekly] ══════════════════════════════════════════`);
 
   // ── Step 1: Keyword rankings ──────────────────────────────────────
   let keywordData = {};
@@ -483,7 +480,7 @@ async function runWeeklyTasks(siteId: number) {
     keywordData = await step1KeywordRankings(client, siteId);
   } catch (exc: any) {
     errors.step1 = exc.message;
-    console.log(`[step1] ERROR: ${exc.message}`);
+    logger.error(`[step1] ERROR: `, exc);
   }
 
   // ── Step 2: CMS connector — low-CTR page analysis ────────────────
@@ -492,7 +489,7 @@ async function runWeeklyTasks(siteId: number) {
     cmsData = await step2CmsConnector(client, siteId);
   } catch (exc: any) {
     errors.step2 = exc.message;
-    console.log(`[step2] ERROR: ${exc.message}`);
+    logger.error(`[step2] ERROR: `, exc);
   }
 
   // ── Step 3: Schema manager ────────────────────────────────────────
@@ -501,7 +498,7 @@ async function runWeeklyTasks(siteId: number) {
     schemaData = await step3SchemaManager(client, siteId, cmsData);
   } catch (exc: any) {
     errors.step3 = exc.message;
-    console.log(`[step3] ERROR: ${exc.message}`);
+    logger.error(`[step3] ERROR: `, exc);
   }
 
   // ── Step 4: Competitor intel ──────────────────────────────────────
@@ -510,13 +507,13 @@ async function runWeeklyTasks(siteId: number) {
     competitorData = await step4CompetitorIntel(client, siteId);
   } catch (exc: any) {
     errors.step4 = exc.message;
-    console.log(`[step4] ERROR: ${exc.message}`);
+    logger.error(`[step4] ERROR: `, exc);
   }
 
   // ── Timeout check ─────────────────────────────────────────────────
   let elapsedSeconds = (Date.now() - startTime) / 1000;
   if (elapsedSeconds > TIMEOUT_SECONDS) {
-    console.log(
+    logger.warn(
       `\n[weekly] TIMEOUT: pipeline exceeded ${TIMEOUT_SECONDS}s (${elapsedSeconds.toFixed(0)}s elapsed)`,
     );
     printSummary(errors, elapsedSeconds);
@@ -533,7 +530,7 @@ async function runWeeklyTasks(siteId: number) {
     });
   } catch (exc: any) {
     errors.step5 = exc.message;
-    console.log(`[step5] ERROR: ${exc.message}`);
+    logger.error(`[step5] ERROR: `, exc);
   }
 
   elapsedSeconds = (Date.now() - startTime) / 1000;
@@ -541,7 +538,7 @@ async function runWeeklyTasks(siteId: number) {
 }
 
 export async function weeklyTasks() {
-  console.log(`[weekly] Fetching configuration from database...`);
+  logger.info(`[weekly] Fetching configuration from database...`);
 
   // Fetch all configuration data from MySQL via controllers
   // Using a large limit to ensure all configs are loaded for the pipeline
@@ -576,7 +573,7 @@ export async function weeklyTasks() {
     };
   });
 
-  console.log(
+  logger.info(
     `[weekly] Loaded ${sitesConfig.length} sites. Starting processing...`,
   );
 
@@ -585,9 +582,3 @@ export async function weeklyTasks() {
   await runWeeklyTasks(1);
   // }
 }
-
-// ── Execute ───────────────────────────────────────────────────────────
-// if (import.meta.url === `file://${process.argv[1]}`) {
-// const siteId = 1;
-// runWeeklyTasks(siteId).catch(console.error);
-// }
