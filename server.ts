@@ -27,6 +27,7 @@ import { monthlyAudit } from "./seo-agent/orchestrators/monthly_audit.js";
 import { weeklyPageChecker } from "./seo-agent/orchestrators/weekly_page_checker.js";
 import { dailyTechnicalAudit } from "./seo-agent/orchestrators/daily.js";
 import { weeklyBacklinksMonitorTasks } from "./seo-agent/orchestrators/weekly_backlinks_monitor.js"
+import { weeklySitemapAdsTasks } from "./seo-agent/orchestrators/weekly_sitemaps_ads_tasks.js"
 import { checkPageContents } from "./seo-agent/services/schedulers.service.js";
 
 cron.schedule(
@@ -37,6 +38,17 @@ cron.schedule(
   {
     timezone: "IST",
     name: "Weekly Tasks",
+  },
+);
+
+cron.schedule(
+  "45 7 * * 1",
+  () => {
+    weeklySitemapAdsTasks();
+  },
+  {
+    timezone: "IST",
+    name: "Weekly Sitemaps-Ads Tasks",
   },
 );
 
