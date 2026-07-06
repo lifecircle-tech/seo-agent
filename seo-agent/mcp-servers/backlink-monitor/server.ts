@@ -29,9 +29,7 @@ async function dfsPost<T = any>(endpoint: string, body: object[]): Promise<T> {
   });
   if (!res.ok) {
     const msg = await res.text().catch(() => res.statusText);
-    throw new Error(
-      `DataForSEO ${endpoint} error ${res.status}: ${msg.slice(0, 300)}`,
-    );
+    throw new Error(`DataForSEO ${endpoint} error ${res.status}: ${msg}`);
   }
   return res.json() as Promise<T>;
 }
@@ -253,56 +251,61 @@ export async function getLinkVelocity(
 
   console.log(`[backlink-monitor:velocity] site_id=${siteId} domain=${domain}`);
 
-  const data = await dfsPost("/backlinks/timeseries_new_lost_summary/live", [
-    {
-      target: domain,
-      date_from: dateFrom,
-      date_to: dateTo,
-      group_range: "day",
-    },
-  ]);
+  try {
+    const data = await dfsPost("/backlinks/timeseries_new_lost_summary/live", [
+      {
+        target: domain,
+        date_from: dateFrom,
+        date_to: dateTo,
+        group_range: "day",
+      },
+    ]);
 
-  const rawItems: any[] = data?.tasks?.[0]?.result?.[0]?.items ?? [];
+    const rawItems: any[] = data?.tasks?.[0]?.result?.[0]?.items ?? [];
 
-  const weeklyVelocity: WeeklyVelocity[] = rawItems.map((item: any) => ({
-    date: item.date ?? "",
-    new_referring_domains: item.new_referring_domains ?? 0,
-    lost_referring_domains: item.lost_referring_domains ?? 0,
-    net_change:
-      (item.new_referring_domains ?? 0) - (item.lost_referring_domains ?? 0),
-  }));
+    const weeklyVelocity: WeeklyVelocity[] = rawItems.map((item: any) => ({
+      date: item.date ?? "",
+      new_referring_domains: item.new_referring_domains ?? 0,
+      lost_referring_domains: item.lost_referring_domains ?? 0,
+      net_change:
+        (item.new_referring_domains ?? 0) - (item.lost_referring_domains ?? 0),
+    }));
 
-  const gains = weeklyVelocity.map((w) => w.new_referring_domains);
-  const losses = weeklyVelocity.map((w) => w.lost_referring_domains);
-  const avgGain =
-    gains.length > 0
-      ? Math.round(gains.reduce((a, b) => a + b, 0) / gains.length)
-      : 0;
-  const avgLoss =
-    losses.length > 0
-      ? Math.round(losses.reduce((a, b) => a + b, 0) / losses.length)
-      : 0;
+    const gains = weeklyVelocity.map((w) => w.new_referring_domains);
+    const losses = weeklyVelocity.map((w) => w.lost_referring_domains);
+    const avgGain =
+      gains.length > 0
+        ? Math.round(gains.reduce((a, b) => a + b, 0) / gains.length)
+        : 0;
+    const avgLoss =
+      losses.length > 0
+        ? Math.round(losses.reduce((a, b) => a + b, 0) / losses.length)
+        : 0;
 
-  // Trend: compare first half vs second half net change
-  let trend: "growing" | "declining" | "stable" = "stable";
-  if (weeklyVelocity.length >= 4) {
-    const mid = Math.floor(weeklyVelocity.length / 2);
-    const firstHalfNet = weeklyVelocity
-      .slice(0, mid)
-      .reduce((s, w) => s + w.net_change, 0);
-    const secondHalfNet = weeklyVelocity
-      .slice(mid)
-      .reduce((s, w) => s + w.net_change, 0);
-    if (secondHalfNet > firstHalfNet + 2) trend = "growing";
-    else if (secondHalfNet < firstHalfNet - 2) trend = "declining";
+    // Trend: compare first half vs second half net change
+    let trend: "growing" | "declining" | "stable" = "stable";
+    if (weeklyVelocity.length >= 4) {
+      const mid = Math.floor(weeklyVelocity.length / 2);
+      const firstHalfNet = weeklyVelocity
+        .slice(0, mid)
+        .reduce((s, w) => s + w.net_change, 0);
+      const secondHalfNet = weeklyVelocity
+        .slice(mid)
+        .reduce((s, w) => s + w.net_change, 0);
+      if (secondHalfNet > firstHalfNet + 2) trend = "growing";
+      else if (secondHalfNet < firstHalfNet - 2) trend = "declining";
+    }
+
+    return {
+      site_id: siteId,
+      domain,
+      weekly_velocity: weeklyVelocity,
+      avg_weekly_gain: avgGain,
+      avg_weekly_loss: avgLoss,
+      trend,
+    };
+  } catch (err) {
+    console.log("[backlink-monitor:velocity] Error : ", err);
+    return;
   }
-
-  return {
-    site_id: siteId,
-    domain,
-    weekly_velocity: weeklyVelocity,
-    avg_weekly_gain: avgGain,
-    avg_weekly_loss: avgLoss,
-    trend,
-  };
 }

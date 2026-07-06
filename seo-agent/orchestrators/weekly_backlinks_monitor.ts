@@ -129,7 +129,7 @@ async function runBacklinksTasks(siteId: number) {
   }
 
   // ── Step 3: Backlink digest → Slack ───────────────────────────────
-  if (!DRY_RUN && backlinkData) {
+  if (!DRY_RUN) {
     console.log(`\n[step3] Posting backlink digest for site_id=${siteId}...`);
     try {
       const site = sitesConfig.find((s) => s.site_id === siteId);
@@ -175,7 +175,7 @@ export async function weeklyBacklinksMonitorTasks() {
   });
 
   console.log(
-    `[weekly_backlink_monitor] Loaded ${sitesCompetitorsConfig.length} sites. Starting processing...`,
+    `[weekly_backlink_monitor] Loaded ${sitesConfig.length} sites. Starting processing...`,
   );
 
   // Run pipeline for each configured site
