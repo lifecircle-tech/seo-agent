@@ -96,16 +96,16 @@ cron.schedule(
   },
 );
 
-cron.schedule(
-  "0 10 * * *",
-  () => {
-    dailyTechnicalAudit();
-  },
-  {
-    timezone: "IST",
-    name: "Daily Technical SEO Audit",
-  },
-);
+// cron.schedule(
+//   "0 10 * * *",
+//   () => {
+//     dailyTechnicalAudit();
+//   },
+//   {
+//     timezone: "IST",
+//     name: "Daily Technical SEO Audit",
+//   },
+// );
 
 cron.schedule(
   "0 18 * * *",

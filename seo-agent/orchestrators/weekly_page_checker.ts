@@ -7,6 +7,7 @@ import {
   createCmsDraft,
 } from "../mcp-servers/page-generator/server.js";
 import { postSlackMessage } from "../mcp-servers/reporting/server.js";
+import { saveMissingPagesReport } from "../services/seo-report.service.js";
 import { createCitiesConfigTable } from "../models/cities-config.model.js";
 
 dotenv.config();
@@ -149,6 +150,8 @@ async function runMissingPageChecker(siteId: number, domain: string) {
   return {
     site_id: siteId,
     domain,
+    total_cities: missing.total_cities,
+    missing_count: missing.missing_count,
     cities: missing.missing,
   };
 }
@@ -303,7 +306,14 @@ export async function weeklyPageChecker() {
     //   service,
     // );
     const result = await runMissingPageChecker(site.site_id, site.domain);
-    result && summaries.push(result);
+    if (result) {
+      summaries.push(result);
+      await saveMissingPagesReport(site.site_id, {
+        total_cities: result.total_cities,
+        missing_count: result.missing_count,
+        missing: result.cities,
+      });
+    }
   } catch (err: any) {
     console.error(
       `[daily_page_builder] Unhandled error for site_id=${site.site_id}: ${err.message}`,

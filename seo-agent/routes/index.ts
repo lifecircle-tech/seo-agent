@@ -7,6 +7,7 @@ import { configRouter } from "./config.routes.js";
 import { sitesRouter } from "./sites.routes.js";
 import { pageContentRouter } from "./page-content.routes.js";
 import { dashboardRouter } from "./dashboard.routes.js";
+import { seoReportRouter } from "./seo-report.routes.js";
 
 export function seoAgentRouter (io: SocketIOServer): Router {
     const router = Router();
@@ -16,6 +17,7 @@ export function seoAgentRouter (io: SocketIOServer): Router {
     router.use("/config", configRouter);
     router.use("/sites", sitesRouter);
     router.use("/dashboard", dashboardRouter);
+    router.use("/report", seoReportRouter);
 
     return router;
 }

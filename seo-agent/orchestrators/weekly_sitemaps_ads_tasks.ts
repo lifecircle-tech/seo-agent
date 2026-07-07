@@ -5,6 +5,7 @@ import { logger } from "../utils/logger.js";
 import { listSitesConfigs } from "../controllers/sites.controller.js";
 
 import { postSitemapAdsDigestToSlack } from "../mcp-servers/reporting/server.js";
+import { saveSitemapAdsReport } from "../services/seo-report.service.js";
 import {
   getSitemapStatus,
   detectNewPages,
@@ -132,20 +133,29 @@ async function runWeeklySitemapAdsTasks(siteId: number) {
     logger.error(`[step2] ERROR: `, exc);
   }
 
-  logger.info(
-    `\n[step3] Posting sitemap & ads digest for site_id=${siteId}...`,
-  );
+  // ── Step 3: Persist report to DB ─────────────────────────────────
   try {
-    const site = sitesConfig.find((s) => s.site_id === siteId);
-    await postSitemapAdsDigestToSlack(
-      siteId,
-      site?.domain ?? "",
-      sitemapData,
-      adsData,
-    );
-    logger.info(`[step3] Done`);
+    await saveSitemapAdsReport(siteId, sitemapData, adsData);
+    logger.info(`[step3] Report saved to DB`);
   } catch (exc: any) {
-    logger.error(`[step3] ERROR: `, exc);
+    logger.error(`[step3] DB save ERROR: `, exc);
+  }
+
+  // ── Step 4: Sitemap & ads digest → Slack ──────────────────────────
+  if (!DRY_RUN) {
+    logger.info(`\n[step4] Posting sitemap & ads digest for site_id=${siteId}...`);
+    try {
+      const site = sitesConfig.find((s) => s.site_id === siteId);
+      await postSitemapAdsDigestToSlack(
+        siteId,
+        site?.domain ?? "",
+        sitemapData,
+        adsData,
+      );
+      logger.info(`[step4] Done`);
+    } catch (exc: any) {
+      logger.error(`[step4] ERROR: `, exc);
+    }
   }
 
   // ── Timeout check ─────────────────────────────────────────────────

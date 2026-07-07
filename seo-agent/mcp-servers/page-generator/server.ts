@@ -289,8 +289,9 @@ export async function getMissingCityPages(siteId: number): Promise<{
       [...allSlugs].filter((s) => s.includes(citySlug) && s) ||
       [...allLinks].filter((l) => l.includes(citySlug) && l);
 
-
-    const missingServicePages = (row.services as string[] ?? []).filter((service) => {
+    const services = typeof row.services == 'string' ? JSON.parse(row.services) : row.services;
+    
+    const missingServicePages = (services as string[] ?? []).filter((service) => {
       return (
         ![...cityPages].some((s) => s.includes(service.replaceAll(" ", "-")))
       );

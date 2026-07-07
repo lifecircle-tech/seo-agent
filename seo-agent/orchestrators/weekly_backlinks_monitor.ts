@@ -12,6 +12,7 @@ import {
 } from "../mcp-servers/backlink-monitor/server.js";
 import { findLinkProspects } from "../mcp-servers/backlink-engine/server.js";
 import { postBacklinkDigestToSlack } from "../mcp-servers/reporting/server.js";
+import { saveBacklinkReport } from "../services/seo-report.service.js";
 
 dotenv.config();
 
@@ -47,8 +48,6 @@ const DRY_RUN = ["1", "true", "yes"].includes(
 // ── Step 1: Backlink monitor ──────────────────────────────────────────
 async function backlinkMonitor(siteId: number) {
   console.log(`\n[step1] Backlink health check for site_id=${siteId}...`);
-  const site = sitesConfig.find((site) => site.site_id === siteId);
-
   const [newLinks, lostLinks, toxicLinks, velocity] = await Promise.all([
     getNewBacklinks(siteId, 7),
     getLostBacklinks(siteId, 7),
@@ -128,9 +127,17 @@ async function runBacklinksTasks(siteId: number) {
     console.log(`[step2] ERROR: ${exc.message}`);
   }
 
-  // ── Step 3: Backlink digest → Slack ───────────────────────────────
+  // ── Step 3: Persist report to DB ─────────────────────────────────
+  try {
+    await saveBacklinkReport(siteId, backlinkData, prospectsData);
+    console.log(`[step3] Report saved to DB`);
+  } catch (exc: any) {
+    console.log(`[step3] DB save ERROR: ${(exc as Error).message}`);
+  }
+
+  // ── Step 4: Backlink digest → Slack ───────────────────────────────
   if (!DRY_RUN) {
-    console.log(`\n[step3] Posting backlink digest for site_id=${siteId}...`);
+    console.log(`\n[step4] Posting backlink digest for site_id=${siteId}...`);
     try {
       const site = sitesConfig.find((s) => s.site_id === siteId);
       await postBacklinkDigestToSlack(
@@ -139,9 +146,9 @@ async function runBacklinksTasks(siteId: number) {
         backlinkData,
         prospectsData,
       );
-      console.log(`[step3] Done`);
+      console.log(`[step4] Done`);
     } catch (exc: any) {
-      console.log(`[step3] ERROR: ${(exc as Error).message}`);
+      console.log(`[step4] ERROR: ${(exc as Error).message}`);
     }
   }
   let elapsedSeconds = (Date.now() - startTime) / 1000;
