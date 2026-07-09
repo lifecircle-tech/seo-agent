@@ -1,6 +1,7 @@
 import { pool } from "../../../db.js";
 import { RowDataPacket } from "mysql2/promise";
 import { getDomain } from "../../../libs/functions.js";
+import { logger } from "../../utils/logger.js";
 
 // ── DataForSEO helpers ────────────────────────────────────────────────
 
@@ -122,9 +123,7 @@ export async function getNewBacklinks(
 ): Promise<NewBacklinksResult | void> {
   const domain = await getSiteDomain(siteId);
   if (!domain) {
-    console.error(
-      `[backlink-monitor:new] Invalid domain for site_id=${siteId}`,
-    );
+    logger.error(`[backlink-monitor:new] Invalid domain for site_id=${siteId}`);
     return;
   }
   const dateFrom =
@@ -132,7 +131,7 @@ export async function getNewBacklinks(
       .toISOString()
       .split("T")[0] + " 00:00:00 +00:00";
 
-  console.log(
+  logger.info(
     `[backlink-monitor:new] site_id=${siteId} domain=${domain} days=${days} from=${dateFrom}`,
   );
 
@@ -170,7 +169,7 @@ export async function getLostBacklinks(
       .toISOString()
       .split("T")[0] + " 00:00:00 +00:00";
 
-  console.log(
+  logger.info(
     `[backlink-monitor:lost] site_id=${siteId} domain=${domain} days=${days} from=${dateFrom}`,
   );
 
@@ -206,7 +205,7 @@ export async function getToxicLinks(
 ): Promise<ToxicLinksResult | void> {
   const domain = await getSiteDomain(siteId);
 
-  console.log(
+  logger.info(
     `[backlink-monitor:toxic] site_id=${siteId} domain=${domain} spam_threshold=${SPAM_THRESHOLD}`,
   );
 
@@ -249,7 +248,7 @@ export async function getLinkVelocity(
     .split("T")[0];
   const dateTo = new Date().toISOString().split("T")[0];
 
-  console.log(`[backlink-monitor:velocity] site_id=${siteId} domain=${domain}`);
+  logger.info(`[backlink-monitor:velocity] site_id=${siteId} domain=${domain}`);
 
   try {
     const data = await dfsPost("/backlinks/timeseries_new_lost_summary/live", [
@@ -305,7 +304,7 @@ export async function getLinkVelocity(
       trend,
     };
   } catch (err) {
-    console.log("[backlink-monitor:velocity] Error : ", err);
+    logger.error("[backlink-monitor:velocity] Error : ", err);
     return;
   }
 }

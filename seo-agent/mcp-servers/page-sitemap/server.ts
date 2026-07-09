@@ -4,6 +4,7 @@ import { google } from "googleapis";
 import { pool } from "../../../db.js";
 import { RowDataPacket } from "mysql2/promise";
 import { wpFetch } from "../../../libs/wordpress.js";
+import { logger } from "../../utils/logger.js";
 
 // ── Env helpers ───────────────────────────────────────────────────────
 
@@ -165,9 +166,7 @@ export async function getSitemapStatus(
         last_submitted: sm.lastSubmitted ?? undefined,
       });
       if (errors > 0) {
-        issues.push(
-          `GSC sitemap ${sm.path} has ${errors} error(s)`,
-        );
+        issues.push(`GSC sitemap ${sm.path} has ${errors} error(s)`);
       }
       if (submitted > 0 && indexed / submitted < 0.8) {
         issues.push(
@@ -265,7 +264,9 @@ export async function detectNewPages(
     for (const p of data) {
       const url: string = p.link ?? "";
       const title: string =
-        typeof p.title === "object" ? (p.title.rendered ?? "") : String(p.title ?? "");
+        typeof p.title === "object"
+          ? (p.title.rendered ?? "")
+          : String(p.title ?? "");
       if (!url) continue;
       if (pingedUrls.has(url)) {
         alreadyPinged++;
@@ -291,7 +292,9 @@ export async function detectNewPages(
     for (const p of data) {
       const url: string = p.link ?? "";
       const title: string =
-        typeof p.title === "object" ? (p.title.rendered ?? "") : String(p.title ?? "");
+        typeof p.title === "object"
+          ? (p.title.rendered ?? "")
+          : String(p.title ?? "");
       if (!url) continue;
       if (pingedUrls.has(url)) {
         alreadyPinged++;
@@ -333,7 +336,7 @@ export async function pingNewPages(
     const tokenRes = await (client as any).getAccessToken();
     indexingToken = tokenRes.token ?? null;
   } catch (err: any) {
-    console.warn(`[page-sitemap] Could not get Indexing API token: ${err.message}`);
+    logger.error(`[page-sitemap] Could not get Indexing API token: `, err);
   }
 
   const results: PingResult[] = [];

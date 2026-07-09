@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { logger } from "../../utils/logger.js";
 
 // ── Cache (24-hour) ───────────────────────────────────────────────────
 const CACHE_DIR = "/tmp/cache";
@@ -147,14 +148,14 @@ export async function auditCitations(
 ): Promise<CitationAuditResult> {
   const cached = readCache(siteId, "audit") as CitationAuditResult | null;
   if (cached) {
-    console.log(
+    logger.info(
       `[audit_citations] Returning cached result for site_id=${siteId}`,
     );
     return { ...cached, cached: true };
   }
 
   const reportId = getBrightLocalReportId(siteId);
-  console.log(
+  logger.info(
     `[audit_citations] Fetching BrightLocal report ${reportId} for site_id=${siteId}...`,
   );
 
@@ -233,7 +234,7 @@ export async function auditCitations(
   };
 
   writeCache(siteId, "audit", result);
-  console.log(
+  logger.info(
     `[audit_citations] Done: ${napInconsistencies.length} NAP issues, ${missingDirectories.length} missing dirs`,
   );
 
@@ -257,7 +258,8 @@ export async function getCitationScore(siteId: number): Promise<CitationScore> {
     found === 0
       ? 100
       : Math.round(
-          ((found - new Set(audit.nap_inconsistencies.map((n) => n.directory)).size) /
+          ((found -
+            new Set(audit.nap_inconsistencies.map((n) => n.directory)).size) /
             found) *
             100,
         );
@@ -267,9 +269,7 @@ export async function getCitationScore(siteId: number): Promise<CitationScore> {
     (l) => l.severity === "critical" || l.severity === "major",
   ).length;
   const listingAccuracyPct =
-    found === 0
-      ? 100
-      : Math.round(((found - incorrectCount) / found) * 100);
+    found === 0 ? 100 : Math.round(((found - incorrectCount) / found) * 100);
 
   // Weighted composite score
   const score = Math.round(
@@ -311,7 +311,13 @@ export async function getPriorityFixes(
   const fixes: Array<Omit<PriorityFix, "rank">> = [];
 
   // Critical: NAP inconsistencies on high-DA directories
-  const highPriorityDirs = new Set(["Google", "Yelp", "Bing", "Facebook", "Apple Maps"]);
+  const highPriorityDirs = new Set([
+    "Google",
+    "Yelp",
+    "Bing",
+    "Facebook",
+    "Apple Maps",
+  ]);
   for (const nap of audit.nap_inconsistencies) {
     fixes.push({
       directory: nap.directory,
@@ -349,7 +355,9 @@ export async function getPriorityFixes(
   // Medium/Low: Incorrect info not already captured in NAP inconsistencies
   for (const listing of audit.incorrect_listings) {
     const alreadyCovered = fixes.some(
-      (f) => f.directory === listing.directory && f.issue_type === "nap_inconsistency",
+      (f) =>
+        f.directory === listing.directory &&
+        f.issue_type === "nap_inconsistency",
     );
     if (!alreadyCovered) {
       fixes.push({

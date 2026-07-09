@@ -1,3 +1,5 @@
+import { logger } from "../seo-agent/utils/logger";
+
 // ── WP Auth helper ────────────────────────────────────────────────────
 export function getWpAuth(siteId: number): {
   baseUrl: string;
@@ -30,7 +32,8 @@ export async function wpFetch(
     },
   };
   if (body) options.body = JSON.stringify(body);
-  console.log("============= WP Getting Page ***************\n", url);
+  logger.info("============= WP Getting Page ***************");
+  logger.info(url);
   const res = await fetch(url, options);
   const contentType = res.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {

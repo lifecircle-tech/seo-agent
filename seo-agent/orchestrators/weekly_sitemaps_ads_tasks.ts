@@ -143,7 +143,7 @@ async function runWeeklySitemapAdsTasks(siteId: number) {
 
   // ── Step 4: Sitemap & ads digest → Slack ──────────────────────────
   if (!DRY_RUN) {
-    logger.info(`\n[step4] Posting sitemap & ads digest for site_id=${siteId}...`);
+    logger.info(`[step4] Posting sitemap & ads digest for site_id=${siteId}...`);
     try {
       const site = sitesConfig.find((s) => s.site_id === siteId);
       await postSitemapAdsDigestToSlack(

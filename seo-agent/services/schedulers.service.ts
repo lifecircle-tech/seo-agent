@@ -2,6 +2,7 @@ import { pool } from "../../db.js";
 import { PageContent } from "../models/page-content.model.js";
 import { updateUpdatedPageDetails } from "../controllers/page-content.controller.js";
 import { verifyPageUpdate } from "./page-content.service.js";
+import { logger } from "../utils/logger.js";
 
 export async function checkPageContents(): Promise<void> {
   const [rows] = await pool.query<PageContent[]>(
@@ -9,7 +10,7 @@ export async function checkPageContents(): Promise<void> {
      WHERE acknowledged_at >= NOW() - INTERVAL 24 HOUR`,
   );
 
-  console.log(
+  logger.info(
     `[schedulers] checkPageContents: ${rows.length} record(s) acknowledged in the last 24 hours`,
   );
 
@@ -20,11 +21,11 @@ export async function checkPageContents(): Promise<void> {
         matchPercentage: result.matchPercentage,
         checkedAt: new Date().toISOString(),
       });
-      console.log(
+      logger.info(
         `[schedulers] ${row.id} — match: ${result.matchPercentage}%`,
       );
     } catch (err) {
-      console.error(`[schedulers] failed for ${row.id}:`, err);
+      logger.error(`[schedulers] failed for ${row.id}:`, err);
     }
   }
 }

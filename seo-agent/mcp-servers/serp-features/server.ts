@@ -1,5 +1,6 @@
 import { RowDataPacket } from "mysql2/promise";
 import { pool } from "../../../db.js";
+import { logger } from "../../utils/logger.js";
 
 // ── SerpAPI helper ────────────────────────────────────────────────────
 function getSerpKey(): string {
@@ -12,7 +13,7 @@ async function serpFetch(keyword: string, location = "India"): Promise<any> {
   const apiKey = getSerpKey();
   const url = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(keyword)}&api_key=${apiKey}&location=${encodeURIComponent(location)}&gl=in&hl=en`;
 
-  console.log(`[serp_fetch] Querying SerpAPI: "${keyword}"`);
+  logger.info(`[serp_fetch] Querying SerpAPI: "${keyword}"`);
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`SerpAPI error ${res.status}: ${res.statusText}`);
@@ -27,7 +28,10 @@ async function getSiteDomain(siteId: number): Promise<string> {
   );
   if (!rows.length) throw new Error(`No site found for site_id=${siteId}`);
   const domain = rows[0].domain as string;
-  return domain.replace(/^https?:\/\//, "").replace(/\/$/, "").toLowerCase();
+  return domain
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "")
+    .toLowerCase();
 }
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -67,7 +71,10 @@ export async function checkSerpFeatures(
   const hasFeaturedSnippet = Boolean(fs);
   const fsLink: string = fs?.link ?? fs?.source?.link ?? "";
   const featuredSnippetOwner = hasFeaturedSnippet
-    ? fsLink.replace(/^https?:\/\//, "").split("/")[0].toLowerCase()
+    ? fsLink
+        .replace(/^https?:\/\//, "")
+        .split("/")[0]
+        .toLowerCase()
     : null;
   const weOwnFeaturedSnippet = featuredSnippetOwner
     ? featuredSnippetOwner.includes(ourDomain)
@@ -87,15 +94,16 @@ export async function checkSerpFeatures(
   const relatedQuestions: Array<{ question?: string }> =
     data.related_questions ?? [];
   const hasPaa = relatedQuestions.length > 0;
-  const paaQuestions = relatedQuestions.map((q) => q.question ?? "").filter(Boolean);
+  const paaQuestions = relatedQuestions
+    .map((q) => q.question ?? "")
+    .filter(Boolean);
 
   // ── Knowledge panel ───────────────────────────────────────────────
   const hasKnowledgePanel = Boolean(data.knowledge_graph);
 
   // ── Image pack ────────────────────────────────────────────────────
   const hasImagePack =
-    Boolean(data.images_results) ||
-    (data.inline_images ?? []).length > 0;
+    Boolean(data.images_results) || (data.inline_images ?? []).length > 0;
 
   // ── Our organic position ──────────────────────────────────────────
   const organicResults: Array<{ link?: string; position?: number }> =
@@ -105,7 +113,7 @@ export async function checkSerpFeatures(
   );
   const ourOrganicPosition = ourResult?.position ?? null;
 
-  console.log(
+  logger.info(
     `[check_serp_features] keyword="${keyword}" fs=${hasFeaturedSnippet} lp=${hasLocalPack} paa=${hasPaa} our_pos=${ourOrganicPosition}`,
   );
 
@@ -126,15 +134,13 @@ export async function checkSerpFeatures(
 }
 
 // ── Tool: get_feature_opportunities ──────────────────────────────────
-export async function getFeatureOpportunities(
-  siteId: number,
-): Promise<{
+export async function getFeatureOpportunities(siteId: number): Promise<{
   site_id: number;
   keywords_checked: number;
   opportunities_count: number;
   opportunities: FeatureOpportunity[];
 }> {
-  console.log(
+  logger.info(
     `[get_feature_opportunities] Scanning SERP features for site_id=${siteId}...`,
   );
 
@@ -145,7 +151,7 @@ export async function getFeatureOpportunities(
   );
 
   if (!kwRows.length) {
-    console.log(
+    logger.info(
       `[get_feature_opportunities] No keywords configured for site_id=${siteId}`,
     );
     return {
@@ -207,13 +213,14 @@ export async function getFeatureOpportunities(
       // Rate-limit: 1 call/sec to stay within SerpAPI limits
       await sleep(1100);
     } catch (err: any) {
-      console.warn(
-        `[get_feature_opportunities] Failed for keyword="${keyword}": ${err.message}`,
+      logger.error(
+        `[get_feature_opportunities] Failed for keyword="${keyword}":`,
+        err,
       );
     }
   }
 
-  console.log(
+  logger.info(
     `[get_feature_opportunities] ${keywords.length} keywords checked, ${opportunities.length} opportunities found`,
   );
 

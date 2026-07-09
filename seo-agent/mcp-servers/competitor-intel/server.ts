@@ -4,6 +4,7 @@ import {
   getCompetitorsKeywords,
   getSitesBacklinks,
 } from "../../services/dataForSEO.service.js";
+import { logger } from "../../utils/logger.js";
 
 // ── Rate-limit delay ──────────────────────────────────────────────────
 const AHREFS_DELAY_MS = Number(process.env.AHREFS_DELAY_MS ?? 1500);
@@ -98,7 +99,7 @@ export async function getCompetitorKeywords(
 
   await ahrefsDelay();
 
-  console.log("========== Calling Ahrefs API **********");
+  logger.info("========== Calling Ahrefs API **********");
   const raw = (await ahrefsFetch("/site-explorer/organic-keywords", {
     target: competitorDomain,
     limit: "10",
@@ -121,7 +122,7 @@ export async function getCompetitorKeywords(
     volume: k.volume ?? 0,
     traffic: k.sum_traffic ?? 0,
   }));
-  console.log("========== Ahrefs Keywords Retrieved **********");
+  logger.info("========== Ahrefs Keywords Retrieved **********");
 
   writeCache(competitorDomain, "keywords", keywords);
 
@@ -154,14 +155,14 @@ export async function getKeywordGaps(
   gaps: KeywordGap[];
 }> {
   // Fetch site's own keywords via GSC
-  console.log("========== Keywords Gap GSC Auth **********");
+  logger.info("========== Keywords Gap GSC Auth **********");
   const searchConsole = getSearchConsoleClient();
   const end = new Date();
   const start = new Date();
   start.setDate(end.getDate() - 28);
   const fmtDate = (d: Date) => d.toISOString().split("T")[0];
 
-  console.log("========== Keywords Gap GSC Search Console **********");
+  logger.info("========== Keywords Gap GSC Search Console **********");
   const gscResponse = await searchConsole.searchanalytics.query({
     siteUrl,
     requestBody: {
@@ -176,7 +177,7 @@ export async function getKeywordGaps(
     (gscResponse.data.rows ?? []).map((r) => (r.keys?.[0] ?? "").toLowerCase()),
   );
 
-  console.log("========== Keywords Gap Competitor Keywords **********");
+  logger.info("========== Keywords Gap Competitor Keywords **********");
   // Fetch competitor keywords (with cache)
   const compResult = await getCompetitorKeywords(siteId, competitorDomain);
   const competitorKeywords = compResult.keywords;

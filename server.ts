@@ -11,7 +11,7 @@ import { Server as SocketIOServer } from "socket.io";
 import cors from "cors";
 import cron from "node-cron";
 
-import { seoAgentRouter } from "./seo-agent/routes/index"
+import { seoAgentRouter } from "./seo-agent/routes/index";
 import { approvalsRouter } from "./seo-agent/routes/approvals.routes.js";
 import { alertsRouter } from "./seo-agent/routes/alerts.routes.js";
 import { configRouter } from "./seo-agent/routes/config.routes.js";
@@ -26,8 +26,8 @@ import { monthlyDiscovery } from "./seo-agent/orchestrators/monthly-discovery.js
 import { monthlyAudit } from "./seo-agent/orchestrators/monthly_audit.js";
 import { weeklyPageChecker } from "./seo-agent/orchestrators/weekly_page_checker.js";
 import { dailyTechnicalAudit } from "./seo-agent/orchestrators/daily.js";
-import { weeklyBacklinksMonitorTasks } from "./seo-agent/orchestrators/weekly_backlinks_monitor.js"
-import { weeklySitemapAdsTasks } from "./seo-agent/orchestrators/weekly_sitemaps_ads_tasks.js"
+import { weeklyBacklinksMonitorTasks } from "./seo-agent/orchestrators/weekly_backlinks_monitor.js";
+import { weeklySitemapAdsTasks } from "./seo-agent/orchestrators/weekly_sitemaps_ads_tasks.js";
 import { checkPageContents } from "./seo-agent/services/schedulers.service.js";
 
 cron.schedule(
@@ -53,7 +53,7 @@ cron.schedule(
 );
 
 cron.schedule(
-  "30 7 * * 1",
+  "0 10 * * 1",
   () => {
     weeklyBacklinksMonitorTasks();
   },

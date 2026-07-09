@@ -16,6 +16,7 @@ import {
   deferApproval,
 } from "../controllers/approvals.controller.js";
 import { AuthRequest, requireAuth } from "../../middleware/auth.middleware.js";
+import { logger } from "../utils/logger.js";
 
 interface CreateApprovalBody {
   site_id?: number;
@@ -67,7 +68,7 @@ export function approvalsRouter(io: SocketIOServer): Router {
       io.emit("approval:created", approval);
       res.status(201).json({ success: true, ...approval });
     } catch (err) {
-      console.error("[approvals] create error:", err);
+      logger.error("[approvals] create error:", err);
       res.status(500).json({ success: false, error: "Database error" });
     }
   });
@@ -88,7 +89,7 @@ export function approvalsRouter(io: SocketIOServer): Router {
       });
       res.json({ success: true, ...result });
     } catch (err) {
-      console.error("[approvals] list error:", err);
+      logger.error("[approvals] list error:", err);
       res.status(500).json({ success: false, error: "Database error" });
     }
   });
@@ -103,7 +104,7 @@ export function approvalsRouter(io: SocketIOServer): Router {
       }
       res.json({ success: true, ...approval });
     } catch (err) {
-      console.error("[approvals] get error:", err);
+      logger.error("[approvals] get error:", err);
       res.status(500).json({ success: false, error: "Database error" });
     }
   });
@@ -128,7 +129,7 @@ export function approvalsRouter(io: SocketIOServer): Router {
         io.emit("approval:updated", approval);
         res.json({ success: true, ...approval });
       } catch (err) {
-        console.error("[approvals] approve error:", err);
+        logger.error("[approvals] approve error:", err);
         res.status(500).json({ success: false, error: "Database error" });
       }
     },
@@ -161,7 +162,7 @@ export function approvalsRouter(io: SocketIOServer): Router {
         io.emit("approval:updated", approval);
         res.json({ success: true, ...approval });
       } catch (err) {
-        console.error("[approvals] reject error:", err);
+        logger.error("[approvals] reject error:", err);
         res.status(500).json({ success: false, error: "Database error" });
       }
     },
@@ -185,7 +186,7 @@ export function approvalsRouter(io: SocketIOServer): Router {
         io.emit("approval:updated", approval);
         res.json({ success: true, ...approval });
       } catch (err) {
-        console.error("[approvals] defer error:", err);
+        logger.error("[approvals] defer error:", err);
         res.status(500).json({ success: false, error: "Database error" });
       }
     },

@@ -31,6 +31,7 @@ import {
   updateCompetitorConfig,
   deleteCompetitorConfig,
 } from "../controllers/competitor.controller.js";
+import { logger } from "../utils/logger.js";
 
 const router = Router();
 
@@ -54,7 +55,7 @@ router.get("/sites", async (req: Request, res: Response) => {
 
     res.json(sites);
   } catch (err) {
-    console.error("[sites GET]", err);
+    logger.error("[sites GET]", err);
     res.status(500).json({ error: String(err) });
   }
 });
@@ -108,7 +109,7 @@ router.post("/sites", async (req: Request, res: Response) => {
       res.status(201).json({ ok: true, created: config });
     }
   } catch (err) {
-    console.error("[sites POST]", err);
+    logger.error("[sites POST]", err);
     res.status(500).json({ error: String(err) });
   }
 });
@@ -127,7 +128,7 @@ router.delete("/sites", async (req: Request, res: Response) => {
     }
     res.json({ ok: true, deleted: id });
   } catch (err) {
-    console.error("[sites DELETE]", err);
+    logger.error("[sites DELETE]", err);
     res.status(500).json({ error: String(err) });
   }
 });
@@ -151,7 +152,7 @@ router.get("/cities", async (req: Request, res: Response) => {
     });
     res.json(cities);
   } catch (err) {
-    console.error("[cities GET]", err);
+    logger.error("[cities GET]", err);
     res.status(500).json({ error: String(err) });
   }
 });
@@ -215,7 +216,7 @@ router.post("/cities", async (req: Request, res: Response) => {
       res.status(201).json({ ok: true, created: config });
     }
   } catch (err) {
-    console.error("[cities POST]", err);
+    logger.error("[cities POST]", err);
     res.status(500).json({ error: String(err) });
   }
 });
@@ -234,7 +235,7 @@ router.delete("/cities", async (req: Request, res: Response) => {
     }
     res.json({ ok: true, deleted: id });
   } catch (err) {
-    console.error("[cities DELETE]", err);
+    logger.error("[cities DELETE]", err);
     res.status(500).json({ error: String(err) });
   }
 });
@@ -258,7 +259,7 @@ router.get("/keywords", async (req: Request, res: Response) => {
     });
     res.json(keywords);
   } catch (err) {
-    console.error("[keywords GET]", err);
+    logger.error("[keywords GET]", err);
     res.status(500).json({ error: String(err) });
   }
 });
@@ -305,7 +306,7 @@ router.post("/keywords", async (req: Request, res: Response) => {
       res.status(201).json({ ok: true, created: config });
     }
   } catch (err) {
-    console.error("[keywords POST]", err);
+    logger.error("[keywords POST]", err);
     res.status(500).json({ error: String(err) });
   }
 });
@@ -324,7 +325,7 @@ router.delete("/keywords", async (req: Request, res: Response) => {
     }
     res.json({ ok: true, deleted: id });
   } catch (err) {
-    console.error("[keywords DELETE]", err);
+    logger.error("[keywords DELETE]", err);
     res.status(500).json({ error: String(err) });
   }
 });
@@ -349,7 +350,7 @@ router.get("/competitors", async (req: Request, res: Response) => {
 
     res.json(competitors);
   } catch (err) {
-    console.error("[competitors GET]", err);
+    logger.error("[competitors GET]", err);
     res.status(500).json({ error: String(err) });
   }
 });
@@ -394,7 +395,7 @@ router.post("/competitors", async (req: Request, res: Response) => {
       res.status(201).json({ ok: true, created: config });
     }
   } catch (err) {
-    console.error("[competitors POST]", err);
+    logger.error("[competitors POST]", err);
     res.status(500).json({ error: String(err) });
   }
 });
@@ -413,7 +414,7 @@ router.delete("/competitors", async (req: Request, res: Response) => {
     }
     res.json({ ok: true, deleted: id });
   } catch (err) {
-    console.error("[competitors DELETE]", err);
+    logger.error("[competitors DELETE]", err);
     res.status(500).json({ error: String(err) });
   }
 });

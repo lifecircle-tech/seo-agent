@@ -1,6 +1,7 @@
 import { getSearchConsoleClient } from "../../../libs/google.js";
 import { RowDataPacket } from "mysql2/promise";
 import { pool } from "../../../db.js";
+import { logger } from "../../utils/logger.js";
 
 // ── Thresholds ────────────────────────────────────────────────────────
 const THRESHOLDS = {
@@ -130,7 +131,7 @@ export async function runPagespeedAudit(
   siteId: number,
   url: string,
 ): Promise<PageSpeedResult> {
-  console.log(
+  logger.info(
     `[run_pagespeed_audit] Running PSI for site_id=${siteId}, url=${url}...`,
   );
 
@@ -194,7 +195,7 @@ export async function runPagespeedAudit(
     alerts.push(`CLS is ${cls.toFixed(3)} (threshold: ${THRESHOLDS.cls})`);
   }
 
-  console.log(
+  logger.info(
     `[run_pagespeed_audit] mobile=${mobileScore}, desktop=${desktopScore}, LCP=${lcp}ms, CLS=${cls.toFixed(3)}, alerts=${alerts.length}`,
   );
 
@@ -218,7 +219,7 @@ export async function checkCrawlErrors(
   siteId: number,
 ): Promise<CrawlErrorResult> {
   const siteUrl = await getSiteDomain(siteId);
-  console.log(
+  logger.info(
     `[check_crawl_errors] Checking crawl errors for site_id=${siteId} (${siteUrl})...`,
   );
 
@@ -231,9 +232,7 @@ export async function checkCrawlErrors(
     const sitemapRes = await searchConsole.sitemaps.list({ siteUrl });
     sitemaps = sitemapRes.data.sitemap ?? [];
   } catch (err: any) {
-    console.warn(
-      `[check_crawl_errors] Could not list sitemaps: ${err.message}`,
-    );
+    logger.error(`[check_crawl_errors] Could not list sitemaps: `, err);
   }
 
   for (const sitemap of sitemaps) {
@@ -271,9 +270,7 @@ export async function checkCrawlErrors(
           .filter((u) => !u.endsWith(".xml")); // skip sitemap index entries
       }
     } catch (err: any) {
-      console.warn(
-        `[check_crawl_errors] Could not fetch sitemap XML: ${err.message}`,
-      );
+      logger.error(`[check_crawl_errors] Could not fetch sitemap XML: `, err);
     }
   }
 
@@ -313,7 +310,7 @@ export async function checkCrawlErrors(
         });
       }
     } catch (err: any) {
-      console.warn(`[check_crawl_errors] GSC query failed: ${err.message}`);
+      logger.error(`[check_crawl_errors] GSC query failed: `, err);
     }
   }
 
@@ -322,8 +319,8 @@ export async function checkCrawlErrors(
     (e) => e.type === "sitemap_warning",
   ).length;
 
-  console.log("[check_crawl_errors] Errors ", errors);
-  console.log(
+  logger.info("[check_crawl_errors] Crawl Errors: ", errors);
+  logger.info(
     `[check_crawl_errors] ${errorCount} errors, ${warningCount} warnings`,
   );
 
@@ -341,7 +338,7 @@ export async function checkIndexCoverage(
   siteId: number,
 ): Promise<IndexCoverageResult> {
   const siteUrl = await getSiteDomain(siteId);
-  console.log(
+  logger.info(
     `[check_index_coverage] Checking index coverage for site_id=${siteId} (${siteUrl})...`,
   );
 
@@ -359,7 +356,7 @@ export async function checkIndexCoverage(
       }
     }
   } catch (err: any) {
-    console.warn(`[check_index_coverage] Sitemaps API failed: ${err.message}`);
+    logger.error(`[check_index_coverage] Sitemaps API failed: `, err);
   }
 
   // 2. If sitemaps didn't give us data, count from GSC analytics
@@ -382,9 +379,7 @@ export async function checkIndexCoverage(
       indexedCount = (gscRes.data.rows ?? []).length;
       submittedCount = indexedCount; // best estimate when sitemap data is unavailable
     } catch (err: any) {
-      console.warn(
-        `[check_index_coverage] GSC analytics failed: ${err.message}`,
-      );
+      logger.error(`[check_index_coverage] GSC analytics failed: `, err);
     }
   }
 
@@ -447,7 +442,7 @@ export async function checkIndexCoverage(
     );
   }
 
-  console.log(
+  logger.info(
     `[check_index_coverage] submitted=${submittedCount}, indexed=${indexedCount}, coverage=${coveragePct}%`,
   );
 
@@ -468,7 +463,7 @@ export async function getCoreWebVitals(
   siteId: number,
 ): Promise<CoreWebVitalsResult> {
   const siteUrl = await getSiteDomain(siteId);
-  console.log(
+  logger.info(
     `[get_core_web_vitals] Fetching CWV for site_id=${siteId} (${siteUrl})...`,
   );
 
@@ -528,7 +523,7 @@ export async function getCoreWebVitals(
     );
   }
 
-  console.log(
+  logger.info(
     `[get_core_web_vitals] source=${source} LCP=${finalLcp}ms, CLS=${finalCls.toFixed(3)}, FID=${finalFid}ms, alerts=${alerts.length}`,
   );
 

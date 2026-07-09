@@ -8,6 +8,7 @@ import {
   getAllLatestSeoReport,
 } from "../controllers/seo-report.controller.js";
 import type { ReportType } from "../models/seo-report.model.js";
+import { logger } from "../utils/logger.js";
 
 const VALID_TYPES: ReportType[] = ["backlinks", "sitemap_ads", "missing_pages"];
 
@@ -18,7 +19,7 @@ router.get("/weekly", async (req: Request, res: Response) => {
     const reports = await getAllLatestSeoReport();
     res.json({ success: true, reports });
   } catch (err) {
-    console.error("[seo-report] site latest error:", err);
+    logger.error("[seo-report] site latest error:", err);
     res.status(500).json({ success: false, error: "Database error" });
   }
 });
@@ -37,7 +38,7 @@ router.get(
       const reports = await getLatestReportsForSite(siteId);
       res.json({ success: true, reports });
     } catch (err) {
-      console.error("[seo-report] site latest error:", err);
+      logger.error("[seo-report] site latest error:", err);
       res.status(500).json({ success: false, error: "Database error" });
     }
   },
@@ -70,7 +71,7 @@ router.get(
       }
       res.json({ success: true, report });
     } catch (err) {
-      console.error("[seo-report] latest error:", err);
+      logger.error("[seo-report] latest error:", err);
       res.status(500).json({ success: false, error: "Database error" });
     }
   },
@@ -99,7 +100,7 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
     });
     res.json({ success: true, ...result });
   } catch (err) {
-    console.error("[seo-report] list error:", err);
+    logger.error("[seo-report] list error:", err);
     res.status(500).json({ success: false, error: "Database error" });
   }
 });
@@ -114,7 +115,7 @@ router.get("/:id", requireAuth, async (req: Request, res: Response) => {
     }
     res.json({ success: true, report });
   } catch (err) {
-    console.error("[seo-report] get error:", err);
+    logger.error("[seo-report] get error:", err);
     res.status(500).json({ success: false, error: "Database error" });
   }
 });

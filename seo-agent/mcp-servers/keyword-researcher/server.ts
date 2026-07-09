@@ -1,10 +1,10 @@
-import { ahrefsFetch, ahrefsDelay } from "../competitor-intel/server.js";
 import {
   getSearchConsoleClient,
   getSheetsClient,
   getSpreadsheetId,
 } from "../../../libs/google.js";
 import { getKeywordsSuggestions } from "../../services/dataForSEO.service.js";
+import { logger } from "../../utils/logger.js";
 
 export interface KeywordOpportunity {
   keyword: string;
@@ -48,24 +48,9 @@ export async function discoverCityKeywords(
   service: string,
 ): Promise<KeywordOpportunity[]> {
   const seedKeyword = `${service} ${city}`;
-  console.log(`[keyword-researcher] Discovering keywords for: ${seedKeyword}`);
+  logger.info(`[keyword-researcher] Discovering keywords for: ${seedKeyword}`);
 
-  // 1. Fetch related keywords from Ahrefs
-  await ahrefsDelay();
-  // const ahrefsData = (await ahrefsFetch("/keywords-explorer/matching-terms", {
-  //   keywords: seedKeyword,
-  //   country: "in",
-  //   limit: "20",
-  //   select: "keyword,volume,difficulty",
-  // })) as { keywords?: any[] };
-
-  // const discovered = (ahrefsData.keywords ?? []).map((k) => ({
-  //   keyword: k.keyword,
-  //   volume: k.volume ?? 0,
-  //   difficulty: k.difficulty ?? 0,
-  //   current_position: null as number | null,
-  // }));
-
+  // 1. Fetch related keywords
   const suggestions = (await getKeywordsSuggestions(seedKeyword)) as [];
 
   const discovered = suggestions.map((item: any) => ({
@@ -114,7 +99,7 @@ export async function discoverCityKeywords(
 export function getKeywordClusters(
   keywords: KeywordOpportunity[],
 ): KeywordOpportunity[] {
-  console.log(`[keyword-researcher] Clustering keywords...`);
+  logger.info(`[keyword-researcher] Clustering keywords...`);
   return keywords.map((k) => ({
     ...k,
     cluster: extractTopic(k.keyword),
@@ -128,7 +113,7 @@ export function getKeywordClusters(
 export function prioritiseKeywords(
   keywords: KeywordOpportunity[],
 ): KeywordOpportunity[] {
-  console.log(`[keyword-researcher] Sorting Keywords by Opportunity...`);
+  logger.info(`[keyword-researcher] Sorting Keywords by Opportunity...`);
   return keywords
     .map((k) => {
       const volScore = k.volume * 0.4;
@@ -154,11 +139,11 @@ export async function writeToSheet(
   tabName: string,
   rows: unknown[][],
 ) {
-  console.log("============= Sheets GSC Auth *************** site_id:", siteId);
+  logger.info(`============= Sheets GSC Auth *************** site_id: ${siteId}`);
   const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
 
-  console.log("========== Appending to Sheet **********");
+  logger.info("========== Appending to Sheet **********");
   const result = await sheets.spreadsheets.values.append({
     spreadsheetId,
     range: `${tabName}!A1`,
@@ -166,7 +151,7 @@ export async function writeToSheet(
     requestBody: { values: rows },
   });
 
-  console.log("========== Sheet Updated **********");
+  logger.info("========== Sheet Updated **********");
   return {
     ok: true,
     tab: tabName,
@@ -183,7 +168,7 @@ export async function writeKeywordMatrix(
   city: string,
   keywords: KeywordOpportunity[],
 ): Promise<{ success: boolean; rows_written: number }> {
-  console.log(`  [city] Writing keywords to Sheets...`, keywords.length);
+  logger.info(`[city] Writing keywords to Sheets... ${keywords.length}`);
   const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
 
@@ -212,7 +197,7 @@ export async function writeKeywordMatrix(
 
     return { success: true, rows_written: rows.length };
   } catch (error) {
-    console.error("[keyword-researcher] Error writing to sheets:", error);
+    logger.error("[keyword-researcher] Error writing to sheets:", error);
     throw error;
   }
 }

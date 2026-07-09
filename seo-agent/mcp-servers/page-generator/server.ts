@@ -6,6 +6,7 @@ import {
 import { RowDataPacket } from "mysql2/promise";
 import { pool } from "../../../db.js";
 import { wpFetch } from "../../../libs/wordpress.js";
+import { logger } from "../../utils/logger.js";
 
 // ── Retry helpers ─────────────────────────────────────────────────────
 const MAX_RETRIES = 3;
@@ -25,12 +26,12 @@ async function callWithRetry(
       lastExc = exc as Error;
       if (attempt < MAX_RETRIES - 1) {
         const waitMs = RETRY_BACKOFF[attempt];
-        console.log(
+        logger.warn(
           `[${label}] attempt ${attempt + 1} failed: ${exc.message}. Retrying in ${waitMs / 1000}s...`,
         );
         await sleep(waitMs);
       } else {
-        console.log(`[${label}] all ${MAX_RETRIES} attempts failed.`);
+        logger.error(`[${label}] all ${MAX_RETRIES} attempts failed.`);
       }
     }
   }
@@ -123,7 +124,7 @@ Return ONLY a JSON object with keys:
 
 No extra text outside the JSON.`;
 
-  console.log(
+  logger.info(
     `[generate_city_page] Generating page for ${service} in ${city}...`,
   );
 
@@ -134,8 +135,8 @@ No extra text outside the JSON.`;
     betas: ["mcp-client-2025-04-04"],
   });
 
-  console.log(`[generate_city_page] Stop reason:`, response.stop_reason);
-  console.log(`[generate_city_page] Usage:`, response.usage);
+  logger.info(`[generate_city_page] Stop reason: ${response.stop_reason}`);
+  logger.info(`[generate_city_page] Usage: `, response.usage);
 
   const text = response.content
     .filter((block) => block.type === "text")
@@ -146,11 +147,13 @@ No extra text outside the JSON.`;
   const parsed = extractJson(text);
   if (!parsed) {
     throw new Error(
-      `[generate_city_page] Failed to parse Claude response. Raw: ${text.substring(0, 300)}`,
+      `[generate_city_page] Failed to parse Claude response. Raw: ${text}`,
     );
   }
 
-  console.log("[generated page] html content \n", slug, "\n", parsed);
+  logger.info("[generated page] html content");
+  logger.info(slug);
+  logger.info(parsed);
 
   return {
     site_id: siteId,
@@ -186,7 +189,7 @@ export async function createCmsDraft(
     pageContent.primary_keyword ??
     `${pageContent.service} ${pageContent.city}`;
 
-  console.log(
+  logger.info(
     `[create_cms_draft] Creating draft page "${pageContent.title}" for site_id=${siteId}...`,
   );
 
@@ -217,7 +220,7 @@ export async function createCmsDraft(
     );
   }
 
-  console.log(
+  logger.info(
     `[create_cms_draft] Draft created: wp_page_id=${created.id}, link=${created.link}`,
   );
 
@@ -237,7 +240,7 @@ export async function getMissingCityPages(siteId: number): Promise<{
   missing_count: number;
   missing: MissingCityPage[];
 }> {
-  console.log(
+  logger.info(
     `[get_missing_city_pages] Checking cities for site_id=${siteId}...`,
   );
 
@@ -248,7 +251,7 @@ export async function getMissingCityPages(siteId: number): Promise<{
   );
 
   if (cityRows.length === 0) {
-    console.log(
+    logger.warn(
       `[get_missing_city_pages] No cities configured for site_id=${siteId}.`,
     );
     return { site_id: siteId, total_cities: 0, missing_count: 0, missing: [] };
@@ -289,15 +292,18 @@ export async function getMissingCityPages(siteId: number): Promise<{
       [...allSlugs].filter((s) => s.includes(citySlug) && s) ||
       [...allLinks].filter((l) => l.includes(citySlug) && l);
 
-    const services = typeof row.services == 'string' ? JSON.parse(row.services) : row.services;
-    
-    const missingServicePages = (services as string[] ?? []).filter((service) => {
-      return (
-        ![...cityPages].some((s) => s.includes(service.replaceAll(" ", "-")))
-      );
-    });
+    const services =
+      typeof row.services == "string" ? JSON.parse(row.services) : row.services;
 
-    if(missingServicePages.length) {
+    const missingServicePages = ((services as string[]) ?? []).filter(
+      (service) => {
+        return ![...cityPages].some((s) =>
+          s.includes(service.replaceAll(" ", "-")),
+        );
+      },
+    );
+
+    if (missingServicePages.length) {
       missing.push({
         city: row.city as string,
         state: row.state as string,
@@ -308,10 +314,10 @@ export async function getMissingCityPages(siteId: number): Promise<{
     }
   }
 
-  console.log(
+  logger.info(
     `[get_missing_city_pages] ${missing.length}/${cityRows.length} cities missing pages.`,
   );
-  console.log("[get_missing_city_pages] Missing Pages : ", missing);
+  logger.info("[get_missing_city_pages] Missing Pages : ", missing);
 
   return {
     site_id: siteId,

@@ -15,6 +15,10 @@ function toJSON(row: PageContent): PageContentJSON {
         ? row.acknowledged_at.toISOString()
         : String(row.acknowledged_at)
       : null,
+    keywords_analytics:
+      typeof row.keywords_analytics === "string"
+        ? JSON.parse(row.keywords_analytics)
+        : row.keywords_analytics,
     created_at:
       row.created_at instanceof Date
         ? row.created_at.toISOString()
@@ -26,21 +30,19 @@ function toJSON(row: PageContent): PageContentJSON {
 export async function createPageContent(
   data: Pick<
     PageContent,
-    | "id"
-    | "site_id"
-    | "page_meta_details"
-    | "url"
+    "id" | "site_id" | "page_meta_details" | "url" | "keywords_analytics"
   >,
 ): Promise<PageContentJSON> {
   await pool.query<ResultSetHeader>(
     `INSERT INTO page_content 
-      (id, site_id, page_meta_details, url, status) 
-    VALUES (?, ?, ?, ?, 'pending')`,
+      (id, site_id, page_meta_details, url, status, keywords_analytics) 
+    VALUES (?, ?, ?, ?, 'pending', ?)`,
     [
       data.id,
       data.site_id,
       JSON.stringify(data.page_meta_details),
       data.url,
+      JSON.stringify(data.keywords_analytics),
     ],
   );
   const record = await getPageContentById(data.id);
@@ -71,7 +73,7 @@ export async function listPageContents(filters: {
     conditions.push("site_id = ?");
     params.push(filters.site_id);
   }
-  
+
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const limit = Math.min(filters.limit ?? 10, 100);
   const offset = filters.offset ?? 0;
@@ -131,7 +133,7 @@ export async function updatePageContentBody(
 ): Promise<PageContentJSON | null> {
   const [result] = await pool.query<ResultSetHeader>(
     "UPDATE page_content SET status = ?, content = ?, reasoning = COALESCE(?, reasoning) WHERE id = ?",
-    ['created', content, reasoning ?? null, id],
+    ["created", content, reasoning ?? null, id],
   );
   if (result.affectedRows === 0) return null;
   return getPageContentById(id);

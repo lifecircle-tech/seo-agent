@@ -103,3 +103,32 @@ export async function getKeywordsSuggestions(keywords: string) {
     : [];
   return suggestions;
 }
+
+export async function getKeywordsOverview(keywords: string[]) {
+  const post_array = [
+    {
+      language_name: "English",
+      location_name: "India",
+      include_serp_info: true,
+      keywords,
+    },
+  ];
+
+  const resp = await fetch(
+    `${dataForSEO_URL}/dataforseo_labs/google/keyword_overview/live`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${btoa(`${dataForSEO_USERNAME}:${dataForSEO_PASSWORD}`)}`,
+      },
+      body: JSON.stringify(post_array),
+    },
+  );
+
+  const data = await resp.json();
+  const overview = data.tasks[0]?.result
+    ? data.tasks[0]?.result[0]?.items || []
+    : [];
+  return overview;
+}

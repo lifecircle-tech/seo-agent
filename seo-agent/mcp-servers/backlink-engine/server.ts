@@ -1,4 +1,5 @@
 import { getDomain } from "../../../libs/functions.js";
+import { logger } from "../../utils/logger.js"
 
 // ── DataForSEO helpers ────────────────────────────────────────────────
 
@@ -69,7 +70,7 @@ export async function findLinkProspects(
     .filter((d) => d && d !== ourDomain);
 
   if (competitorDomains.length === 0) {
-    console.log(
+    logger.info(
       `[backlink-engine] No competitors configured for site_id=${siteId}`,
     );
     return {
@@ -81,7 +82,7 @@ export async function findLinkProspects(
     };
   }
 
-  console.log(
+  logger.info(
     `[backlink-engine:prospects] site_id=${siteId} our=${ourDomain} competitors=${competitorDomains.join(", ")}`,
   );
 

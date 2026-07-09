@@ -10,8 +10,10 @@ import {
   updatePageContentBody,
   updatePageContentError,
 } from "../controllers/page-content.controller.js";
-import { analyseWithAI } from "../orchestrators/content.js";
+import { analyseFAQwithAI, analyseWithAI } from "../orchestrators/content.js";
 import { io } from "../../server.js";
+import { getKeywordsOverview } from "./dataForSEO.service.js";
+import { logger } from "../utils/logger.js";
 
 const turndown = new TurndownService({
   headingStyle: "atx",
@@ -49,6 +51,73 @@ const WIDGET_SELECTORS = [
     selector: '[class*="counter"], [class*="stat"], [class*="number"]',
   },
 ];
+
+/**
+ * Extracts FAQ/accordion blocks from WordPress HTML and returns markdown.
+ * Each question is an ## heading; each answer is a paragraph beneath it.
+ *
+ * Strategy (in priority order):
+ *  1. <details>/<summary> — Elementor accordion and native HTML5 accordions
+ *  2. CSS-class pairs — classic FAQ plugins (question + answer siblings)
+ *  3. <dl>/<dt>/<dd> — definition-list style FAQs
+ */
+export function extractFAQSection(html: string): string {
+  const $ = cheerio.load(html);
+  $("script, style, svg, noscript, iframe, img").remove();
+  $('[aria-hidden="true"]').remove();
+
+  const items: Array<{ question: string; answer: string }> = [];
+
+  // ── Strategy 1: <details>/<summary> (Elementor + native HTML5) ───────
+  $("details").each((_: any, details: any) => {
+    const $details = $(details).clone();
+    const question = $details
+      .children("summary")
+      .text()
+      .replace(/\s+/g, " ")
+      .trim();
+    $details.children("summary").remove();
+    const answer = $details.text().replace(/\s+/g, " ").trim();
+    if (question && answer) items.push({ question, answer });
+  });
+
+  // ── Strategy 2: CSS class-based pairs ────────────────────────────────
+  if (!items.length) {
+    const questionSel =
+      '[class*="faq-question"], [class*="accordion-title"], [class*="accordion-header"], ' +
+      '[class*="question"], [class*="faq-title"]';
+
+    $(questionSel).each((_: any, qEl: any) => {
+      const question = $(qEl).text().replace(/\s+/g, " ").trim();
+      const answerSel =
+        '[class*="faq-answer"], [class*="accordion-content"], [class*="accordion-body"], ' +
+        '[class*="answer"], [class*="faq-content"]';
+      const answer = (
+        $(qEl).next(answerSel).text() ||
+        $(qEl).siblings(answerSel).first().text() ||
+        $(qEl).parent().siblings(answerSel).first().text()
+      )
+        .replace(/\s+/g, " ")
+        .trim();
+      if (question && answer) items.push({ question, answer });
+    });
+  }
+
+  // ── Strategy 3: <dl>/<dt>/<dd> ───────────────────────────────────────
+  if (!items.length) {
+    $("dl dt").each((_: any, dt: any) => {
+      const question = $(dt).text().replace(/\s+/g, " ").trim();
+      const answer = $(dt).next("dd").text().replace(/\s+/g, " ").trim();
+      if (question && answer) items.push({ question, answer });
+    });
+  }
+
+  if (!items.length) return "";
+
+  return items
+    .map(({ question, answer }) => `## ${question}\n\n${answer}`)
+    .join("\n\n---\n\n");
+}
 
 /**
  * Extracts clean, token-efficient content from WordPress HTML.
@@ -90,24 +159,35 @@ export function extractWordPressContent(html: string): string {
 /**
  * Queries the WordPress 'posts' path to get post content and processes it.
  */
-export async function getPageContent(siteId: number, url: string) {
+export async function getPageContent(
+  siteId: number,
+  url: string,
+  type: "post" | "page",
+) {
   const parsedUrl = new URL(url);
   const slug =
     parsedUrl.pathname
       .replace(/^\/|\/$/g, "")
       .split("/")
       .pop() ?? "";
+  const pageType = type == "post" ? "posts" : "pages";
 
   const result = (await wpFetch(
     siteId,
     "GET",
-    `/posts?slug=${encodeURIComponent(slug)}&_fields=id,content`,
+    `/${pageType}?slug=${encodeURIComponent(slug)}&_fields=id,content`,
   )) as any[];
 
   if (!result.length) throw new Error(`Post not found for slug: ${slug}`);
 
-  const rawContent = extractWordPressContent(result[0].content.rendered);
-  console.log(`[page-content.service] Extracted Content for ${url}`);
+  let rawContent = "";
+
+  if (type === "post") {
+    rawContent = extractWordPressContent(result[0].content.rendered);
+  } else {
+    rawContent = extractFAQSection(result[0].content.rendered);
+  }
+  logger.info(`[page-content.service] Extracted Content for ${url}`);
 
   return rawContent;
 }
@@ -131,6 +211,34 @@ export async function updatePageContent(
 }
 
 /**
+ * Get focus keywords overview details
+ */
+export async function getFocusKeywordsOverview(keywords: string[]) {
+  try {
+    const res = await getKeywordsOverview(keywords);
+    let keywords_analytics = keywords.map((k) => {
+      const overview = res.find((o: any) => k.toLowerCase() === o.keyword);
+      return {
+        keyword: k,
+        cpc: overview?.keyword_info.cpc ?? undefined,
+        search_volume: overview?.keyword_info.search_volume ?? undefined,
+        competition: overview?.keyword_info.competition ?? undefined,
+        competition_level:
+          overview?.keyword_info.competition_level ?? undefined,
+      };
+    });
+
+    return keywords_analytics;
+  } catch (err) {
+    logger.error(
+      "[page_content.keyword_overview] Error Keywords Overview : ",
+      err,
+    );
+    return null;
+  }
+}
+
+/**
  * Fetches the stored content for a page-content record and compares it
  * against the live WordPress content, returning the overlap percentage.
  */
@@ -140,9 +248,13 @@ export async function verifyPageUpdate(
   const record = await getPageContentById(id);
   if (!record) throw new Error(`Page content record not found: ${id}`);
 
-  const { site_id, url, content: storedContent } = record;
+  const { site_id, url, content: storedContent, page_meta_details } = record;
 
-  const liveContent = await getPageContent(site_id, url);
+  const liveContent = await getPageContent(
+    site_id,
+    url,
+    page_meta_details.page_type as "post" | "page",
+  );
 
   const tokenize = (text: string) =>
     text
@@ -188,6 +300,11 @@ export async function runPageContentAgent(id: string) {
     const { site_id, original_content } = approval as any;
     const url = original_content.url as string;
 
+    // get keywords overview
+    const keywords_overview = await getFocusKeywordsOverview(
+      original_content.focus_keywords,
+    );
+
     // create page-content record
     const result = await createPageContent({
       id: randomUUID(),
@@ -199,6 +316,7 @@ export async function runPageContentAgent(id: string) {
         meta_description: original_content.current_description || "unknown",
         keywords: original_content.focus_keywords || [],
       },
+      keywords_analytics: keywords_overview,
     });
     io.emit("content:created", result);
     recordId = result.id;
@@ -210,12 +328,15 @@ export async function runPageContentAgent(id: string) {
     };
 
     // fetch page content from WordPress
-    const content = await getPageContent(site_id, url);
-    // Here you would call your AI analysis/orchestrator functions with the content
-    console.log(`[page-content.service] Running agent for ${url}...`);
+    const content = await getPageContent(site_id, url, original_content.type);
 
-    // Example: const insights = await analyseWithAI(content);
-    const response = await analyseWithAI(content, pageDetails);
+    let response = {} as { content: string; reason: any };
+    logger.info(`[page-content.service] Running agent for ${url}...`);
+    if (original_content.type === "post") {
+      response = await analyseWithAI(content, pageDetails);
+    } else {
+      response = await analyseFAQwithAI(content, pageDetails);
+    }
 
     // Then update the content record with any changes or insights
     const record = await updatePageContentBody(
@@ -227,7 +348,7 @@ export async function runPageContentAgent(id: string) {
 
     return { success: true, record };
   } catch (err) {
-    console.error(`[page-content.service] Error processing :`, err);
+    logger.error(`[page-content.service] Error processing :`, err);
     const record = await updatePageContentError(recordId);
     io.emit("content:updated", record);
     return { success: false, error: "Database error" };

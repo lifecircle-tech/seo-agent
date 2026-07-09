@@ -9,6 +9,7 @@ import { lc_pool, pool } from "../../db.js";
 import { updatePageMeta } from "../services/wordpress.service.js";
 
 import { runPageContentAgent } from "../services/page-content.service.js";
+import { logger } from "../utils/logger.js";
 
 // ── Row serialiser ────────────────────────────────────────────────────
 function toJSON(row: Approval): ApprovalJSON {
@@ -179,7 +180,8 @@ export async function approveApproval(
 
   // If the approved item is a meta_rewrite, push the change to WordPress.
   if (approval.type === "meta_rewrite") {
-    if (approval.original_content.type === "post") runPageContentAgent(id);
+    // if (approval.original_content.type === "post")
+    runPageContentAgent(id);
 
     const c = (approval.updated_content ?? approval.original_content) as {
       // Use updated_content if present, else original
@@ -197,12 +199,12 @@ export async function approveApproval(
       );
 
       if (!wpResult.ok) {
-        console.error(
+        logger.error(
           `[approveApproval] WordPress update failed for approval ${id}:`,
           wpResult.error,
         );
       } else {
-        console.log(
+        logger.info(
           `[approveApproval] WordPress meta updated for ${c.url} (approval ${id})`,
         );
       }

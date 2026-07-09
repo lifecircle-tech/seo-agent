@@ -11,6 +11,7 @@ import { Router, Request, Response } from "express";
 import { google } from "googleapis";
 import { pool } from "../../db.js";
 import { RowDataPacket } from "mysql2/promise";
+import { logger } from "../utils/logger.js";
 
 const router = Router();
 
@@ -41,7 +42,7 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
     );
     open_alerts = Number(rows[0].count);
   } catch (err) {
-    console.error("[overview] alerts query failed:", err);
+    logger.error("[overview] alerts query failed:", err);
   }
 
   // GSC: avg position + 28-day click sparkline
@@ -89,7 +90,7 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
       });
     }
   } catch (err) {
-    console.error("[overview] GSC error:", err);
+    logger.error("[overview] GSC error:", err);
   }
 
   res.json({

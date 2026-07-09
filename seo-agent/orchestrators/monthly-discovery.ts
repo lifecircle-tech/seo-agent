@@ -1,4 +1,5 @@
 import * as dotenv from "dotenv";
+import { logger } from "../utils/logger.js";
 import { getSheetsClient, getSpreadsheetId } from "../../libs/google.js";
 import {
   discoverCityKeywords,
@@ -51,7 +52,7 @@ async function writeToContentCalendar(
   city: string,
   opportunities: ContentOpportunity[],
 ) {
-  console.log(`  [city] Writing contents to Sheets...`);
+  logger.info(`[city] Writing contents to Sheets...`);
   const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
   const timestamp = new Date().toISOString().split("T")[0];
@@ -110,13 +111,11 @@ Return ONLY a JSON object with an "opportunities" array.
 
   const parsed = extractJson(text);
   if (!parsed) {
-    console.error(
-      `[city] Warning: could not parse JSON from response. Raw: ${text.substring(0, 200)}`,
-    );
+    logger.warn(`[city] Could not parse JSON from response`, { raw: text });
     return [];
   }
 
-  console.log(`[city] Claude analysis complete`);
+  logger.info(`[city] Claude analysis complete`);
   return parsed || [];
 }
 
@@ -126,10 +125,9 @@ Return ONLY a JSON object with an "opportunities" array.
 async function runMonthlyDiscovery() {
   const startTime = Date.now();
 
-  console.log(`[monthly-discovery] ══════════════════════════════════════════`);
-  console.log(`[monthly-discovery] Starting Monthly Discovery...`);
-  console.log(`[monthly-discovery] DRY_RUN=${DRY_RUN}`);
-  console.log(`[monthly-discovery] ══════════════════════════════════════════`);
+  logger.info(`[monthly-discovery] ══════════════════════════════════════════`);
+  logger.info(`[monthly-discovery] Starting Monthly Discovery...`);
+  logger.info(`[monthly-discovery] ══════════════════════════════════════════`);
 
   // 1. Fetch Config from Database
   const { sites } = await listSitesConfigs({ limit: 1000 });
@@ -139,58 +137,54 @@ async function runMonthlyDiscovery() {
   // 2. Loop Sites and Cities
   const site = sites[0];
   // for (const site of sites) {
-    console.log(`\n[site] ${site.domain} (${site.brand_name})`);
-    let siteKeywordsTotal = 0;
-    let siteOpportunitiesTotal = 0;
+  logger.info(`[site] ${site.domain} (${site.brand_name})`);
+  let siteKeywordsTotal = 0;
+  let siteOpportunitiesTotal = 0;
 
-    const cities = site.cities;
-    for (const city of cities) {
-      try {
-        console.log(`  [city] Researching: ${city}...`);
+  const cities = site.cities;
+  for (const city of cities) {
+    try {
+      logger.info(`  [city] Researching: ${city}...`);
 
-        // Call keyword-researcher MCP logic
-        const rawKeywords = await discoverCityKeywords(
-          site.site_id,
-          site.domain,
-          city,
-          site.industry,
-        );
-        const clustered = getKeywordClusters(rawKeywords);
-        const prioritised = prioritiseKeywords(clustered);
+      // Call keyword-researcher MCP logic
+      const rawKeywords = await discoverCityKeywords(
+        site.site_id,
+        site.domain,
+        city,
+        site.industry,
+      );
+      const clustered = getKeywordClusters(rawKeywords);
+      const prioritised = prioritiseKeywords(clustered);
 
-        siteKeywordsTotal += prioritised.length;
+      siteKeywordsTotal += prioritised.length;
 
-        if (!DRY_RUN) {
-          // Write to Keywords Matrix
-          await writeKeywordMatrix(site.site_id, city, prioritised);
+      if (!DRY_RUN) {
+        // Write to Keywords Matrix
+        await writeKeywordMatrix(site.site_id, city, prioritised);
 
-          // AI Analysis
-          const { opportunities } = await analyzeWithAI(
-            site,
-            city,
-            prioritised,
-          );
-          siteOpportunitiesTotal += opportunities.length;
+        // AI Analysis
+        const { opportunities } = await analyzeWithAI(site, city, prioritised);
+        siteOpportunitiesTotal += opportunities.length;
 
-          if (opportunities.length > 0) {
-            await writeToContentCalendar(site.site_id, city, opportunities);
-          }
+        if (opportunities.length > 0) {
+          await writeToContentCalendar(site.site_id, city, opportunities);
         }
-      } catch (err: any) {
-        console.error(`  [error] Failed discovery for ${city}: ${err.message}`);
       }
+    } catch (err: any) {
+      logger.error(`  [error] Failed discovery for ${city}: ${err.message}`);
     }
+  }
 
-    const siteReport = `${site.brand_name}(${site.domain}): Discovered ${siteKeywordsTotal} keywords across ${site.cities.length} cities. Created ${siteOpportunitiesTotal} content ideas.`;
-    overallSummary.push(siteReport);
-    console.log(
-      `[monthly-discovery] All Cities for site_id ${site.site_id} Finished`,
-    );
+  const siteReport = `${site.brand_name}(${site.domain}): Discovered ${siteKeywordsTotal} keywords across ${site.cities.length} cities. Created ${siteOpportunitiesTotal} content ideas.`;
+  overallSummary.push(siteReport);
+  logger.info(
+    `[monthly-discovery] All Cities for site_id ${site.site_id} Finished`,
+  );
   // }
 
   // 3. Post to Slack
   if (!DRY_RUN) {
-    console.log("Summary ", overallSummary);
+    logger.info(`[monthly-discovery] Summary `, overallSummary);
 
     await postMonthlyDiscoveryToSlack({
       summary: overallSummary,
@@ -198,17 +192,14 @@ async function runMonthlyDiscovery() {
   }
 
   const elapsed = (Date.now() - startTime) / 1000;
-  console.log(`[monthly-discovery] ══════════════════════════════════════════`);
-  console.log(`[monthly-discovery] Finished in ${elapsed.toFixed(1)}s`);
-  console.log(`[monthly-discovery] All Sites Finished`);
-  console.log(`[monthly-discovery] ══════════════════════════════════════════`);
+  logger.info(
+    `[monthly-discovery] Finished in ${elapsed.toFixed(1)}s. All Sites Finished.`,
+  );
+  logger.info(`[monthly-discovery] ══════════════════════════════════════════`);
 }
 
 export async function monthlyDiscovery() {
-  runMonthlyDiscovery().catch(console.error);
+  runMonthlyDiscovery().catch((err) =>
+    logger.error(`[monthly-discovery] Fatal error`, err),
+  );
 }
-
-// Execute
-// if (import.meta.url === `file://${process.argv[1]}`) {
-//   runMonthlyDiscovery().catch(console.error);
-// }

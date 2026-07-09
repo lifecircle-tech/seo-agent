@@ -1,5 +1,6 @@
 import * as dotenv from "dotenv";
 import { randomUUID } from "node:crypto";
+import { logger } from "../utils/logger.js";
 
 import { listSitesConfigs } from "../controllers/sites.controller.js";
 import {
@@ -35,14 +36,14 @@ async function runDailyCheckForSite(
 ): Promise<SiteIssue[]> {
   const issues: SiteIssue[] = [];
 
-  console.log(`\n[daily] ── site_id=${siteId} (${domain}) ──────────────`);
+  logger.info(`[daily] site_id=${siteId} (${domain})`);
 
   // Derive homepage URL from domain
   const homepageUrl = domain.startsWith("http") ? domain : `https://${domain}`;
 
   // ── PageSpeed audit ─────────────────────────────────────────────
   try {
-    console.log(`[daily:pagespeed] Auditing ${homepageUrl}...`);
+    logger.info(`[daily:pagespeed] Auditing ${homepageUrl}...`);
     const psi = await runPagespeedAudit(siteId, homepageUrl);
     for (const alert of psi.alerts) {
       issues.push({
@@ -51,17 +52,17 @@ async function runDailyCheckForSite(
         message: alert,
       });
     }
-    console.log(
+    logger.info(
       `[daily:pagespeed] mobile=${psi.mobile_score}, desktop=${psi.desktop_score}, alerts=${psi.alerts.length}`,
     );
   } catch (err: any) {
-    console.error(`[daily:pagespeed] ERROR: ${err.message}`);
+    logger.error(`[daily:pagespeed] ERROR: `, err);
     // PSI failure is non-fatal — skip, don't add issue
   }
 
   // ── Core Web Vitals ─────────────────────────────────────────────
   try {
-    console.log(`[daily:cwv] Fetching CWV...`);
+    logger.info(`[daily:cwv] Fetching CWV...`);
     const cwv = await getCoreWebVitals(siteId);
     for (const alert of cwv.alerts) {
       issues.push({
@@ -70,11 +71,11 @@ async function runDailyCheckForSite(
         message: alert,
       });
     }
-    console.log(
+    logger.info(
       `[daily:cwv] source=${cwv.source} LCP=${cwv.lcp_ms}ms CLS=${cwv.cls} alerts=${cwv.alerts.length}`,
     );
   } catch (err: any) {
-    console.error(`[daily:cwv] ERROR: ${err.message}`);
+    logger.error(`[daily:cwv] ERROR: `, err);
   }
 
   // Brief pause between API calls
@@ -82,7 +83,7 @@ async function runDailyCheckForSite(
 
   // ── Crawl errors ────────────────────────────────────────────────
   try {
-    console.log(`[daily:crawl] Checking crawl errors...`);
+    logger.info(`[daily:crawl] Checking crawl errors...`);
     const crawl = await checkCrawlErrors(siteId);
 
     const payload: Pick<
@@ -123,16 +124,16 @@ async function runDailyCheckForSite(
         message: `${crawl.warning_count} sitemap warning(s) detected`,
       });
     }
-    console.log(
+    logger.info(
       `[daily:crawl] errors=${crawl.error_count} warnings=${crawl.warning_count}`,
     );
   } catch (err: any) {
-    console.error(`[daily:crawl] ERROR: ${err.message}`);
+    logger.error(`[daily:crawl] ERROR: `, err);
   }
 
   // ── Index coverage ──────────────────────────────────────────────
   try {
-    console.log(`[daily:index] Checking index coverage...`);
+    logger.info(`[daily:index] Checking index coverage...`);
     const coverage = await checkIndexCoverage(siteId);
     for (const alert of coverage.alerts) {
       issues.push({
@@ -141,17 +142,17 @@ async function runDailyCheckForSite(
         message: alert,
       });
     }
-    console.log(
+    logger.info(
       `[daily:index] submitted=${coverage.submitted_count} indexed=${coverage.indexed_count} coverage=${coverage.coverage_pct}%`,
     );
   } catch (err: any) {
-    console.error(`[daily:index] ERROR: ${err.message}`);
+    logger.error(`[daily:index] ERROR: `, err);
   }
 
   // ── SERP feature opportunities ──────────────────────────────────
   // Informational only — add as info-level items, never cause an alert on their own
   try {
-    console.log(`[daily:serp] Checking SERP feature opportunities...`);
+    logger.info(`[daily:serp] Checking SERP feature opportunities...`);
     const serp = await getFeatureOpportunities(siteId);
 
     // Only flag as issue if competitor owns featured snippet for primary keywords
@@ -165,14 +166,14 @@ async function runDailyCheckForSite(
         message: `${featuredSnippetLosses.length} keyword(s) where competitor owns the featured snippet`,
       });
     }
-    console.log(
+    logger.info(
       `[daily:serp] checked=${serp.keywords_checked} opportunities=${serp.opportunities_count}`,
     );
   } catch (err: any) {
-    console.error(`[daily:serp] ERROR: ${err.message}`);
+    logger.error(`[daily:serp] ERROR: `, err);
   }
 
-  console.log(`[daily] site_id=${siteId}: ${issues.length} issue(s) found`);
+  logger.info(`[daily] site_id=${siteId}: ${issues.length} issue(s) found`);
   return issues;
 }
 
@@ -232,10 +233,9 @@ async function postDailyAlert(
 export async function dailyTechnicalAudit() {
   const startTime = Date.now();
 
-  console.log(`[daily] ══════════════════════════════════════════`);
-  console.log(`[daily] Starting daily technical SEO audit`);
-  console.log(`[daily] DRY_RUN=${DRY_RUN}`);
-  console.log(`[daily] ══════════════════════════════════════════`);
+  logger.info(`[daily] ══════════════════════════════════════════`);
+  logger.info(`[daily] Starting daily technical SEO audit`);
+  logger.info(`[daily] ══════════════════════════════════════════`);
 
   const { sites } = await listSitesConfigs({ limit: 1000 });
   let sitesWithIssues = 0;
@@ -247,7 +247,7 @@ export async function dailyTechnicalAudit() {
 
     if (issues.length === 0) {
       // ── SILENT on healthy days ──────────────────────────────
-      console.log(
+      logger.info(
         `[daily] site_id=${site.site_id} (${site.domain}) is HEALTHY — no Slack message sent`,
       );
       return;
@@ -257,30 +257,29 @@ export async function dailyTechnicalAudit() {
     sitesWithIssues++;
 
     if (DRY_RUN) {
-      console.log(
+      logger.info(
         `[daily] DRY_RUN — would post ${issues.length} issue(s) to Slack for ${site.domain}`,
       );
     } else {
       await postDailyAlert(site.domain, issues);
-      console.log(
+      logger.info(
         `[daily] Slack alert posted for ${site.domain} (${issues.length} issues)`,
       );
     }
   } catch (err: any) {
-    console.error(
-      `[daily] Unhandled error for site_id=${site.site_id}: ${err.message}`,
+    logger.error(
+      `[daily] Unhandled error for site_id=${site.site_id}: `, err,
     );
   }
   // }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
-  console.log(`\n[daily] ══════════════════════════════════════════`);
-  console.log(
+  logger.info(
     `[daily] Done in ${elapsed}s — ${sitesWithIssues}/${sites.length} site(s) had issues`,
   );
   if (sitesWithIssues === 0) {
-    console.log(`[daily] All sites healthy — no Slack messages sent ✓`);
+    logger.info(`[daily] All sites healthy — no Slack messages sent`);
   }
-  console.log(`[daily] ══════════════════════════════════════════`);
+  logger.info(`[daily] ══════════════════════════════════════════`);
 }

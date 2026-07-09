@@ -4,6 +4,7 @@ import {
   BetaMessage,
   MessageCreateParamsNonStreaming,
 } from "@anthropic-ai/sdk/resources/beta.js";
+import { logger } from "../utils/logger.js";
 
 import { listSitesConfigs } from "../controllers/sites.controller.js";
 import {
@@ -17,7 +18,7 @@ import {
   getOrphanPages,
 } from "../mcp-servers/link-optimiser/server.js";
 import { postSlackMessage } from "../mcp-servers/reporting/server.js";
-import { getMissingCityPages } from "../mcp-servers/page-generator/server.js"
+import { getMissingCityPages } from "../mcp-servers/page-generator/server.js";
 
 dotenv.config();
 
@@ -69,12 +70,12 @@ async function callWithRetry(
       lastExc = exc as Error;
       if (attempt < MAX_RETRIES - 1) {
         const waitMs = RETRY_BACKOFF[attempt];
-        console.log(
+        logger.warn(
           `[${label}] attempt ${attempt + 1} failed: ${exc.message}. Retrying in ${waitMs / 1000}s...`,
         );
         await sleep(waitMs);
       } else {
-        console.log(`[${label}] all ${MAX_RETRIES} attempts failed.`);
+        logger.error(`[${label}] all ${MAX_RETRIES} attempts failed.`);
       }
     }
   }
@@ -83,7 +84,7 @@ async function callWithRetry(
 
 // ── Step 1: Citation Audit ────────────────────────────────────────────
 async function step1CitationAudit(siteId: number) {
-  console.log(`\n[step1] Running citation audit for site_id=${siteId}...`);
+  logger.info(`[step1] Running citation audit for site_id=${siteId}...`);
 
   const [auditResult, scoreResult, fixesResult] = await Promise.all([
     auditCitations(siteId),
@@ -91,39 +92,39 @@ async function step1CitationAudit(siteId: number) {
     getPriorityFixes(siteId),
   ]);
 
-  console.log(
+  logger.info(
     `[step1] Citation score: ${scoreResult.score}/100 (${scoreResult.grade})`,
   );
-  console.log(
+  logger.info(
     `[step1] NAP issues: ${auditResult.nap_inconsistencies.length}, Missing dirs: ${auditResult.missing_directories.length}`,
   );
-  console.log(`[step1] Done`);
+  logger.info(`[step1] Done`);
 
   return { audit: auditResult, score: scoreResult, priorityFixes: fixesResult };
 }
 
 // ── Step 2: Internal Link Analysis ───────────────────────────────────
 async function step2LinkAnalysis(siteId: number) {
-  console.log(
-    `\n[step2] Running internal link analysis for site_id=${siteId}...`,
+  logger.info(
+    `[step2] Running internal link analysis for site_id=${siteId}...`,
   );
 
   const opportunities = await findInternalLinkOpportunities(siteId, allPages);
 
-  console.log(`[step2] Done`);
+  logger.info(`[step2] Done`);
   return opportunities;
 }
 
 // ── Step 3: Orphan Page Detection ────────────────────────────────────
 async function step3OrphanPages(siteId: number) {
-  console.log(`\n[step3] Detecting orphan pages for site_id=${siteId}...`);
+  logger.info(`[step3] Detecting orphan pages for site_id=${siteId}...`);
 
   const orphans = await getOrphanPages(siteId, allPages);
-  console.log(
+  logger.info(
     `[step3] Orphan pages: ${orphans.orphan_count}/${orphans.total_pages}`,
   );
 
-  console.log(`[step3] Done`);
+  logger.info(`[step3] Done`);
   return orphans;
 }
 
@@ -138,15 +139,15 @@ async function step4Reporting(
     orphanData: Awaited<ReturnType<typeof step3OrphanPages>>;
   },
 ) {
-  console.log(
-    `\n[step4] Generating monthly audit report for site_id=${siteId}...`,
+  logger.info(
+    `[step4] Generating monthly audit report for site_id=${siteId}...`,
   );
 
   const { citationData, linkData, orphanData } = data;
 
   if (DRY_RUN) {
-    console.log("[step4] DRY_RUN=true — skipping Slack post");
-    console.log(
+    logger.info("[step4] DRY_RUN=true — skipping Slack post");
+    logger.info(
       `[step4] Citation score: ${citationData.score.score}/100, ` +
         `Link opportunities: ${linkData.opportunities_count}, ` +
         `Orphans: ${orphanData.orphan_count}`,
@@ -200,9 +201,8 @@ Return ONLY a JSON object with keys:
     .join("")
     .trim();
 
-  
-  console.log("Stop Reason: ", response.stop_reason);
-  console.log("Usage: ", response.usage);
+  logger.debug(`[step4] Stop reason: ${response.stop_reason}`);
+  logger.debug(`[step4] Usage: `, response.usage);
 
   const parsed = extractJson(text);
   const summary = parsed?.summary ?? "Monthly SEO audit complete.";
@@ -260,8 +260,8 @@ Return ONLY a JSON object with keys:
 
   await postSlackMessage(summary, slackBlocks);
 
-  console.log(`[step4] Monthly audit report posted to Slack`);
-  console.log(`[step4] Done`);
+  logger.info(`[step4] Monthly audit report posted to Slack`);
+  logger.info(`[step4] Done`);
 
   return { summary, action_items: actionItems };
 }
@@ -275,19 +275,16 @@ interface StepErrors {
 }
 
 function printSummary(siteId: number, errors: StepErrors, elapsed: number) {
-  console.log(`\n[monthly_audit] ══════════════════════════════════════════`);
-  console.log(
+  logger.info(
     `[monthly_audit] site_id=${siteId} complete in ${elapsed.toFixed(1)}s`,
   );
   if (Object.keys(errors).length > 0) {
-    console.log(`[monthly_audit] Errors encountered:`);
     for (const [step, msg] of Object.entries(errors)) {
-      console.log(`  ${step}: ${msg}`);
+      logger.error(`[monthly_audit] ${step} failed`, msg);
     }
   } else {
-    console.log(`[monthly_audit] All steps succeeded ✓`);
+    logger.info(`[monthly_audit] All steps succeeded`);
   }
-  console.log(`[monthly_audit] ══════════════════════════════════════════`);
 }
 
 // ── Per-site pipeline ─────────────────────────────────────────────────
@@ -296,12 +293,11 @@ async function runMonthlyAudit(siteId: number, domain: string) {
   const startTime = Date.now();
   const errors: StepErrors = {};
 
-  console.log(`[monthly_audit] ══════════════════════════════════════════`);
-  console.log(
+  logger.info(`\n[monthly_audit] ══════════════════════════════════════════`);
+  logger.info(
     `[monthly_audit] Starting monthly audit — site_id=${siteId} (${domain})`,
   );
-  console.log(`[monthly_audit] DRY_RUN=${DRY_RUN}`);
-  console.log(`[monthly_audit] ══════════════════════════════════════════`);
+  logger.info(`\n[monthly_audit] ══════════════════════════════════════════`);
 
   // Step 1: Citation audit
   let citationData: Awaited<ReturnType<typeof step1CitationAudit>> | null =
@@ -310,15 +306,8 @@ async function runMonthlyAudit(siteId: number, domain: string) {
   //   citationData = await step1CitationAudit(siteId);
   // } catch (exc: any) {
   //   errors.step1 = exc.message;
-  //   console.log(`[step1] ERROR: ${exc.message}`);
+  //   logger.error(`[step1] ERROR: `, exc);
   // }
-
-  // Timeout check
-  if ((Date.now() - startTime) / 1000 > TIMEOUT_SECONDS) {
-    console.log(`[monthly_audit] TIMEOUT after step1`);
-    printSummary(siteId, errors, (Date.now() - startTime) / 1000);
-    return;
-  }
 
   allPages = await fetchAllPages(siteId);
 
@@ -328,7 +317,7 @@ async function runMonthlyAudit(siteId: number, domain: string) {
     linkData = await step2LinkAnalysis(siteId);
   } catch (exc: any) {
     errors.step2 = exc.message;
-    console.log(`[step2] ERROR: ${exc.message}`);
+    logger.error(`[step2] ERROR: `, exc);
   }
 
   // Step 3: Orphan page detection
@@ -337,12 +326,12 @@ async function runMonthlyAudit(siteId: number, domain: string) {
     orphanData = await step3OrphanPages(siteId);
   } catch (exc: any) {
     errors.step3 = exc.message;
-    console.log(`[step3] ERROR: ${exc.message}`);
+    logger.error(`[step3] ERROR: `, exc);
   }
 
   // Timeout check
   if ((Date.now() - startTime) / 1000 > TIMEOUT_SECONDS) {
-    console.log(`[monthly_audit] TIMEOUT after step3`);
+    logger.warn(`[monthly_audit] TIMEOUT after step3`);
     printSummary(siteId, errors, (Date.now() - startTime) / 1000);
     return;
   }
@@ -393,21 +382,22 @@ async function runMonthlyAudit(siteId: number, domain: string) {
       });
     } catch (exc: any) {
       errors.step4 = exc.message;
-      console.log(`[step4] ERROR: ${exc.message}`);
+      logger.error(`[step4] ERROR: `, exc);
     }
   }
 
   const elapsed = (Date.now() - startTime) / 1000;
   printSummary(siteId, errors, elapsed);
+  logger.info(`\n[monthly_audit] ══════════════════════════════════════════`);
 }
 
 // ── Main export ───────────────────────────────────────────────────────
 export async function monthlyAudit() {
-  console.log(`[monthly_audit] Fetching site configuration from database...`);
+  logger.info(`[monthly_audit] Fetching site configuration from database...`);
 
   const { sites } = await listSitesConfigs({ limit: 1000 });
 
-  console.log(
+  logger.info(
     `[monthly_audit] Loaded ${sites.length} sites. Starting monthly audit...`,
   );
 
@@ -416,11 +406,12 @@ export async function monthlyAudit() {
   try {
     await runMonthlyAudit(site.site_id, site.domain);
   } catch (exc: any) {
-    console.error(
-      `[monthly_audit] Unhandled error for site_id=${site.site_id}: ${exc.message}`,
+    logger.error(
+      `[monthly_audit] Unhandled error for site_id=${site.site_id}: `,
+      exc,
     );
   }
   // }
 
-  console.log(`[monthly_audit] All sites processed.`);
+  logger.info(`[monthly_audit] All sites processed.`);
 }

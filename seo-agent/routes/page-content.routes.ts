@@ -12,6 +12,7 @@ import {
   rejectPageContent,
 } from "../controllers/page-content.controller.js";
 import { AuthRequest, requireAuth } from "../../middleware/auth.middleware.js";
+import { logger } from "../utils/logger.js";
 
 export function pageContentRouter(io: SocketIOServer): Router {
   const router = Router();
@@ -32,7 +33,7 @@ export function pageContentRouter(io: SocketIOServer): Router {
       io.emit("content:created", record);
       res.status(201).json({ success: true, record });
     } catch (err) {
-      console.error("[page-content] create error:", err);
+      logger.error("[page-content] create error:", err);
       res.status(500).json({ success: false, error: "Database error" });
     }
   });
@@ -49,7 +50,7 @@ export function pageContentRouter(io: SocketIOServer): Router {
       });
       res.json({ success: true, ...result });
     } catch (err) {
-      console.error("[page-content] list error:", err);
+      logger.error("[page-content] list error:", err);
       res.status(500).json({ success: false, error: "Database error" });
     }
   });
@@ -79,7 +80,7 @@ export function pageContentRouter(io: SocketIOServer): Router {
         io.emit("content:updated", record);
         res.json({ success: true, record });
       } catch (err) {
-        console.error("[page-content] update content error:", err);
+        logger.error("[page-content] update content error:", err);
         res.status(500).json({ success: false, error: "Database error" });
       }
     },
@@ -107,7 +108,7 @@ export function pageContentRouter(io: SocketIOServer): Router {
         io.emit("content:updated", record);
         res.json({ success: true, record });
       } catch (err) {
-        console.error("[page-content] acknowledge error:", err);
+        logger.error("[page-content] acknowledge error:", err);
         res.status(500).json({ success: false, error: "Database error" });
       }
     },
@@ -135,7 +136,7 @@ export function pageContentRouter(io: SocketIOServer): Router {
         io.emit("content:updated", record);
         res.json({ success: true, record });
       } catch (err) {
-        console.error("[page-content] acknowledge error:", err);
+        logger.error("[page-content] acknowledge error:", err);
         res.status(500).json({ success: false, error: "Database error" });
       }
     },
@@ -156,7 +157,7 @@ export function pageContentRouter(io: SocketIOServer): Router {
         io.emit("content:updated", record);
         res.json({ success: true, record });
       } catch (err) {
-        console.error("[page-content] error error:", err);
+        logger.error("[page-content] error error:", err);
         res.status(500).json({ success: false, error: "Database error" });
       }
     },
@@ -179,7 +180,7 @@ export function pageContentRouter(io: SocketIOServer): Router {
         io.emit("content:updated", record);
         res.json({ success: true, record });
       } catch (err) {
-        console.error("[page-content] error error:", err);
+        logger.error("[page-content] error error:", err);
         res.status(500).json({ success: false, error: "Database error" });
       }
     },

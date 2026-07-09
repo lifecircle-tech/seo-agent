@@ -1,4 +1,5 @@
 import { getSearchConsoleClient } from "../../../libs/google.js";
+import { logger } from "../../utils/logger.js";
 
 export function validateSiteId(siteId: unknown): number {
   const id = Number(siteId);
@@ -10,14 +11,17 @@ export function validateSiteId(siteId: unknown): number {
 
 // ── Tool implementations ──────────────────────────────────────────────
 
-export async function getRankings(siteId: number, siteUrl: string, keywords: string[]) {
+export async function getRankings(
+  siteId: number,
+  siteUrl: string,
+  keywords: string[],
+) {
   if (!Array.isArray(keywords) || keywords.length === 0) {
     throw new Error("keywords must be a non-empty array");
   }
 
-  console.log(
-    "============= Ranking GSC Auth *************** site_id:",
-    siteId,
+  logger.info(
+    `============= Ranking GSC Auth *************** site_id: ${siteId}`,
   );
   const searchConsole = getSearchConsoleClient();
 
@@ -27,7 +31,7 @@ export async function getRankings(siteId: number, siteUrl: string, keywords: str
 
   const fmt = (d: Date) => d.toISOString().split("T")[0];
 
-  console.log("============= Ranking GSC Search Query ***************");
+  logger.info("============= Ranking GSC Search Query ***************");
   const results = await Promise.all(
     keywords.slice(0, 200).map(async (keyword) => {
       const response = await searchConsole.searchanalytics.query({
@@ -58,9 +62,8 @@ export async function getRankings(siteId: number, siteUrl: string, keywords: str
     }),
   );
 
-  console.log(
-    "============= GSC Search Query Results ***************",
-    results.length,
+  logger.info(
+    `============= GSC Search Query Results *************** ${results.length}`,
   );
   return { site_id: siteId, site_url: siteUrl, rankings: results };
 }
@@ -78,9 +81,8 @@ export async function getRankingHistory(
     throw new Error("days must be an integer between 1 and 365");
   }
 
-  console.log(
-    "============= Ranking History GSC Auth *************** site_id:",
-    siteId,
+  logger.info(
+    `============= Ranking History GSC Auth *************** site_id: ${siteId}`,
   );
   const searchConsole = getSearchConsoleClient();
 
@@ -90,9 +92,8 @@ export async function getRankingHistory(
 
   const fmt = (d: Date) => d.toISOString().split("T")[0];
 
-  console.log(
-    "============= Ranking History GSC Search Query *************** site_id:",
-    siteId,
+  logger.info(
+    `============= Ranking History GSC Search Query *************** site_id: ${siteId}`,
   );
   const response = await searchConsole.searchanalytics.query({
     siteUrl,
@@ -120,9 +121,8 @@ export async function getRankingHistory(
 
   // Sort ascending by date
   history.sort((a, b) => a.date.localeCompare(b.date));
-  console.log(
-    "============= Ranking History GSC Results ***************",
-    history.length,
+  logger.info(
+    `============= Ranking History GSC Results *************** ${history.length}`,
   );
 
   return { site_id: siteId, site_url: siteUrl, keyword, days, history };
@@ -141,7 +141,7 @@ export async function getTopMovers(
     throw new Error('direction must be "up", "down", or "both"');
   }
 
-  console.log("============= Top GSC Auth *************** site_id:", siteId);
+  logger.info(`============= Top GSC Auth *************** site_id: ${siteId}`);
   const searchConsole = getSearchConsoleClient();
 
   const fmt = (d: Date) => d.toISOString().split("T")[0];
@@ -157,7 +157,7 @@ export async function getTopMovers(
   const startPrev = new Date();
   startPrev.setDate(endPrev.getDate() - 6);
 
-  console.log("============ Top GSC Search Query ***************");
+  logger.info("============ Top GSC Search Query ***************");
   const [currentRes, prevRes] = await Promise.all([
     searchConsole.searchanalytics.query({
       siteUrl,
@@ -215,7 +215,7 @@ export async function getTopMovers(
   }
 
   movers.sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
-  console.log("============ Top Movers ***************", movers.length);
+  logger.info(`============ Top Movers *************** ${movers.length}`);
 
   return {
     site_id: siteId,
@@ -273,7 +273,7 @@ export async function getRankVelocity(
   else if (velocity < 0) trend = "improving";
   else trend = "declining";
 
-  console.log("============= Velocity ***************", velocity, trend);
+  logger.info("============= Velocity ***************", { velocity, trend });
 
   return {
     site_id: siteId,
@@ -287,12 +287,16 @@ export async function getRankVelocity(
   };
 }
 
-const getKeywordRankings = async (site_id: number, site_url: string, keywords: string[]) => {
+const getKeywordRankings = async (
+  site_id: number,
+  site_url: string,
+  keywords: string[],
+) => {
   const siteId = validateSiteId(site_id);
 
   if (!Array.isArray(keywords)) throw new Error("keywords must be an array");
 
-  console.log("========== GET RANKINGS ==========");
+  logger.info("========== GET RANKINGS ==========");
   return await getRankings(siteId, site_url, keywords);
 };
 

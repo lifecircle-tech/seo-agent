@@ -1,6 +1,7 @@
 import { getSearchConsoleClient } from "../../../libs/google.js";
 import { getWpAuth, wpFetch } from "../../../libs/wordpress.js";
 import { getStartIndex } from "../../../libs/functions.js";
+import { logger } from "../../utils/logger.js";
 
 // ── GSC date helpers ──────────────────────────────────────────────────
 function fmtDate(d: Date): string {
@@ -26,7 +27,10 @@ export async function getPage(siteId: number, pageUrl: string) {
 
   // Try pages first, then posts
   let wpPage = null;
-  console.log("============= CMS Getting Page ***************", pageUrl, slug);
+  logger.info("============= CMS Getting Page ***************", {
+    pageUrl,
+    slug,
+  });
   for (const postType of ["pages", "posts"]) {
     const results = (await wpFetch(
       siteId,
@@ -39,11 +43,11 @@ export async function getPage(siteId: number, pageUrl: string) {
     }
   }
   if (!wpPage) {
-    console.log(`[getPage] Page not found for URL: ${pageUrl}`);
+    logger.warn(`[getPage] Page not found for URL: ${pageUrl}`);
     return null;
   }
-  
-  console.log("============= CMS Page Found ***************");
+
+  logger.info("============= CMS Page Found ***************");
 
   // Extract meta description (RankMath preferred, custom meta fallback)
   const rank_math = wpPage.rank_math_meta as
@@ -91,7 +95,7 @@ export async function listPages(
   }
 
   // Fetch WP pages
-  console.log("============= CMS Listing Pages ***************");
+  logger.info("============= CMS Listing Pages ***************");
   const wpPages = (await wpFetch(
     siteId,
     "GET",
@@ -160,7 +164,7 @@ export async function getPageMetrics(
   const searchConsole = getSearchConsoleClient();
   const { startDate, endDate } = dateRange(28);
 
-  console.log("============= CMS Getting Page Metrics ***************");
+  logger.info("============= CMS Getting Page Metrics ***************");
   const response = await searchConsole.searchanalytics.query({
     siteUrl,
     requestBody: {
@@ -307,12 +311,12 @@ export async function createApprovalQueue(items: ApprovalQueueItem[]): Promise<{
       }
 
       results.push(data);
-      console.log(
+      logger.info(
         `[create_approval_queue] queued item ${i + 1}/${items.length}: ${item.title}`,
       );
     } catch (err) {
       errors.push({ index: i, error: String(err) });
-      console.error(`[create_approval_queue] item ${i + 1} failed:`, err);
+      logger.error(`[create_approval_queue] item ${i + 1} failed:`, err);
     }
   }
 

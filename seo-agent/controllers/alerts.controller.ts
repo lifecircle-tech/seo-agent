@@ -6,6 +6,7 @@
 import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { Alert, AlertJSON } from "../models/alert.model.js";
 import { lc_pool, pool } from "../../db.js";
+import { logger } from "../utils/logger.js";
 
 // ── Row serialiser ────────────────────────────────────────────────────
 function toJSON(row: Alert): AlertJSON {
@@ -82,7 +83,7 @@ export async function bulkCreateAlerts(
     );
     return { inserted: result.affectedRows, ids: items.map((i) => i.id) };
   } catch (err: any) {
-    console.log("[bulk create alert] Error ", err.message);
+    logger.error("[bulk create alert] Error ", err);
 
     return { inserted: 0, ids: [] };
   }

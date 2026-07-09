@@ -15,6 +15,7 @@ export interface PageContent extends RowDataPacket {
   remark: string;
   page_updated: boolean;
   update_details: Record<string, unknown> | null;
+  keywords_analytics: Array<any> | null;
   created_at: Date; // DATETIME(3)
 }
 
@@ -31,6 +32,7 @@ export interface PageContentJSON {
   remark: string;
   page_updated: boolean;
   update_details: Record<string, unknown> | null;
+  keywords_analytics: Array<any> | null;
   created_at: string;
 }
 
@@ -51,6 +53,7 @@ export async function createPageContentTable(): Promise<void> {
       remark            TEXT          NULL,
       page_updated      BOOLEAN       NULL DEFAULT false,
       update_details    JSON          NULL,
+      keywords_analytics    JSON      NULL,
       created_at        DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
       INDEX idx_page_content_status (status),
       INDEX idx_page_content_site_id (site_id),

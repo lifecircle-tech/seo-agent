@@ -1,5 +1,6 @@
 import https from "node:https";
 import { getSheetsClient } from "../../../libs/google.js";
+import { logger } from "../../utils/logger.js";
 
 type SlackResponse = {
   ok: boolean;
@@ -60,17 +61,15 @@ export async function postSlackMessage(
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) throw new Error("Missing env var SLACK_BOT_TOKEN");
   const ch = channel ?? process.env.SLACK_CHANNEL_ID;
-  console.log(ch, process.env.SLACK_CHANNEL_ID);
-
   if (!ch) throw new Error("Missing env var SLACK_CHANNEL_ID");
 
-  console.log("========== Slack Message **********");
+  logger.info("========== Slack Message **********");
   const body: Record<string, unknown> = { channel: ch, text: message };
   if (blocks) body.blocks = blocks;
 
-  console.log("========== Calling Slack Post API **********");
+  logger.info("========== Calling Slack Post API **********");
   const result = await callSlackApi("chat.postMessage", token, body);
-  console.log("========== Message Sent **********", result.ok);
+  logger.info(`========== Message Sent ********** ${result.ok}`);
   if (!result.ok)
     throw new Error(`Slack API error: ${result.error ?? "unknown"}`);
   return { ok: true, ts: result.ts, channel: result.channel };
@@ -90,7 +89,7 @@ export function createWeeklyDigest(
   siteUrl: string,
   data: Record<string, any>,
 ) {
-  console.log("========== Creating Weekly Digest **********");
+  logger.info("========== Creating Weekly Digest **********");
   const today = new Date().toISOString().split("T")[0];
   const { rankings, summary, cmsOpportunities, schemaGaps, competitorsAlerts } =
     data || {};
@@ -101,7 +100,7 @@ export function createWeeklyDigest(
 Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y_t3TXp1iI7S3ZidQf6VHtH8UQTY/edit?usp=sharing\n
     `
     : "No ranking data available.";
-  console.log("========== Rankings Processed **********");
+  logger.info("========== Rankings Processed **********");
 
   // Build schema gaps section
   const gaps = (schemaGaps ?? []).filter((g: any) => g.has_gaps);
@@ -135,8 +134,6 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
         .join("\n")
     : "No competitor keyword gaps identified this week.";
 
-  console.log(competitorsLines);
-
   // Header blocks
   const blocks = [
     {
@@ -165,7 +162,7 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
     const text = `Meta suggestion for top ${opportunities.length} pages with lowest CTR in added in approval queue. Open you dashboard to review the suggestion.\n`;
     blocks.push(sectionBlock(text));
   }
-  console.log("========== CMS Opportunities Processed **********");
+  logger.info("========== CMS Opportunities Processed **********");
 
   blocks.push(
     { type: "divider" },
@@ -176,7 +173,7 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
     sectionBlock(`*Summary & Actions*\n${summary || "No summary available."}`),
   );
 
-  console.log("========== Weekly Digest Created **********");
+  logger.info("========== Weekly Digest Created **********");
 
   return {
     site_id: siteId,
@@ -214,7 +211,7 @@ export function createMonthlyDiscoveryDigest(data: Record<string, any>) {
 
   blocks.push(...summary.map((item: string) => sectionBlock(item)));
 
-  console.log("========== Monthly Discovery Digest Created **********");
+  logger.info("========== Monthly Discovery Digest Created **********");
 
   return {
     date: today,
@@ -229,11 +226,11 @@ export async function writeToSheet(
   tabName: string,
   rows: unknown[][],
 ) {
-  console.log("============= Sheets GSC Auth *************** site_id:", siteId);
+  logger.info(`============= Sheets GSC Auth *************** site_id: ${siteId}`);
   const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
 
-  console.log("========== Appending to Sheet **********", rows.length);
+  logger.info(`========== Appending to Sheet ********** ${rows.length}`);
   const result = await sheets.spreadsheets.values.append({
     spreadsheetId,
     range: `${tabName}!A3`,
@@ -242,7 +239,7 @@ export async function writeToSheet(
     requestBody: { values: rows },
   });
 
-  console.log("========== Sheet Updated **********");
+  logger.info("========== Sheet Updated **********");
   return {
     ok: true,
     tab: tabName,
@@ -270,7 +267,7 @@ const postWeeklyMessageToSlack = async (
   site_url: string,
   data: Record<string, any>,
 ) => {
-  console.log("========== Posting Weekly Message to Slack **********");
+  logger.info("========== Posting Weekly Message to Slack **********");
   const messageData = createWeeklyDigest(site_id, site_url, data);
 
   const { message = "", blocks = [] } = messageData;
@@ -421,7 +418,7 @@ const postBacklinkDigestToSlack = async (
   backlinkData: Record<string, any>,
   prospectsData: Record<string, any> | null,
 ) => {
-  console.log("========== Posting Backlink Digest to Slack **********");
+  logger.info("========== Posting Backlink Digest to Slack **********");
   const messageData = createBacklinkDigest(
     siteId,
     siteUrl,
@@ -546,7 +543,7 @@ const postSitemapAdsDigestToSlack = async (
   sitemapData: Record<string, any> | null,
   adsData: Record<string, any> | null,
 ) => {
-  console.log("========== Posting Sitemap & Ads Digest to Slack **********");
+  logger.info("========== Posting Sitemap & Ads Digest to Slack **********");
   const messageData = createSitemapAdsDigest(
     siteId,
     siteUrl,

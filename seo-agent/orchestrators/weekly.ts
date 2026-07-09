@@ -196,8 +196,8 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
     betas: ["mcp-client-2025-04-04"],
   });
 
-  logger.debug(`[step2] Stop reason`, { stop_reason: response.stop_reason });
-  logger.debug(`[step2] Usage`, { usage: response.usage });
+  logger.debug(`[step2] Stop reason: ${response.stop_reason}`);
+  logger.debug(`[step2] Usage: `, response.usage);
 
   const text = response.content
     .filter((block) => block.type === "text")
@@ -414,8 +414,8 @@ async function step5Reporting(
     betas: ["mcp-client-2025-04-04"],
   });
 
-  logger.debug(`[step5] Stop reason`, { stop_reason: response.stop_reason });
-  logger.debug(`[step5] Usage`, { usage: response.usage });
+  logger.debug(`[step5] Stop reason: ${response.stop_reason}`);
+  logger.debug(`[step5] Usage: `, response.usage);
 
   const text = response.content
     .filter((block) => block.type === "text")

@@ -1,4 +1,5 @@
 import { wpFetch } from "../../../libs/wordpress.js";
+import { logger } from "../../utils/logger.js";
 
 // ── Page type detection ────────────────────────────────────────────────
 export type PageType =
@@ -42,7 +43,8 @@ export function detectPageType(url: string): PageType {
 
 // ── Tool: get_current_schema ──────────────────────────────────────────
 export async function getCurrentSchema(siteId: number, pageUrl: string) {
-  console.log("========== Fetching Current Schema **********\n", pageUrl);
+  logger.info(`========== Fetching Current Schema **********`);
+  logger.info(pageUrl);
   const html = await fetch(pageUrl).then((r) => r.text());
   const matches = [
     ...html.matchAll(
@@ -58,7 +60,8 @@ export async function getCurrentSchema(siteId: number, pageUrl: string) {
       // skip malformed blocks
     }
   }
-  console.log("========== Current Schema Retrieved **********\n", pageUrl);
+  logger.info("========== Current Schema Retrieved **********");
+  logger.info(pageUrl);
 
   return {
     site_id: siteId,
@@ -73,13 +76,13 @@ export async function getPaaQuestions(siteId: number, keyword: string) {
   const apiKey = process.env.SERPAPI_KEY;
   if (!apiKey) throw new Error("Missing env var SERPAPI_KEY");
 
-  console.log("========== Calling SerpAPI **********");
+  logger.info("========== Calling SerpAPI **********");
   const serpUrl = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(keyword)}&api_key=${apiKey}&location="India"`;
   const res = await fetch(serpUrl);
   if (!res.ok) {
     throw new Error(`SerpAPI error ${res.status}: ${res.statusText}`);
   }
-  console.log("========== SerpAPI Fetched **********");
+  logger.info("========== SerpAPI Fetched **********");
   const data = (await res.json()) as {
     related_questions?: Array<{
       question: string;
@@ -93,11 +96,11 @@ export async function getPaaQuestions(siteId: number, keyword: string) {
     return {
       question: q.question,
       snippet: q.snippet ?? q.answer ?? null,
-      type: q.type
+      type: q.type,
     };
   });
 
-  console.log("========== PAA Questions Retrieved **********");
+  logger.info("========== PAA Questions Retrieved **********");
 
   return {
     site_id: siteId,
@@ -112,7 +115,8 @@ export async function suggestSchemaImprovements(
   siteId: number,
   pageUrl: string,
 ) {
-  console.log("========== Running Schema Improvement **********\n", pageUrl);
+  logger.info("========== Running Schema Improvement **********");
+  logger.info(pageUrl);
   const current = await getCurrentSchema(siteId, pageUrl);
   const pageType = detectPageType(pageUrl);
   const recommended = RECOMMENDED_SCHEMA[pageType];
@@ -128,7 +132,7 @@ export async function suggestSchemaImprovements(
 
   const missing = recommended.filter((t) => !existingTypes.has(t));
   const extra = [...existingTypes].filter((t) => !recommended.includes(t));
-  console.log("========== Schema Improvement Finish **********\n", pageUrl);
+  logger.info("========== Schema Improvement Finish **********");
 
   return {
     site_id: siteId,
@@ -203,12 +207,12 @@ const suggestSchemaImprovementsForPages = async (pageList: Array<string>) => {
     pageList.map(async (pageUrl) => {
       try {
         const result = await suggestSchemaImprovements(1, pageUrl);
-        console.log("*******************************************");
-        console.log(result);
-        console.log("*******************************************");
+        logger.info("*******************************************");
+        logger.info("", result);
+        logger.info("*******************************************");
         return result;
       } catch (error) {
-        console.error(
+        logger.error(
           `Error suggesting schema improvements for ${pageUrl}:`,
           error,
         );
@@ -231,7 +235,7 @@ const getPaaQuestionsForKeywords = async (
         const result = await getPaaQuestions(siteId, keyword);
         return result;
       } catch (error) {
-        console.error(
+        logger.error(
           `Error fetching PAA questions for keyword "${keyword}":`,
           error,
         );

@@ -7,6 +7,7 @@ import {
 import { RowDataPacket } from "mysql2/promise";
 import { pool } from "../../../db.js";
 import { wpFetch } from "../../../libs/wordpress.js";
+import { logger } from "../../utils/logger.js";
 
 // ── Retry helpers ─────────────────────────────────────────────────────
 const MAX_RETRIES = 3;
@@ -26,12 +27,12 @@ async function callWithRetry(
       lastExc = exc as Error;
       if (attempt < MAX_RETRIES - 1) {
         const waitMs = RETRY_BACKOFF[attempt];
-        console.log(
+        logger.warn(
           `[${label}] attempt ${attempt + 1} failed: ${exc.message}. Retrying in ${waitMs / 1000}s...`,
         );
         await sleep(waitMs);
       } else {
-        console.log(`[${label}] all ${MAX_RETRIES} attempts failed.`);
+        logger.error(`[${label}] all ${MAX_RETRIES} attempts failed.`);
       }
     }
   }
@@ -116,7 +117,7 @@ export async function fetchAllPages(siteId: number): Promise<WpPage[]> {
     offset += pageSize;
   }
 
-  console.log("Pages Counts : ", all.length);
+  logger.info(`Pages Counts : ${all.length}`);
 
   return all;
 }
@@ -129,7 +130,7 @@ async function buildKeywordTargetMap(
   // Map: normalised keyword/city/service phrase → target page
   const map = new Map<string, { url: string; title: string }>();
 
-  console.log("[taget_map] Site_id : ", siteId);
+  logger.info(`[taget_map] Site_id : ${siteId}`);
 
   // Pull target keywords from DB for this site
   const [kwRows] = await pool.query<RowDataPacket[]>(
@@ -182,7 +183,7 @@ export async function findInternalLinkOpportunities(
   opportunities_count: number;
   opportunities: LinkOpportunity[];
 }> {
-  console.log(
+  logger.info(
     `[find_internal_link_opportunities] Scanning pages for site_id=${siteId}...`,
   );
 
@@ -246,7 +247,7 @@ export async function findInternalLinkOpportunities(
     return true;
   });
 
-  console.log(
+  logger.info(
     `[find_internal_link_opportunities] ${deduped.length} opportunities across ${pages.length} pages.`,
   );
 
@@ -268,7 +269,7 @@ export async function getOrphanPages(
   orphan_count: number;
   orphans: OrphanPage[];
 }> {
-  console.log(
+  logger.info(
     `[get_orphan_pages] Analysing inbound links for site_id=${siteId}...`,
   );
 
@@ -308,7 +309,7 @@ export async function getOrphanPages(
       inbound_link_count: 0,
     }));
 
-  console.log(
+  logger.info(
     `[get_orphan_pages] ${orphans.length}/${pages.length} orphan pages found.`,
   );
 
@@ -324,7 +325,7 @@ export async function getOrphanPages(
 export async function suggestLinkStructure(
   siteId: number,
 ): Promise<LinkStructureSuggestion> {
-  console.log(
+  logger.info(
     `[suggest_link_structure] Building hub-and-spoke plan for site_id=${siteId}...`,
   );
 
@@ -380,10 +381,8 @@ No extra text outside the JSON.`;
     betas: ["mcp-client-2025-04-04"],
   });
 
-  console.log(`[suggest_link_structure] Stop reason: ${response.stop_reason}`);
-  console.log(
-    `[suggest_link_structure] Usage: ${JSON.stringify(response.usage)}`,
-  );
+  logger.info(`[suggest_link_structure] Stop reason: ${response.stop_reason}`);
+  logger.info(`[suggest_link_structure] Usage: `, response.usage);
 
   const text = response.content
     .filter((block) => block.type === "text")

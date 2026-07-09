@@ -1,4 +1,5 @@
 import * as dotenv from "dotenv";
+import { logger } from "../utils/logger.js";
 
 import { listSitesConfigs } from "../controllers/sites.controller.js";
 import {
@@ -8,7 +9,6 @@ import {
 } from "../mcp-servers/page-generator/server.js";
 import { postSlackMessage } from "../mcp-servers/reporting/server.js";
 import { saveMissingPagesReport } from "../services/seo-report.service.js";
-import { createCitiesConfigTable } from "../models/cities-config.model.js";
 
 dotenv.config();
 
@@ -28,21 +28,19 @@ async function runPageBuilderForSite(
   domain: string,
   service: string,
 ) {
-  console.log(
-    `\n[daily_page_builder] ── site_id=${siteId} (${domain}) ──────────────`,
-  );
+  logger.info(`[daily_page_builder] site_id=${siteId} (${domain})`);
 
   // 1. Find cities that have no landing page yet
   const missing = await getMissingCityPages(siteId);
 
   if (missing.missing_count === 0) {
-    console.log(
+    logger.info(
       `[daily_page_builder] No missing city pages for site_id=${siteId}. Skipping.`,
     );
     return { site_id: siteId, domain, generated: 0, skipped: 0, errors: [] };
   }
 
-  console.log(
+  logger.info(
     `[daily_page_builder] ${missing.missing_count} cities need pages. Processing up to ${PAGES_PER_SITE} today.`,
   );
 
@@ -60,12 +58,12 @@ async function runPageBuilderForSite(
     const keywords = [`${service} in ${cityEntry.city}`];
 
     try {
-      console.log(
+      logger.info(
         `[daily_page_builder] Generating page: ${service} — ${cityEntry.city}`,
       );
 
       if (DRY_RUN) {
-        console.log(
+        logger.info(
           `[daily_page_builder] DRY_RUN — would generate "${service} in ${cityEntry.city}" with keywords: ${keywords.slice(0, 3).join(", ")}`,
         );
         results.push({
@@ -90,8 +88,8 @@ async function runPageBuilderForSite(
       // Push to WordPress as draft
       const draft = await createCmsDraft(siteId, page);
 
-      console.log(
-        `[daily_page_builder] ✓ Draft created: wp_id=${draft.wp_page_id}, link=${draft.link}`,
+      logger.info(
+        `[daily_page_builder] Draft created: wp_id=${draft.wp_page_id}, link=${draft.link}`,
       );
       results.push({
         city: cityEntry.city,
@@ -102,8 +100,9 @@ async function runPageBuilderForSite(
       // Brief pause between WP posts
       await sleep(800);
     } catch (err: any) {
-      console.error(
-        `[daily_page_builder] ✗ Failed for city=${cityEntry.city}: ${err.message}`,
+      logger.error(
+        `[daily_page_builder] Failed for city=${cityEntry.city}: `,
+        err,
       );
       results.push({
         city: cityEntry.city,
@@ -117,7 +116,7 @@ async function runPageBuilderForSite(
   const errored = results.filter((r) => r.status === "error").length;
   const remaining = missing.missing_count - batch.length;
 
-  console.log(
+  logger.info(
     `[daily_page_builder] site_id=${siteId}: ${created} created, ${errored} errors, ${remaining} still queued`,
   );
 
@@ -132,18 +131,18 @@ async function runPageBuilderForSite(
 }
 
 async function runMissingPageChecker(siteId: number, domain: string) {
-  console.log(`\n[weekly_page_missing] ── site_id=${siteId} ──────────────`);
+  logger.info(`[weekly_page_missing] site_id=${siteId}`);
 
   const missing = await getMissingCityPages(siteId);
 
   if (missing.missing_count === 0) {
-    console.log(
+    logger.info(
       `[weekly_page_missing] No missing city pages for site_id=${siteId}. Skipping.`,
     );
     return;
   }
 
-  console.log(
+  logger.info(
     `[weekly_page_missing] ${missing.missing_count} cities need pages.`,
   );
 
@@ -171,7 +170,7 @@ async function postWeeklyReport(
   const totalErrors = summaries.reduce((n, s) => n + s.skipped, 0);
 
   if (totalGenerated === 0 && totalErrors === 0) {
-    console.log("[daily_page_builder] Nothing to report — no pages generated.");
+    logger.info("[daily_page_builder] Nothing to report — no pages generated.");
     return;
   }
 
@@ -269,7 +268,6 @@ async function postWeeklyPageMissingReport(
       },
     ]),
   ];
-  console.log("Blocks \n", blocks);
 
   const summary = `Weekly Page Missing Report: ${cities.length} city page(s) missing.`;
   await postSlackMessage(summary, blocks);
@@ -279,14 +277,11 @@ async function postWeeklyPageMissingReport(
 export async function weeklyPageChecker() {
   const startTime = Date.now();
 
-  console.log(
+  logger.info(
     `[daily_page_builder] ══════════════════════════════════════════`,
   );
-  console.log(`[daily_page_builder] Starting daily city page builder run`);
-  console.log(
-    `[daily_page_builder] DRY_RUN=${DRY_RUN}, BATCH=${PAGES_PER_SITE}`,
-  );
-  console.log(
+  logger.info(`[daily_page_builder] Starting daily city page builder run`);
+  logger.info(
     `[daily_page_builder] ══════════════════════════════════════════`,
   );
 
@@ -315,8 +310,9 @@ export async function weeklyPageChecker() {
       });
     }
   } catch (err: any) {
-    console.error(
-      `[daily_page_builder] Unhandled error for site_id=${site.site_id}: ${err.message}`,
+    logger.error(
+      `[daily_page_builder] Unhandled error for site_id=${site.site_id}:`,
+      err,
     );
     summaries.push();
   }
@@ -327,16 +323,13 @@ export async function weeklyPageChecker() {
       await postWeeklyPageMissingReport(summaries);
       // await postWeeklyReport(summaries);
     } catch (err: any) {
-      console.error(`[daily_page_builder] Slack report failed: ${err.message}`);
+      logger.error(`[daily_page_builder] Slack report failed: `, err);
     }
   }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(
-    `\n[daily_page_builder] ══════════════════════════════════════════`,
-  );
-  console.log(`[daily_page_builder] Done in ${elapsed}s`);
-  console.log(
+  logger.info(`[daily_page_builder] Done in ${elapsed}s`);
+  logger.info(
     `[daily_page_builder] ══════════════════════════════════════════`,
   );
 }

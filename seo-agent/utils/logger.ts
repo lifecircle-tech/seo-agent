@@ -18,7 +18,10 @@ function getErrorLogFilePath(): string {
 
 function formatLine(level: LogLevel, message: string, meta?: unknown): string {
   const ts = new Date().toISOString();
-  const metaPart = meta !== undefined ? ` | ${JSON.stringify(meta)}` : "";
+  const metaPart = meta !== undefined ? `${JSON.stringify(meta, null, 2)}` : "";
+  let logMessage = message ? `[${ts}] [${level.padEnd(5)}] ${message}` : "";
+  logMessage =
+    logMessage + metaPart ? `[${ts}] [${level.padEnd(5)}] ${metaPart}` : "";
   return `[${ts}] [${level.padEnd(5)}] ${message} ${metaPart}\n`;
 }
 
@@ -26,7 +29,7 @@ function write(level: LogLevel, message: string, meta?: unknown): void {
   const line = formatLine(level, message, meta);
   console.log(line.trim());
   fs.appendFileSync(getLogFilePath(), line);
-  if(level === "ERROR") {
+  if (level === "ERROR") {
     fs.appendFileSync(getErrorLogFilePath(), line);
   }
 }

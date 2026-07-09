@@ -16,6 +16,7 @@ import {
 
 import type { Alert } from "../models/alert.model.js";
 import { AuthRequest, requireAuth } from "../../middleware/auth.middleware.js";
+import { logger } from "../utils/logger.js";
 
 // Request body shape for POST /alerts (all strings from JSON body)
 interface CreateAlertBody {
@@ -53,7 +54,7 @@ export function alertsRouter(io: SocketIOServer): Router {
       io.emit("alert:created", alert);
       res.status(201).json({ success: true, ...alert });
     } catch (err) {
-      console.error("[alerts] create error:", err);
+      logger.error("[alerts] create error:", err);
       res.status(500).json({ success: false, error: "Database error" });
     }
   });
@@ -73,7 +74,7 @@ export function alertsRouter(io: SocketIOServer): Router {
       });
       res.json({ success: true, ...result });
     } catch (err) {
-      console.error("[alerts] list error:", err);
+      logger.error("[alerts] list error:", err);
       res.status(500).json({ success: false, error: "Database error" });
     }
   });
@@ -96,7 +97,7 @@ export function alertsRouter(io: SocketIOServer): Router {
         io.emit("alert:updated", alert);
         res.json({ success: true, ...alert });
       } catch (err) {
-        console.error("[alerts] acknowledge error:", err);
+        logger.error("[alerts] acknowledge error:", err);
         res.status(500).json({ success: false, error: "Database error" });
       }
     },
@@ -120,7 +121,7 @@ export function alertsRouter(io: SocketIOServer): Router {
         io.emit("alert:updated", alert);
         res.json({ success: true, ...alert });
       } catch (err) {
-        console.error("[alerts] resolve error:", err);
+        logger.error("[alerts] resolve error:", err);
         res.status(500).json({ success: false, error: "Database error" });
       }
     },
