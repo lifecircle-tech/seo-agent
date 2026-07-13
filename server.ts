@@ -21,17 +21,36 @@ import { initSEOModels } from "./seo-agent/models/index.js";
 import { pool } from "./db.js";
 import { maltiRouter, initMalti } from "./malti/index.js";
 
-import { weeklyTasks } from "./seo-agent/orchestrators/weekly.js";
-import { monthlyDiscovery } from "./seo-agent/orchestrators/monthly-discovery.js";
-import { monthlyAudit } from "./seo-agent/orchestrators/monthly_audit.js";
-import { weeklyPageChecker } from "./seo-agent/orchestrators/weekly_page_checker.js";
+// Daily orchestrators
 import { dailyTechnicalAudit } from "./seo-agent/orchestrators/daily.js";
+import { dailyWPPagesTasks } from "./seo-agent/orchestrators/daily_wp_pages_analyser.js"
+
+// Weekly orchestrators
+import { weeklyTasks } from "./seo-agent/orchestrators/weekly.js";
+import { weeklyPageChecker } from "./seo-agent/orchestrators/weekly_page_checker.js";
 import { weeklyBacklinksMonitorTasks } from "./seo-agent/orchestrators/weekly_backlinks_monitor.js";
 import { weeklySitemapAdsTasks } from "./seo-agent/orchestrators/weekly_sitemaps_ads_tasks.js";
+
+// Monthly orchestrators
+import { monthlyDiscovery } from "./seo-agent/orchestrators/monthly-discovery.js";
+import { monthlyAudit } from "./seo-agent/orchestrators/monthly_audit.js";
+
+// Services
 import { checkPageContents } from "./seo-agent/services/schedulers.service.js";
 
 cron.schedule(
   "0 8 * * 1,3,5",
+  () => {
+    dailyWPPagesTasks();
+  },
+  {
+    timezone: "IST",
+    name: "Daily WP Pages Meta Checker",
+  },
+);
+
+cron.schedule(
+  "30 8 * * 1",
   () => {
     weeklyTasks();
   },

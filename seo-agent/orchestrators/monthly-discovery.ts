@@ -1,6 +1,16 @@
+import Anthropic from "@anthropic-ai/sdk";
+import {
+  BetaMessage,
+  MessageCreateParamsNonStreaming,
+} from "@anthropic-ai/sdk/resources/beta.js";
 import * as dotenv from "dotenv";
 import { logger } from "../utils/logger.js";
 import { getSheetsClient, getSpreadsheetId } from "../../libs/google.js";
+
+// Import controllers for database operations
+import { listSitesConfigs } from "../controllers/sites.controller.js";
+
+// MCP Server Imports
 import {
   discoverCityKeywords,
   getKeywordClusters,
@@ -9,10 +19,8 @@ import {
   KeywordOpportunity,
 } from "../mcp-servers/keyword-researcher/server.js";
 import { postMonthlyDiscoveryToSlack } from "../mcp-servers/reporting/server.js";
-import ollama from "ollama";
-import { listSitesConfigs } from "../controllers/sites.controller.js";
 
-dotenv.config();
+// ── Types ─────────────────────────────────────────────────────────────
 
 interface SiteDiscoveryConfig {
   site_id: number;
@@ -30,18 +38,53 @@ interface ContentOpportunity {
   priority: "High" | "Medium" | "Low";
 }
 
-// ── Config & Helpers ──────────────────────────────────────────────────
+// ── Config ──────────────────────────────────────────────────
+dotenv.config();
+
 const DRY_RUN = ["1", "true", "yes"].includes(
   (process.env.DRY_RUN || "false").toLowerCase(),
 );
+const MAX_RETRIES = 3;
+const RETRY_BACKOFF = [2000, 5000, 10000]; // milliseconds between retries
 
+// ── Helper ────────────────────────────────────────────────────────────
 function extractJson(text: string) {
   try {
-    return JSON.parse(text);
+    return JSON.parse(text.replace(/```json|```/g, "").trim());
   } catch (e) {
     const match = text.match(/\{[\s\S]*\}/);
     return match ? JSON.parse(match[0]) : null;
   }
+}
+
+// ── Helper ────────────────────────────────────────────────────────────
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ── Retry helper ──────────────────────────────────────────────────────
+async function callWithRetry(
+  client: Anthropic,
+  label: string,
+  params: MessageCreateParamsNonStreaming,
+): Promise<BetaMessage> {
+  let lastExc: Error = new Error("No attempts made");
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      return await client.beta.messages.create(params);
+    } catch (exc: any) {
+      lastExc = exc as Error;
+      if (attempt < MAX_RETRIES - 1) {
+        const waitMs = RETRY_BACKOFF[attempt];
+        logger.warn(
+          `[${label}] attempt ${attempt + 1} failed: ${exc.message}. Retrying in ${waitMs / 1000}s...`,
+        );
+        await sleep(waitMs);
+      } else {
+        logger.error(`[${label}] all ${MAX_RETRIES} attempts failed.`);
+      }
+    }
+  }
+  throw lastExc;
 }
 
 /**
@@ -85,6 +128,10 @@ async function analyzeWithAI(
   city: string,
   keywords: KeywordOpportunity[],
 ) {
+  const client: Anthropic = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+  });
+
   const prompt = `You are a world-class SEO strategist.
 Analyze these prioritized keywords for ${site.brand_name} (${site.industry}) in ${city}.
 
@@ -98,16 +145,26 @@ Return ONLY a JSON object with an "opportunities" array.
   - Each object MUST have: "title", "topic", "target_keywords" (array), "reasoning", "priority" ("High"|"Medium"|"Low").
 `;
 
-  const response = await ollama.generate({
-    model: "deepseek-r1:14b",
-    prompt: prompt,
-    stream: true,
+  const response = await callWithRetry(client, "step1", {
+    model: "claude-sonnet-4-6",
+    max_tokens: 15000,
+    messages: [
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
+    betas: ["mcp-client-2025-04-04"],
   });
 
-  let text = "";
-  for await (const part of response) {
-    text += part.response;
-  }
+  logger.debug(`[step1] Stop reason: ${response.stop_reason}`);
+  logger.debug(`[step1] Usage: `, response.usage);
+
+  const text = response.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("")
+    .trim();
 
   const parsed = extractJson(text);
   if (!parsed) {

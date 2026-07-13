@@ -91,8 +91,7 @@ export function createWeeklyDigest(
 ) {
   logger.info("========== Creating Weekly Digest **********");
   const today = new Date().toISOString().split("T")[0];
-  const { rankings, summary, cmsOpportunities, schemaGaps, competitorsAlerts } =
-    data || {};
+  const { rankings, summary, schemaGaps, competitorsAlerts } = data || {};
 
   // Cap rankings at 15 to stay within block text limits
   const rankLines = rankings.length
@@ -150,19 +149,7 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
     },
     { type: "divider" },
     sectionBlock(`*Keyword Rankings*\n${rankLines}`),
-    { type: "divider" },
-    sectionBlock(`*Meta Suggestions (Low-CTR Pages)*`),
   ];
-
-  // One block per CMS opportunity to avoid 3000-char limit
-  const opportunities = (cmsOpportunities ?? []).slice(0, 5);
-  if (opportunities.length === 0) {
-    blocks.push(sectionBlock("No low-CTR opportunities identified this week."));
-  } else {
-    const text = `Meta suggestion for top ${opportunities.length} pages with lowest CTR in added in approval queue. Open you dashboard to review the suggestion.\n`;
-    blocks.push(sectionBlock(text));
-  }
-  logger.info("========== CMS Opportunities Processed **********");
 
   blocks.push(
     { type: "divider" },
@@ -226,7 +213,9 @@ export async function writeToSheet(
   tabName: string,
   rows: unknown[][],
 ) {
-  logger.info(`============= Sheets GSC Auth *************** site_id: ${siteId}`);
+  logger.info(
+    `============= Sheets GSC Auth *************** site_id: ${siteId}`,
+  );
   const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
 
@@ -494,7 +483,7 @@ export function createSitemapAdsDigest(
   const criticalQuality = qualityIssues
     ? qualityIssues.issues.length
       ? qualityIssues.issues
-          .filter((i:any) => i.quality_score <= 3)
+          .filter((i: any) => i.quality_score <= 3)
           .map((i: any) => {
             return `• *${i.keyword}* — ${i.impressions} impression(s), Score: ${i.quality_score}, Quality: ${i.landing_page_quality}`;
           })

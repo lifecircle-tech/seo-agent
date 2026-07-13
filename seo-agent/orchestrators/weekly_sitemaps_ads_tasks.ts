@@ -4,8 +4,10 @@ import { logger } from "../utils/logger.js";
 // Import controllers for database operations
 import { listSitesConfigs } from "../controllers/sites.controller.js";
 
-import { postSitemapAdsDigestToSlack } from "../mcp-servers/reporting/server.js";
 import { saveSitemapAdsReport } from "../services/seo-report.service.js";
+
+// MCP Server Imports
+import { postSitemapAdsDigestToSlack } from "../mcp-servers/reporting/server.js";
 import {
   getSitemapStatus,
   detectNewPages,
@@ -17,7 +19,7 @@ import {
   getQualityScoreIssues,
 } from "../mcp-servers/ads-bridge/server.js";
 
-dotenv.config();
+// ── Types ─────────────────────────────────────────────────────────────
 
 interface SitesConfig {
   site_id: number;
@@ -35,11 +37,13 @@ interface StepError {
 let sitesConfig: SitesConfig[] = [];
 
 // ── Config ────────────────────────────────────────────────────────────
+dotenv.config();
+
 const DRY_RUN = ["1", "true", "yes"].includes(
   (process.env.DRY_RUN || "false").toLowerCase(),
 );
 
-// ── 1: Sitemap ping ──────────────────────────────────────────────
+// ── Step 1: Sitemap ping ──────────────────────────────────────────────
 async function step1SitemapPing(siteId: number) {
   logger.info(
     `[step1] Sitemap status + new-page ping for site_id=${siteId}...`,

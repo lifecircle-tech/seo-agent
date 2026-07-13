@@ -1,9 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
-import * as dotenv from "dotenv";
 import {
   BetaMessage,
   MessageCreateParamsNonStreaming,
 } from "@anthropic-ai/sdk/resources/beta.js";
+import * as dotenv from "dotenv";
 import { logger } from "../utils/logger.js";
 
 // Import controllers for database operations
@@ -14,7 +14,6 @@ import { listCompetitorConfigs } from "../controllers/competitor.controller.js";
 // MCP Server Imports
 import { getKeywordRankings } from "../mcp-servers/keyword-tracker/server.js";
 import {
-  createApprovalQueue,
   getPage,
   getPagesWithHighImpressionLowCtr,
 } from "../mcp-servers/cms-connector/server.js";
@@ -33,7 +32,7 @@ import {
   writeRecommendationsToSheet,
 } from "../mcp-servers/reporting/server.js";
 
-dotenv.config();
+// ── Types ─────────────────────────────────────────────────────────────
 
 interface SitesConfig {
   site_id: number;
@@ -55,17 +54,19 @@ interface CompetitorsConfig {
   competitors_domain: string[];
 }
 
-let sitesConfig: SitesConfig[] = [];
-let sitesKeywordsConfig: Record<string | number, SitesKeywordsConfig> = {};
-let sitesCompetitorsConfig: Record<string | number, CompetitorsConfig> = {};
-
 // ── Config ────────────────────────────────────────────────────────────
+dotenv.config();
+
 const DRY_RUN = ["1", "true", "yes"].includes(
   (process.env.DRY_RUN || "false").toLowerCase(),
 );
 const TIMEOUT_SECONDS = 15 * 60; // 15 minutes hard limit
 const MAX_RETRIES = 3;
 const RETRY_BACKOFF = [2000, 5000, 10000]; // milliseconds between retries
+
+let sitesConfig: SitesConfig[] = [];
+let sitesKeywordsConfig: Record<string | number, SitesKeywordsConfig> = {};
+let sitesCompetitorsConfig: Record<string | number, CompetitorsConfig> = {};
 
 // ── Helper ────────────────────────────────────────────────────────────
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -115,7 +116,7 @@ async function callWithRetry(
 }
 
 // ── Step 1: Keyword rankings ──────────────────────────────────────────
-async function step1KeywordRankings(client: Anthropic, siteId: number) {
+async function step1KeywordRankings(siteId: number) {
   logger.info(`[step1] Getting keyword rankings for site_id=${siteId}...`);
   const siteKeywords = sitesKeywordsConfig[siteId].keywords || [];
   const site = sitesConfig.find((site) => site.site_id === siteId);
@@ -135,9 +136,10 @@ async function step1KeywordRankings(client: Anthropic, siteId: number) {
   };
 }
 
-// ── Step 2: CMS Connector ─────────────────────────────────────────────
-async function step2CmsConnector(client: Anthropic, siteId: number) {
-  logger.info(`[step2] Analyzing low-CTR pages for site_id=${siteId}...`);
+// ── Step 2: Schema Manager ────────────────────────────────────────────
+async function step2SchemaManager(siteId: number) {
+  logger.info(`[step2] Analysing schema gaps for site_id=${siteId}...`);
+
   const site = sitesConfig.find((site) => site.site_id === siteId);
 
   const impressionsVsCtr = await getPagesWithHighImpressionLowCtr(
@@ -145,153 +147,41 @@ async function step2CmsConnector(client: Anthropic, siteId: number) {
     site?.domain as string,
     28,
   );
-  const pages: any[] = [];
+
+  let topPages = [];
   for await (const row of impressionsVsCtr) {
     const page = await getPage(siteId, row.url);
     if (page) {
-      pages.push({ ...page, ...row });
+      topPages.push(page.url as string);
     }
   }
 
-  if (pages.length === 0) {
-    logger.warn(`[step2] No pages found for site_id=${siteId}.`);
-    return { opportunities: [], summary: "No pages identified." };
-  }
-
-  const promptPages = pages.map((page) => ({
-    id: page.id,
-    primary_keyword: page.primary_keyword,
-    secondary_keywords: page.secondary_keywords,
-    title: page.title,
-    meta_description: page.meta_description,
-  }));
-
-  const prompt = `You are an SEO content analyst for site '${site?.brand_name}'.
-  Here are the rules for SEO content:
-  - primary keywords must be present in title
-  - primary keywords must be present in meta description
-
-  ${JSON.stringify(promptPages, null, 2)}
-
-  For each page from data above, follow the rules
-  - write an improved title (max 60 chars) and meta description (max 155 chars)
-
-  Return ONLY a JSON object with keys:
-  - opportunities: array of objects with id, suggested_title, suggested_description, reasoning (detailed reason with impact), priority (1-3 based on potential impact)
-  - summary: string with 2-3 overall action items
-
-  Do NOT omit any pages.
-  Do NOT include about rules in reasoning, mention impacting reason.
-  No extra text.`;
-
-  const response = await callWithRetry(client, "step2", {
-    model: "claude-sonnet-4-6",
-    max_tokens: 15000,
-    messages: [
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
-    betas: ["mcp-client-2025-04-04"],
-  });
-
-  logger.debug(`[step2] Stop reason: ${response.stop_reason}`);
-  logger.debug(`[step2] Usage: `, response.usage);
-
-  const text = response.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("")
-    .trim();
-
-  const parsed = extractJson(text);
-  if (!parsed) {
-    logger.warn(`[step2] Could not parse JSON from response`, {
-      raw: text.substring(0, 200),
-    });
-    return { opportunities: [], summary: text };
-  }
-
-  parsed.opportunities = parsed.opportunities.map((opp: any) => {
-    const page = pages.find((p: any) => p.id === opp.id);
-    return { ...opp, url: page?.url };
-  });
-
-  await createApprovalQueue(
-    parsed.opportunities.map((opp: any) => {
-      const page = pages.find((p: any) => p.id === opp.id);
-      return {
-        site_id: siteId,
-        module: "cms-connector",
-        type: "meta_rewrite",
-        priority: opp.priority,
-        title: page.title,
-        original_content: {
-          focus_keywords: page.secondary_keywords,
-          url: page.url,
-          type: page.type,
-          current_title: page.title,
-          current_description: page.meta_description,
-        },
-        suggested_content: {
-          type: page.type,
-          suggested_title: opp.suggested_title,
-          suggested_description: opp.suggested_description,
-          reasoning: opp.reasoning,
-        },
-        preview_url: page.url,
-      };
-    }),
+  const improvements = await suggestSchemaImprovementsForPages(
+    topPages.slice(0, 5),
   );
-
-  logger.info(`[step2] Done`);
-  return parsed;
-}
-
-// ── Step 3: Schema Manager ────────────────────────────────────────────
-async function step3SchemaManager(
-  client: Anthropic,
-  siteId: number,
-  cmsData: any | null = null,
-) {
-  logger.info(`[step3] Analysing schema gaps for site_id=${siteId}...`);
-
-  let topPages = [];
-  if (cmsData && cmsData.opportunities && cmsData.opportunities.length > 0) {
-    topPages = cmsData.opportunities
-      .slice(0, 3)
-      .map((o: any) => o.url)
-      .filter(Boolean);
-  }
-  if (topPages.length === 0) {
-    topPages = [];
-  }
-
-  const improvements = await suggestSchemaImprovementsForPages(topPages);
 
   const paaQuestions = await getPaaQuestionsForKeywords(
     siteId,
     sitesKeywordsConfig[siteId].keywords.slice(0, 5),
   );
 
-  logger.info(`[step3] Done`);
+  logger.info(`[step2] Done`);
   return {
     pages: improvements || [],
     paa_questions: paaQuestions || [],
   };
 }
 
-// ── Step 4: Competitor Intel ──────────────────────────────────────────
-async function step4CompetitorIntel(client: Anthropic, siteId: number) {
-  logger.info(`[step4] Running competitor analysis for site_id=${siteId}...`);
+// ── Step 3: Competitor Intel ──────────────────────────────────────────
+async function step3CompetitorIntel(siteId: number) {
+  logger.info(`[step3] Running competitor analysis for site_id=${siteId}...`);
   const site = sitesConfig.find((site) => site.site_id === siteId);
 
   const siteCompetitors =
     sitesCompetitorsConfig[siteId].competitors_domain || [];
   if (siteCompetitors.length === 0) {
     logger.warn(
-      `[step4] No competitors configured for site_id=${siteId}, skipping.`,
+      `[step3] No competitors configured for site_id=${siteId}, skipping.`,
     );
     return [];
   }
@@ -320,44 +210,31 @@ async function step4CompetitorIntel(client: Anthropic, siteId: number) {
     backlinks: backlinks[idx].backlinks || [],
   }));
 
-  logger.info(`[step4] Done`);
+  logger.info(`[step3] Done`);
   return data;
 }
 
 // ── Step 5: Reporting ─────────────────────────────────────────────────
 async function step5Reporting(
-  client: Anthropic,
   siteId: number,
   data: {
     keywords: any;
-    cmsData: any;
     schemaData: any;
     competitorData: Array<any>;
   },
+  client: Anthropic,
 ) {
   logger.info(`[step5] Posting weekly digest for site_id=${siteId}...`);
 
-  const {
-    keywords,
-    cmsData = null,
-    schemaData = null,
-    competitorData = [],
-  } = data || {};
+  const { keywords, schemaData = null, competitorData = [] } = data || {};
 
   if (DRY_RUN) {
     logger.info("[step5] DRY_RUN=true — skipping Slack post and Sheets writes");
     logger.info(
       `[step5] Would post digest with ${(keywords.rankings || []).length} rankings`,
     );
-    if (cmsData && cmsData.opportunities) {
-      logger.info(
-        `[step5] CMS step2 found ${cmsData.opportunities.length} low-CTR opportunities`,
-      );
-    }
     return;
   }
-
-  const cmsOpportunities = (cmsData || {}).opportunities || [];
 
   const schemaPages = (schemaData || {}).pages || [];
   const paaQuestions = (schemaData || {}).paa_questions || [];
@@ -382,14 +259,11 @@ async function step5Reporting(
   ## Module 1 — Keyword Performance
   ${JSON.stringify(keywords.rankings, null, 2)}
 
-  ## Module 2 — CMS Meta Suggestions (low-CTR pages)
-  ${cmsOpportunities.length ? JSON.stringify(cmsOpportunities, null, 2) : "No opportunities identified."}
-
-  ## Module 3 — Schema Gaps
+  ## Module 2 — Schema Gaps
   ${schemaPages.length ? JSON.stringify(schemaPages, null, 2) : "No schema gap data."}
   PAA questions identified: ${paaQuestions.length ? JSON.stringify(paaQuestions.slice(0, 5)) : "None"}
 
-  ## Module 4 — Competitor Intelligence
+  ## Module 3 — Competitor Intelligence
   Competitors Keyword gaps: ${competitorKeywordGaps.length ? JSON.stringify(competitorKeywordGaps.slice(0, 5), null, 2) : "No gaps identified."}
   Competitors Content gaps: ${competitorContentGaps.length ? JSON.stringify(competitorContentGaps.slice(0, 5), null, 2) : "No content gaps."}
   Competitors Backlinks: ${competitorBacklinks.length ? JSON.stringify(competitorBacklinks.slice(0, 5), null, 2) : "No backlinks."}
@@ -433,7 +307,6 @@ async function step5Reporting(
 
   await postWeeklyMessageToSlack(siteId, site?.domain as string, {
     rankings: keywords.rankings || [],
-    cmsOpportunities: (cmsData || {}).opportunities || [],
     schemaGaps: (schemaData || {}).pages || [],
     competitorsAlerts: competitorData,
     summary: parsed.summary || "No summary",
@@ -477,37 +350,28 @@ async function runWeeklyTasks(siteId: number) {
   // ── Step 1: Keyword rankings ──────────────────────────────────────
   let keywordData = {};
   try {
-    keywordData = await step1KeywordRankings(client, siteId);
+    keywordData = await step1KeywordRankings(siteId);
   } catch (exc: any) {
     errors.step1 = exc.message;
     logger.error(`[step1] ERROR: `, exc);
   }
 
-  // ── Step 2: CMS connector — low-CTR page analysis ────────────────
-  let cmsData = {};
+  // ── Step 2: Schema manager ────────────────────────────────────────
+  let schemaData = {};
   try {
-    cmsData = await step2CmsConnector(client, siteId);
+    schemaData = await step2SchemaManager(siteId);
   } catch (exc: any) {
     errors.step2 = exc.message;
     logger.error(`[step2] ERROR: `, exc);
   }
 
-  // ── Step 3: Schema manager ────────────────────────────────────────
-  let schemaData = {};
+  // ── Step 3: Competitor intel ──────────────────────────────────────
+  let competitorData: any[] = [];
   try {
-    schemaData = await step3SchemaManager(client, siteId, cmsData);
+    competitorData = await step3CompetitorIntel(siteId);
   } catch (exc: any) {
     errors.step3 = exc.message;
     logger.error(`[step3] ERROR: `, exc);
-  }
-
-  // ── Step 4: Competitor intel ──────────────────────────────────────
-  let competitorData: any[] = [];
-  try {
-    competitorData = await step4CompetitorIntel(client, siteId);
-  } catch (exc: any) {
-    errors.step4 = exc.message;
-    logger.error(`[step4] ERROR: `, exc);
   }
 
   // ── Timeout check ─────────────────────────────────────────────────
@@ -522,12 +386,15 @@ async function runWeeklyTasks(siteId: number) {
 
   // ── Step 5: Reporting ─────────────────────────────────────────────
   try {
-    await step5Reporting(client, siteId, {
-      keywords: keywordData,
-      cmsData,
-      schemaData,
-      competitorData,
-    });
+    await step5Reporting(
+      siteId,
+      {
+        keywords: keywordData,
+        schemaData,
+        competitorData,
+      },
+      client,
+    );
   } catch (exc: any) {
     errors.step5 = exc.message;
     logger.error(`[step5] ERROR: `, exc);
@@ -564,8 +431,6 @@ export async function weeklyTasks() {
   // 3. Populate Competitors Configuration (Mapped to site_id)
   sitesCompetitorsConfig = {};
   competitorsRes.competitors.forEach((config) => {
-    // Note: The database model uses competitor_domain (singular)
-    // while the internal pipeline uses competitors_domain (plural).
     sitesCompetitorsConfig[config.site_id] = {
       site_id: config.site_id,
       domain: config.domain || "", // Ensure domain exists if needed by the interface

@@ -1,17 +1,16 @@
+import { getDomain } from "../../libs/functions";
+import { logger } from "../utils/logger";
+
 const dataForSEO_URL = process.env.DATAFORSEO_BASEURL;
 const dataForSEO_USERNAME = process.env.DATAFORSEO_USERNAME;
 const dataForSEO_PASSWORD = process.env.DATAFORSEO_PASSWORD;
-
-const removeURLPrefix = (url: string) => {
-  return url.replace(/^(https?:\/\/)?(www\.)?/, "");
-};
 
 export async function getCompetitorsKeywords(
   target_domain: string,
   competitor_domain: string,
 ) {
-  const domain = removeURLPrefix(target_domain);
-  const competitor = removeURLPrefix(competitor_domain);
+  const domain = getDomain(target_domain);
+  const competitor = getDomain(competitor_domain);
   const competitor_initial = competitor.split(".")[0];
 
   const post_array = [
@@ -27,6 +26,9 @@ export async function getCompetitorsKeywords(
     },
   ];
 
+  logger.info(
+    "[dataForSEO.service] Calling DataForSEO API : Competitors keywords",
+  );
   const resp = await fetch(
     `${dataForSEO_URL}/dataforseo_labs/google/domain_intersection/live`,
     {
@@ -53,13 +55,14 @@ export async function getCompetitorsKeywords(
 export async function getSitesBacklinks(domain: string) {
   const post_array = [
     {
-      target: removeURLPrefix(domain),
+      target: getDomain(domain),
       order_by: ["domain_from_rank,asc", "rank,asc"],
       filters: [["domain_from_rank", ">", 0], "and", ["rank", ">", 0]],
       limit: 5,
     },
   ];
-
+  
+  logger.info("[dataForSEO.service] Calling DataForSEO API : Sites Backlinks");
   const resp = await fetch(`${dataForSEO_URL}/backlinks/backlinks/live`, {
     method: "POST",
     headers: {
@@ -85,6 +88,9 @@ export async function getKeywordsSuggestions(keywords: string) {
     },
   ];
 
+  logger.info(
+    "[dataForSEO.service] Calling DataForSEO API : Keywords Suggestions",
+  );
   const resp = await fetch(
     `${dataForSEO_URL}/dataforseo_labs/google/keyword_suggestions/live`,
     {
@@ -114,6 +120,7 @@ export async function getKeywordsOverview(keywords: string[]) {
     },
   ];
 
+  logger.info("[dataForSEO.service] Calling DataForSEO API : Keywords Overview");
   const resp = await fetch(
     `${dataForSEO_URL}/dataforseo_labs/google/keyword_overview/live`,
     {

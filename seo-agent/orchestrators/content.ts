@@ -5,9 +5,10 @@ import {
 } from "@anthropic-ai/sdk/resources/beta.js";
 import { logger } from "../utils/logger.js";
 
-const TIMEOUT_SECONDS = 15 * 60; // 15 minutes hard limit
 const MAX_RETRIES = 3;
 const RETRY_BACKOFF = [2000, 5000, 10000]; // milliseconds between retries
+
+// ── Helper ────────────────────────────────────────────────────────────
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function extractJson(text: string) {

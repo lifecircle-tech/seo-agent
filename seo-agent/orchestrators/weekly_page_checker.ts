@@ -1,7 +1,10 @@
 import * as dotenv from "dotenv";
 import { logger } from "../utils/logger.js";
 
+// Import controllers for database operations
 import { listSitesConfigs } from "../controllers/sites.controller.js";
+
+// MCP Server Imports
 import {
   getMissingCityPages,
   generateCityPage,
@@ -10,9 +13,9 @@ import {
 import { postSlackMessage } from "../mcp-servers/reporting/server.js";
 import { saveMissingPagesReport } from "../services/seo-report.service.js";
 
+// ── Config ────────────────────────────────────────────────────────────
 dotenv.config();
 
-// ── Config ────────────────────────────────────────────────────────────
 const DRY_RUN = ["1", "true", "yes"].includes(
   (process.env.DRY_RUN || "false").toLowerCase(),
 );
@@ -20,6 +23,7 @@ const DRY_RUN = ["1", "true", "yes"].includes(
 // How many city pages to generate per site per run (avoids hammering Claude/WP)
 const PAGES_PER_SITE = Number(process.env.PAGE_BUILDER_BATCH_SIZE ?? 3);
 
+// ── Helper ────────────────────────────────────────────────────────────
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ── Per-site pipeline ─────────────────────────────────────────────────
@@ -321,7 +325,6 @@ export async function weeklyPageChecker() {
   if (!DRY_RUN) {
     try {
       await postWeeklyPageMissingReport(summaries);
-      // await postWeeklyReport(summaries);
     } catch (err: any) {
       logger.error(`[daily_page_builder] Slack report failed: `, err);
     }

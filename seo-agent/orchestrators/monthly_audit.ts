@@ -1,12 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
-import * as dotenv from "dotenv";
 import {
   BetaMessage,
   MessageCreateParamsNonStreaming,
 } from "@anthropic-ai/sdk/resources/beta.js";
+import * as dotenv from "dotenv";
 import { logger } from "../utils/logger.js";
 
+// Import controllers for database operations
 import { listSitesConfigs } from "../controllers/sites.controller.js";
+
+// MCP Server Imports
 import {
   auditCitations,
   getCitationScore,
@@ -20,17 +23,15 @@ import {
 import { postSlackMessage } from "../mcp-servers/reporting/server.js";
 import { getMissingCityPages } from "../mcp-servers/page-generator/server.js";
 
+// ── Config ────────────────────────────────────────────────────────────
 dotenv.config();
 
-// ── Config ────────────────────────────────────────────────────────────
 const DRY_RUN = ["1", "true", "yes"].includes(
   (process.env.DRY_RUN || "false").toLowerCase(),
 );
 const TIMEOUT_SECONDS = 15 * 60;
 const MAX_RETRIES = 3;
 const RETRY_BACKOFF = [2000, 5000, 10000];
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let allPages = [] as {
   id: number;
@@ -40,6 +41,9 @@ let allPages = [] as {
   content: { rendered: string };
   rank_math_meta: { title: string };
 }[];
+
+// ── Helper ────────────────────────────────────────────────────────────
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function extractJson(text: string): any {
   try {
@@ -57,6 +61,7 @@ function extractJson(text: string): any {
   }
 }
 
+// ── Retry helper ──────────────────────────────────────────────────────
 async function callWithRetry(
   client: Anthropic,
   label: string,

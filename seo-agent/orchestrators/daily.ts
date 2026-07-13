@@ -2,7 +2,13 @@ import * as dotenv from "dotenv";
 import { randomUUID } from "node:crypto";
 import { logger } from "../utils/logger.js";
 
+// Import controllers for database operations
 import { listSitesConfigs } from "../controllers/sites.controller.js";
+import { bulkCreateAlerts } from "../controllers/alerts.controller.js";
+
+import { Alert } from "../models/alert.model.js";
+
+// MCP Server Imports
 import {
   runPagespeedAudit,
   checkCrawlErrors,
@@ -11,16 +17,6 @@ import {
 } from "../mcp-servers/technical-seo/server.js";
 import { getFeatureOpportunities } from "../mcp-servers/serp-features/server.js";
 import { postSlackMessage } from "../mcp-servers/reporting/server.js";
-import { bulkCreateAlerts } from "../controllers/alerts.controller.js";
-import { Alert } from "../models/alert.model.js";
-
-dotenv.config();
-
-const DRY_RUN = ["1", "true", "yes"].includes(
-  (process.env.DRY_RUN || "false").toLowerCase(),
-);
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ── Types ─────────────────────────────────────────────────────────────
 type SiteIssue = {
@@ -28,6 +24,16 @@ type SiteIssue = {
   severity: "critical" | "warning" | "info";
   message: string;
 };
+
+// ── Config ────────────────────────────────────────────────────────────
+dotenv.config();
+
+const DRY_RUN = ["1", "true", "yes"].includes(
+  (process.env.DRY_RUN || "false").toLowerCase(),
+);
+
+// ── Helper ────────────────────────────────────────────────────────────
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ── Per-site health check ─────────────────────────────────────────────
 async function runDailyCheckForSite(

@@ -5,6 +5,9 @@ import { logger } from "../utils/logger.js";
 import { listSitesConfigs } from "../controllers/sites.controller.js";
 import { listCompetitorConfigs } from "../controllers/competitor.controller.js";
 
+import { saveBacklinkReport } from "../services/seo-report.service.js";
+
+// MCP Server Imports
 import {
   getNewBacklinks,
   getLostBacklinks,
@@ -13,9 +16,6 @@ import {
 } from "../mcp-servers/backlink-monitor/server.js";
 import { findLinkProspects } from "../mcp-servers/backlink-engine/server.js";
 import { postBacklinkDigestToSlack } from "../mcp-servers/reporting/server.js";
-import { saveBacklinkReport } from "../services/seo-report.service.js";
-
-dotenv.config();
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -38,13 +38,15 @@ interface StepError {
   step2: string;
 }
 
-// ── Global Variables ──────────────────────────────────────────────────
+// ── Config ────────────────────────────────────────────────────────────
+dotenv.config();
 
-let sitesConfig: SitesConfig[] = [];
-let sitesCompetitorsConfig: Record<string | number, CompetitorsConfig> = {};
 const DRY_RUN = ["1", "true", "yes"].includes(
   (process.env.DRY_RUN || "false").toLowerCase(),
 );
+
+let sitesConfig: SitesConfig[] = [];
+let sitesCompetitorsConfig: Record<string | number, CompetitorsConfig> = {};
 
 // ── Step 1: Backlink monitor ──────────────────────────────────────────
 async function backlinkMonitor(siteId: number) {

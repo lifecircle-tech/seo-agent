@@ -39,7 +39,7 @@ function extractTopic(keyword: string): string {
 
 /**
  * Tool: discover_city_keywords
- * Queries Ahrefs for related keywords and cross-references GSC for current rankings.
+ * Queries DataForSEO for related keywords and cross-references GSC for current rankings.
  */
 export async function discoverCityKeywords(
   siteId: number,
