@@ -91,7 +91,8 @@ export function createWeeklyDigest(
 ) {
   logger.info("========== Creating Weekly Digest **********");
   const today = new Date().toISOString().split("T")[0];
-  const { rankings, summary, schemaGaps, competitorsAlerts } = data || {};
+  const { rankings, summary, schemaGaps, competitorsAlerts, locationsInsight } =
+    data || {};
 
   // Cap rankings at 15 to stay within block text limits
   const rankLines = rankings.length
@@ -102,7 +103,7 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
   logger.info("========== Rankings Processed **********");
 
   // Build schema gaps section
-  const gaps = (schemaGaps ?? []).filter((g: any) => g.has_gaps);
+  const gaps = (schemaGaps || []).filter((g: any) => g.has_gaps);
   const schemaLines = gaps.length
     ? gaps
         .slice(0, 10)
@@ -112,9 +113,10 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
         )
         .join("\n")
     : "No schema gaps identified this week.";
+  logger.info("========== Gaps Processed **********");
 
   // Build competitor alerts section
-  const competitors = competitorsAlerts ?? [];
+  const competitors = competitorsAlerts || [];
   const competitorsLines = competitors.length
     ? competitors
         .slice(0, 5)
@@ -132,6 +134,46 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
         })
         .join("\n")
     : "No competitor keyword gaps identified this week.";
+  logger.info("========== Competitors Processed **********");
+
+  // Location Insights
+  let locations = {} as any;
+  let locationsBlock = [] as any[];
+  if ((locationsInsight || []).length) {
+    // Most viewed locations
+    locations = locationsInsight.sort((a: any, b: any) => b.views - a.views)[0];
+    locationsBlock.push(sectionBlock("*Most Viewed Locations*\n"));
+    locationsBlock.push(
+      sectionBlock(
+        `    ${locations.name}, ${locations.city} (Views - ${locations.views})`,
+      ),
+    );
+
+    // Most Searched locations
+    locations = locationsInsight.sort(
+      (a: any, b: any) => b.searches - a.searches,
+    )[0];
+    locationsBlock.push(sectionBlock("*Most Searched Locations*\n"));
+    locationsBlock.push(
+      sectionBlock(
+        `    ${locations.name}, ${locations.city} (Search - ${locations.searches})`,
+      ),
+    );
+
+    // Most Actioned locations
+    locations = locationsInsight.sort(
+      (a: any, b: any) => b.actions - a.actions,
+    )[0];
+    locationsBlock.push(sectionBlock("*Most Searched Locations*\n"));
+    locationsBlock.push(
+      sectionBlock(
+        `    ${locations.name}, ${locations.city} (Actions - ${locations.actions})`,
+      ),
+    );
+  } else {
+    locationsBlock.push(sectionBlock("No locations data"));
+  }
+  logger.info("========== Locations Processed **********");
 
   // Header blocks
   const blocks = [
@@ -156,6 +198,9 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
     sectionBlock(`*Schema Gaps*\n${schemaLines}`),
     { type: "divider" },
     sectionBlock(`*Competitor Keyword Gaps*\n${competitorsLines}`),
+    { type: "divider" },
+    sectionBlock(`*Location Insights*\n`),
+    ...locationsBlock,
     { type: "divider" },
     sectionBlock(`*Summary & Actions*\n${summary || "No summary available."}`),
   );

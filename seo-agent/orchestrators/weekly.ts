@@ -31,6 +31,15 @@ import {
   writeKeywordRankingsToSheet,
   writeRecommendationsToSheet,
 } from "../mcp-servers/reporting/server.js";
+import {
+  listLocations,
+  getInsights,
+} from "../mcp-servers/gbp-manager/server.js";
+import {
+  getNewReviews,
+  draftReviewResponse,
+  getReviewMetrics,
+} from "../mcp-servers/reputation-manager/server.js";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -214,6 +223,86 @@ async function step3CompetitorIntel(siteId: number) {
   return data;
 }
 
+// ── Step 4: GBP Manager ───────────────────────────────────────────────
+async function step4GbpManager(siteId: number) {
+  logger.info(`\n[step4] Collecting GBP insights for site_id=${siteId}...`);
+  const site = sitesConfig.find((s) => s.site_id == siteId);
+
+  const { locations } = await listLocations(siteId, site?.brand_name as string);
+  if (locations.length === 0) {
+    logger.info(
+      `[step4] No GBP locations found for site_id=${siteId}, skipping.`,
+    );
+    return { locations: [], insights: [] };
+  }
+
+  const insights = [] as any[];
+  for await (let loc of locations.slice(0, 2)) {
+    try {
+      const data = await getInsights(siteId, loc.location_id, 7);
+      insights.push({ ...loc, ...data, site_id: siteId });
+    } catch (err: any) {
+      logger.info(
+        `[step4] getInsights failed for ${loc.location_id}: ${err.message}`,
+      );
+      insights.push({
+        ...loc,
+        views: 0,
+        searches: 0,
+        actions: 0,
+        site_id: siteId,
+      });
+    }
+  }
+
+  logger.info(
+    `[step4] Done — ${locations.length} locations, Insights for ${insights.length}`,
+  );
+  // TODO : Post insight data to google sheet.
+  return { locations, insights };
+}
+
+// ── Step 7: Reputation Manager ────────────────────────────────────────
+async function step7ReputationManager(siteId: number) {
+  logger.info(`\n[step7] Checking new reviews for site_id=${siteId}...`);
+
+  const sinceDate = new Date();
+  sinceDate.setDate(sinceDate.getDate() - 7);
+
+  const { reviews } = await getNewReviews(siteId, sinceDate.toISOString());
+  const unanswered = reviews.filter((r) => !r.has_reply);
+
+  if (unanswered.length === 0) {
+    logger.info(`[step7] No unanswered reviews for site_id=${siteId}.`);
+    return { metrics: null, queued: 0 };
+  }
+
+  logger.info(
+    `[step7] Drafting responses for ${unanswered.length} unanswered reviews...`,
+  );
+
+  const drafts = [];
+  for (const review of unanswered) {
+    try {
+      const draft = await draftReviewResponse(
+        review.review_id,
+        review.rating,
+        review.comment,
+      );
+      drafts.push({ review, draft });
+    } catch (err: any) {
+      logger.error(
+        `[step7] draftReviewResponse failed for ${review.review_id}: ${err.message}`,
+        err,
+      );
+    }
+  }
+
+  const metrics = await getReviewMetrics(siteId);
+  logger.info(`[step7] Done — ${drafts.length} responses queued`);
+  return { metrics, queued: drafts.length };
+}
+
 // ── Step 5: Reporting ─────────────────────────────────────────────────
 async function step5Reporting(
   siteId: number,
@@ -221,12 +310,18 @@ async function step5Reporting(
     keywords: any;
     schemaData: any;
     competitorData: Array<any>;
+    locationsData: any;
   },
   client: Anthropic,
 ) {
   logger.info(`[step5] Posting weekly digest for site_id=${siteId}...`);
 
-  const { keywords, schemaData = null, competitorData = [] } = data || {};
+  const {
+    keywords,
+    schemaData = null,
+    competitorData = [],
+    locationsData,
+  } = data || {};
 
   if (DRY_RUN) {
     logger.info("[step5] DRY_RUN=true — skipping Slack post and Sheets writes");
@@ -252,12 +347,22 @@ async function step5Reporting(
     backlinks: competitor.backlinks || [],
   }));
 
+  const locationsInsight = (locationsData.insights || []).map(
+    (insight: any) => ({
+      name: insight.name,
+      city: insight.city,
+      views: insight.views,
+      searches: insight.searches,
+      actions: insight.actions,
+    }),
+  );
+
   const prompt = `You are an SEO reporting agent for site_id=${siteId}.
 
   Here is all data collected this week:
 
   ## Module 1 — Keyword Performance
-  ${JSON.stringify(keywords.rankings, null, 2)}
+  ${JSON.stringify(keywords.rankings?.slice(0, 100), null, 2)}
 
   ## Module 2 — Schema Gaps
   ${schemaPages.length ? JSON.stringify(schemaPages, null, 2) : "No schema gap data."}
@@ -268,13 +373,18 @@ async function step5Reporting(
   Competitors Content gaps: ${competitorContentGaps.length ? JSON.stringify(competitorContentGaps.slice(0, 5), null, 2) : "No content gaps."}
   Competitors Backlinks: ${competitorBacklinks.length ? JSON.stringify(competitorBacklinks.slice(0, 5), null, 2) : "No backlinks."}
 
+  ## Module 4 — Google Business Locations insight
+  Insights: ${JSON.stringify(locationsInsight)}
+
   Please do all of the following in order:
-  1. From above data, create a concise summary of key insights and recommendations for next week (3-5 sentences).
+  1. From above data, create a concise summary of key insights and recommendations for next week (bullet points).
   2. For every module, write a recommendation with site_id=${siteId}, module=<module_name>, a concise recommendation from the module data
 
   Return ONLY a JSON object with keys:
   - summary: string with concise insights and recommendations
   - recommendations: array of objects with module, recommendation_text`;
+
+  logger.info("Prompt Length ", prompt.split(" ").length);
 
   const response = await callWithRetry(client, "step5", {
     model: "claude-sonnet-4-6",
@@ -309,6 +419,7 @@ async function step5Reporting(
     rankings: keywords.rankings || [],
     schemaGaps: (schemaData || {}).pages || [],
     competitorsAlerts: competitorData,
+    locationsInsight,
     summary: parsed.summary || "No summary",
   });
 
@@ -333,6 +444,7 @@ interface StepError {
   step3: string;
   step4: string;
   step5: string;
+  step7: string;
 }
 
 // ── Main pipeline ─────────────────────────────────────────────────────
@@ -374,6 +486,15 @@ async function runWeeklyTasks(siteId: number) {
     logger.error(`[step3] ERROR: `, exc);
   }
 
+  // ── Step 4: GBP Manager ───────────────────────────────────────────
+  let gbpData = {};
+  try {
+    gbpData = await step4GbpManager(siteId);
+  } catch (exc: any) {
+    errors.step4 = exc.message;
+    logger.error(`[step4] ERROR: `, exc);
+  }
+
   // ── Timeout check ─────────────────────────────────────────────────
   let elapsedSeconds = (Date.now() - startTime) / 1000;
   if (elapsedSeconds > TIMEOUT_SECONDS) {
@@ -392,6 +513,7 @@ async function runWeeklyTasks(siteId: number) {
         keywords: keywordData,
         schemaData,
         competitorData,
+        locationsData: gbpData,
       },
       client,
     );
@@ -399,6 +521,14 @@ async function runWeeklyTasks(siteId: number) {
     errors.step5 = exc.message;
     logger.error(`[step5] ERROR: `, exc);
   }
+
+  // ── Step 7: Reputation Manager ────────────────────────────────────
+  // try {
+  //   await step7ReputationManager(siteId);
+  // } catch (exc: any) {
+  //   errors.step7 = exc.message;
+  //   logger.error(`[step7] ERROR: `, exc);
+  // }
 
   elapsedSeconds = (Date.now() - startTime) / 1000;
   printSummary(errors, elapsedSeconds);

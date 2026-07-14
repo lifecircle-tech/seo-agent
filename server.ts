@@ -23,7 +23,7 @@ import { maltiRouter, initMalti } from "./malti/index.js";
 
 // Daily orchestrators
 import { dailyTechnicalAudit } from "./seo-agent/orchestrators/daily.js";
-import { dailyWPPagesTasks } from "./seo-agent/orchestrators/daily_wp_pages_analyser.js"
+import { dailyWPPagesTasks } from "./seo-agent/orchestrators/daily_wp_pages_analyser.js";
 
 // Weekly orchestrators
 import { weeklyTasks } from "./seo-agent/orchestrators/weekly.js";
