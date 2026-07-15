@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
-    BetaMessage,
-    MessageCreateParamsNonStreaming,
+  BetaMessage,
+  MessageCreateParamsNonStreaming,
 } from "@anthropic-ai/sdk/resources/beta.js";
 import * as dotenv from "dotenv";
 import { logger } from "../utils/logger.js";
@@ -15,6 +15,7 @@ import {
   getPage,
   getPagesWithHighImpressionLowCtr,
 } from "../mcp-servers/cms-connector/server.js";
+import { getMetaRewriteApprovedApprovalByUrl } from "../controllers/approvals.controller.js";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -162,30 +163,37 @@ async function step1CmsConnector(client: Anthropic, siteId: number) {
   });
 
   await createApprovalQueue(
-    parsed.opportunities.map((opp: any) => {
-      const page = pages.find((p: any) => p.id === opp.id);
-      return {
-        site_id: siteId,
-        module: "cms-connector",
-        type: "meta_rewrite",
-        priority: opp.priority,
-        title: page.title,
-        original_content: {
-          focus_keywords: page.secondary_keywords,
-          url: page.url,
-          type: page.type,
-          current_title: page.title,
-          current_description: page.meta_description,
-        },
-        suggested_content: {
-          type: page.type,
-          suggested_title: opp.suggested_title,
-          suggested_description: opp.suggested_description,
-          reasoning: opp.reasoning,
-        },
-        preview_url: page.url,
-      };
-    }),
+    await Promise.all(
+      parsed.opportunities.map(async (opp: any) => {
+        const page = pages.find((p: any) => p.id === opp.id);
+        const last_updated_at = await getMetaRewriteApprovedApprovalByUrl(
+          page.url,
+        );
+
+        return {
+          site_id: siteId,
+          module: "cms-connector",
+          type: "meta_rewrite",
+          priority: opp.priority,
+          title: page.title,
+          original_content: {
+            focus_keywords: page.secondary_keywords,
+            url: page.url,
+            type: page.type,
+            current_title: page.title,
+            current_description: page.meta_description,
+            last_updated_at: last_updated_at?.actioned_at,
+          },
+          suggested_content: {
+            type: page.type,
+            suggested_title: opp.suggested_title,
+            suggested_description: opp.suggested_description,
+            reasoning: opp.reasoning,
+          },
+          preview_url: page.url,
+        };
+      }),
+    ),
   );
 
   logger.info(`[step1] Done`);
@@ -213,7 +221,9 @@ async function runDailyWPPagesTasks(siteId: number) {
   const errors = {} as StepError;
 
   logger.info(`[daily_page_meta] ══════════════════════════════════════════`);
-  logger.info(`[daily_page_meta] Starting Daily WP Pages meta analyzer pipeline — site_id=${siteId}`);
+  logger.info(
+    `[daily_page_meta] Starting Daily WP Pages meta analyzer pipeline — site_id=${siteId}`,
+  );
   logger.info(`[daily_page_meta] ══════════════════════════════════════════`);
 
   // ── Step 1: CMS connector — low-CTR page analysis ────────────────
@@ -225,22 +235,21 @@ async function runDailyWPPagesTasks(siteId: number) {
     logger.error(`[step1] ERROR: `, exc);
   }
 
-
   // ── Timeout check ─────────────────────────────────────────────────
   let elapsedSeconds = (Date.now() - startTime) / 1000;
 
   // ── Step 2: Reporting ─────────────────────────────────────────────
-//   try {
-//     await step2Reporting(client, siteId, {
-//       keywords: keywordData,
-//       cmsData,
-//       schemaData,
-//       competitorData,
-//     });
-//   } catch (exc: any) {
-//     errors.step5 = exc.message;
-//     logger.error(`[step5] ERROR: `, exc);
-//   }
+  //   try {
+  //     await step2Reporting(client, siteId, {
+  //       keywords: keywordData,
+  //       cmsData,
+  //       schemaData,
+  //       competitorData,
+  //     });
+  //   } catch (exc: any) {
+  //     errors.step5 = exc.message;
+  //     logger.error(`[step5] ERROR: `, exc);
+  //   }
 
   elapsedSeconds = (Date.now() - startTime) / 1000;
   printSummary(errors, elapsedSeconds);
@@ -251,9 +260,7 @@ export async function dailyWPPagesTasks() {
 
   // Fetch all configuration data from MySQL via controllers
   // Using a large limit to ensure all configs are loaded for the pipeline
-  const [sitesRes] = await Promise.all([
-    listSitesConfigs({ limit: 1000 }),
-  ]);
+  const [sitesRes] = await Promise.all([listSitesConfigs({ limit: 1000 })]);
 
   // 1. Populate Sites Configuration
   sitesConfig = sitesRes.sites;

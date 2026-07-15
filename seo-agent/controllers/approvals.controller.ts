@@ -166,6 +166,8 @@ export async function approveApproval(
   const approval = await getApprovalById(id);
   if (!approval) return null;
 
+  if (approval.actioned_by) return approval;
+
   // Use editedContent if provided, otherwise use the suggested AI-generated content
   const contentToStore = editedContent ?? approval.updated_content;
 
@@ -221,6 +223,11 @@ export async function rejectApproval(
   reason: string,
   remark?: string,
 ): Promise<ApprovalJSON | null> {
+  const approval = await getApprovalById(id);
+  if (!approval) return null;
+  
+  if (approval.actioned_by) return approval;
+
   const [result] = await pool.query<ResultSetHeader>(
     `UPDATE approvals
      SET status = 'rejected', actioned_at = NOW(3), actioned_by = ?, reject_reason = ?, remark = ?
@@ -229,6 +236,21 @@ export async function rejectApproval(
   );
   if (result.affectedRows === 0) return null;
   return getApprovalById(id);
+}
+
+// ── GET BY URL ────────────────────────────────────────────────────────
+export async function getMetaRewriteApprovedApprovalByUrl(
+  url: string,
+): Promise<ApprovalJSON | null> {
+  const [rows] = await pool.query<Approval[]>(
+    `SELECT * FROM approvals
+     WHERE JSON_UNQUOTE(JSON_EXTRACT(original_content, '$.url')) = ?
+       AND status = 'approved' AND type = 'meta_rewrite'
+     ORDER BY actioned_at DESC
+     LIMIT 1`,
+    [url],
+  );
+  return rows.length ? toJSON(rows[0]) : null;
 }
 
 // ── DEFER ─────────────────────────────────────────────────────────────

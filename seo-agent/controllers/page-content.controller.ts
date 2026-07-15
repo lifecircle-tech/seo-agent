@@ -30,19 +30,25 @@ function toJSON(row: PageContent): PageContentJSON {
 export async function createPageContent(
   data: Pick<
     PageContent,
-    "id" | "site_id" | "page_meta_details" | "url" | "keywords_analytics"
+    | "id"
+    | "site_id"
+    | "page_meta_details"
+    | "url"
+    | "keywords_analytics"
+    | "update_details"
   >,
 ): Promise<PageContentJSON> {
   await pool.query<ResultSetHeader>(
     `INSERT INTO page_content 
-      (id, site_id, page_meta_details, url, status, keywords_analytics) 
-    VALUES (?, ?, ?, ?, 'pending', ?)`,
+      (id, site_id, page_meta_details, url, status, keywords_analytics, update_details) 
+    VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
     [
       data.id,
       data.site_id,
       JSON.stringify(data.page_meta_details),
       data.url,
       JSON.stringify(data.keywords_analytics),
+      JSON.stringify(data.update_details),
     ],
   );
   const record = await getPageContentById(data.id);
@@ -145,6 +151,11 @@ export async function acknowledgePageContent(
   userId: string,
   remark?: string,
 ): Promise<PageContentJSON | null> {
+  const pageContent = await getPageContentById(id);
+  if (!pageContent) return null;
+
+  if (pageContent.acknowledged_by) return pageContent;
+
   const [result] = await pool.query<ResultSetHeader>(
     `UPDATE page_content 
      SET status = 'acknowledged', acknowledged_by = ?, acknowledged_at = NOW(3), remark = COALESCE(?, remark)
@@ -160,6 +171,11 @@ export async function rejectPageContent(
   userId: string,
   remark?: string,
 ): Promise<PageContentJSON | null> {
+  const pageContent = await getPageContentById(id);
+  if (!pageContent) return null;
+
+  if (pageContent.acknowledged_by) return pageContent;
+
   const [result] = await pool.query<ResultSetHeader>(
     `UPDATE page_content 
      SET status = 'rejected', acknowledged_by = ?, acknowledged_at = NOW(3), remark = COALESCE(?, remark)
@@ -197,10 +213,32 @@ export async function updateUpdatedPageDetails(
   id: string,
   update_details: Record<string, any>,
 ): Promise<PageContentJSON | null> {
+  const page = await getPageContentById(id);
+
+  let temp_update_details = page?.update_details;
+  temp_update_details = {
+    ...temp_update_details,
+    ...update_details,
+  };
+
   const [result] = await pool.query<ResultSetHeader>(
     `UPDATE page_content SET update_details = ? WHERE id = ?`,
-    [JSON.stringify(update_details), id],
+    [JSON.stringify(temp_update_details), id],
   );
   if (result.affectedRows === 0) return null;
   return getPageContentById(id);
+}
+
+// ── GET BY URL ────────────────────────────────────────────────────────
+export async function getAcknowledgedPageByUrl(
+  url: string,
+): Promise<PageContentJSON | null> {
+  const [rows] = await pool.query<PageContent[]>(
+    `SELECT * FROM page_content
+     WHERE url = ? AND status = 'acknowledged'
+     ORDER BY acknowledged_at DESC
+     LIMIT 1`,
+    [url],
+  );
+  return rows.length ? toJSON(rows[0]) : null;
 }

@@ -9,8 +9,8 @@ export interface Approval extends RowDataPacket {
   type: string; // VARCHAR(64)
   priority: number; // TINYINT — 1=critical, 2=high, 3=medium
   title: string; // VARCHAR(255)
-  original_content: Record<string, unknown>; // JSON (parsed by mysql2)
-  updated_content: Record<string, unknown> | null; // JSON (parsed by mysql2) | NULL
+  original_content: Record<string, any>; // JSON (parsed by mysql2)
+  updated_content: Record<string, any> | null; // JSON (parsed by mysql2) | NULL
   preview_url: string | null; // VARCHAR(512) | NULL
   status: "pending" | "approved" | "rejected" | "deferred"; // VARCHAR(16)
   created_at: Date; // DATETIME(3)
@@ -27,8 +27,8 @@ export interface ApprovalJSON {
   type: string;
   priority: number;
   title: string;
-  original_content: Record<string, unknown>;
-  updated_content: Record<string, unknown> | null;
+  original_content: Record<string, any>;
+  updated_content: Record<string, any> | null;
   preview_url: string | null;
   status: "pending" | "approved" | "rejected" | "deferred";
   created_at: string;

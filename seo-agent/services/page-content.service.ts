@@ -6,6 +6,7 @@ import { wpFetch } from "../../libs/wordpress.js";
 import { getApprovalById } from "../controllers/approvals.controller.js";
 import {
   createPageContent,
+  getAcknowledgedPageByUrl,
   getPageContentById,
   updatePageContentBody,
   updatePageContentError,
@@ -305,6 +306,8 @@ export async function runPageContentAgent(id: string) {
       original_content.focus_keywords,
     );
 
+    const page = await getAcknowledgedPageByUrl(url);
+
     // create page-content record
     const result = await createPageContent({
       id: randomUUID(),
@@ -317,6 +320,7 @@ export async function runPageContentAgent(id: string) {
         keywords: original_content.focus_keywords || [],
       },
       keywords_analytics: keywords_overview,
+      update_details: { previous_updated_at: page?.acknowledged_at },
     });
     io.emit("content:created", result);
     recordId = result.id;
