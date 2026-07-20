@@ -7,6 +7,7 @@ export interface KeywordConfig extends RowDataPacket {
   site_id: number; // INT
   domain: string; // VARCHAR(255)
   target_keywords: string[]; // JSON (list of strings)
+  site_name: string | null; // joined from sites_config
   created_at: Date; // DATETIME(3)
 }
 
@@ -15,6 +16,7 @@ export interface KeywordConfigJSON {
   site_id: number;
   domain: string;
   target_keywords: string[];
+  site_name: string | null;
   created_at: string;
 }
 

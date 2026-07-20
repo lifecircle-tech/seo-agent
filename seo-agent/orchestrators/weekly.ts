@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   BetaMessage,
@@ -8,11 +9,15 @@ import { logger } from "../utils/logger.js";
 
 // Import controllers for database operations
 import { listSitesConfigs } from "../controllers/sites.controller.js";
-import { listKeywordsConfigs } from "../controllers/keywords.controller.js";
+import { listKeywordsConfigs } from "../controllers/keywords-config.controller.js";
 import { listCompetitorConfigs } from "../controllers/competitor.controller.js";
+import { upsertKeywords } from "../controllers/keywords.controller.js";
 
 // MCP Server Imports
-import { getKeywordRankings } from "../mcp-servers/keyword-tracker/server.js";
+import {
+  getKeywordRankings,
+  getRankingOfNewKeywords,
+} from "../mcp-servers/keyword-tracker/server.js";
 import {
   getPage,
   getPagesWithHighImpressionLowCtr,
@@ -136,9 +141,86 @@ async function step1KeywordRankings(siteId: number) {
     siteKeywords,
   );
 
+  const rankings = keywordRanking.rankings || [];
+  const pages = new Map();
+
+  rankings.map((item) => {
+    if (pages.has(item.keyword)) {
+      if (item.page) {
+        pages.set(item.keyword, [...pages.get(item.keyword), item.page]);
+      }
+    } else {
+      if (item.page) {
+        pages.set(item.keyword, [item.page]);
+      }
+    }
+  });
+
+  if (rankings.length > 0) {
+    try {
+      await upsertKeywords(
+        rankings.map((r) => ({
+          id: randomUUID(),
+          site_id: siteId,
+          keyword: r.keyword,
+          is_new: false,
+          clicks: r.clicks,
+          impressions: r.impressions,
+          position: r.position ?? null,
+          ctr: r.ctr,
+          search_volume: r.volume ?? null,
+          difficulty: r.difficulty || null,
+          cpc: r.cpc,
+          competition: r.competition ?? null,
+          competition_level: r.competition_level ?? null,
+          monthly_searches: r.monthly_searches || null,
+          pages_used: pages.get(r.keyword),
+        })),
+      );
+      logger.info(
+        `[step1] Persisted ${rankings.length} keyword rankings to DB`,
+      );
+    } catch (err) {
+      logger.error(`[step1] Failed to persist keyword rankings:`, err);
+    }
+  }
+
+  const newResult = await getRankingOfNewKeywords(
+    siteId,
+    site?.domain as string,
+  );
+  if (newResult.rankings.length > 0) {
+    try {
+      await upsertKeywords(
+        newResult.rankings.map((r) => ({
+          id: randomUUID(),
+          site_id: siteId,
+          keyword: r.keyword,
+          is_new: pages.get(r.keywords) ? false : true,
+          clicks: r.clicks,
+          impressions: r.impressions,
+          position: r.position ?? null,
+          ctr: r.ctr,
+          search_volume: r.volume ?? null,
+          difficulty: r.difficulty || null,
+          cpc: r.cpc,
+          competition: r.competition ?? null,
+          competition_level: r.competition_level ?? null,
+          monthly_searches: r.monthly_searches || null,
+          pages_used: pages.get(r.keyword),
+        })),
+      );
+      logger.info(
+        `[step1] Persisted ${newResult.rankings.length} new keyword rankings to DB`,
+      );
+    } catch (err) {
+      logger.error(`[step1] Failed to persist new keyword rankings:`, err);
+    }
+  }
+
   logger.info(`[step1] Done`);
   return {
-    rankings: keywordRanking.rankings || [],
+    rankings,
     top_movers: { movers: [] },
     velocity: {},
     summary: "",
@@ -416,7 +498,6 @@ async function step5Reporting(
   const site = sitesConfig.find((site) => site.site_id === siteId);
 
   await postWeeklyMessageToSlack(siteId, site?.domain as string, {
-    rankings: keywords.rankings || [],
     schemaGaps: (schemaData || {}).pages || [],
     competitorsAlerts: competitorData,
     locationsInsight,

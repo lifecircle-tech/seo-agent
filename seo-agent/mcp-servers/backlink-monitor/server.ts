@@ -2,6 +2,7 @@ import { pool } from "../../../db.js";
 import { RowDataPacket } from "mysql2/promise";
 import { getDomain } from "../../../libs/functions.js";
 import { logger } from "../../utils/logger.js";
+import { getSitesBacklinks } from "../../services/dataForSEO.service.js";
 
 // ── DataForSEO helpers ────────────────────────────────────────────────
 
@@ -57,6 +58,11 @@ export interface BacklinkItem {
   last_seen: string | null;
   is_dofollow: boolean;
   spam_score: number;
+  domain_from_rank: number;
+  is_new: boolean;
+  is_lost: boolean;
+  is_broken: boolean;
+  anchor_details: Record<string, any>;
 }
 
 export interface NewBacklinksResult {
@@ -108,10 +114,19 @@ function mapBacklink(item: any): BacklinkItem {
     url_to: item.url_to ?? "",
     anchor: item.anchor ?? "",
     domain_rank: item.domain_from_rank ?? item.rank ?? 0,
-    first_seen: item.first_seen ?? null,
-    last_seen: item.last_seen ?? null,
+    first_seen: new Date(item.first_seen).toISOString() || null,
+    last_seen: new Date(item.last_seen).toISOString() || null,
     is_dofollow: item.dofollow ?? !(item.nofollow ?? false),
     spam_score: item.backlink_spam_score ?? 0,
+    domain_from_rank: item.domain_from_rank || null,
+    is_new: item.is_new,
+    is_lost: item.is_lost,
+    is_broken: item.is_broken,
+    anchor_details: {
+      type: item.item_type,
+      text: item.anchor || "",
+      image: item.image_url || "",
+    },
   };
 }
 
@@ -135,18 +150,14 @@ export async function getNewBacklinks(
     `[backlink-monitor:new] site_id=${siteId} domain=${domain} days=${days} from=${dateFrom}`,
   );
 
-  const data = await dfsPost("/backlinks/backlinks/live", [
-    {
-      target: domain,
-      limit: 50,
-      order_by: ["domain_from_rank,desc"],
-      filters: [["first_seen", ">=", dateFrom], "and", ["is_lost", "=", false]],
-    },
-  ]);
+  const data = await getSitesBacklinks({
+    target: domain,
+    limit: 50,
+    order_by: ["domain_from_rank,asc"],
+    filters: [["first_seen", ">=", dateFrom], "and", ["is_lost", "=", false]],
+  });
 
-  const items: BacklinkItem[] = (
-    data?.tasks?.[0]?.result?.[0]?.items ?? []
-  ).map(mapBacklink);
+  const items: BacklinkItem[] = (data ?? []).map(mapBacklink);
 
   return {
     site_id: siteId,
@@ -173,19 +184,15 @@ export async function getLostBacklinks(
     `[backlink-monitor:lost] site_id=${siteId} domain=${domain} days=${days} from=${dateFrom}`,
   );
 
-  const data = await dfsPost("/backlinks/backlinks/live", [
-    {
-      target: domain,
-      limit: 50,
-      order_by: ["domain_from_rank,desc"],
-      backlinks_status_type: "lost",
-      filters: [["is_lost", "=", true], "and", ["last_seen", ">=", dateFrom]],
-    },
-  ]);
+  const data = await getSitesBacklinks({
+    target: domain,
+    limit: 50,
+    order_by: ["domain_from_rank,desc"],
+    backlinks_status_type: "lost",
+    filters: [["is_lost", "=", true], "and", ["last_seen", ">=", dateFrom]],
+  });
 
-  const items: BacklinkItem[] = (
-    data?.tasks?.[0]?.result?.[0]?.items ?? []
-  ).map(mapBacklink);
+  const items: BacklinkItem[] = (data ?? []).map(mapBacklink);
 
   return {
     site_id: siteId,
@@ -209,22 +216,18 @@ export async function getToxicLinks(
     `[backlink-monitor:toxic] site_id=${siteId} domain=${domain} spam_threshold=${SPAM_THRESHOLD}`,
   );
 
-  const data = await dfsPost("/backlinks/backlinks/live", [
-    {
-      target: domain,
-      limit: 100,
-      order_by: ["backlink_spam_score,desc"],
-      filters: [
-        ["backlink_spam_score", ">", SPAM_THRESHOLD],
-        "and",
-        ["is_lost", "=", false],
-      ],
-    },
-  ]);
+  const data = await getSitesBacklinks({
+    target: domain,
+    limit: 100,
+    order_by: ["backlink_spam_score,desc"],
+    filters: [
+      ["backlink_spam_score", ">", SPAM_THRESHOLD],
+      "and",
+      ["is_lost", "=", false],
+    ],
+  });
 
-  const items: BacklinkItem[] = (
-    data?.tasks?.[0]?.result?.[0]?.items ?? []
-  ).map(mapBacklink);
+  const items: BacklinkItem[] = (data ?? []).map(mapBacklink);
 
   return {
     site_id: siteId,

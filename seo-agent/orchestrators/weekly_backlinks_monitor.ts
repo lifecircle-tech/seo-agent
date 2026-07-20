@@ -16,6 +16,8 @@ import {
 } from "../mcp-servers/backlink-monitor/server.js";
 import { findLinkProspects } from "../mcp-servers/backlink-engine/server.js";
 import { postBacklinkDigestToSlack } from "../mcp-servers/reporting/server.js";
+import { upsertBacklinks } from "../controllers/backlinks.controller.js";
+import { randomUUID } from "node:crypto";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -57,6 +59,67 @@ async function backlinkMonitor(siteId: number) {
     getToxicLinks(siteId),
     getLinkVelocity(siteId),
   ]);
+
+  if (newLinks) {
+    logger.info("NEW LINKS ", newLinks.backlinks.map((item) => item.url_from+" "+item.url_to));
+    await upsertBacklinks(
+      newLinks.backlinks.map((backlink) => ({
+        id: randomUUID(),
+        site_id: siteId,
+        owner_type: "",
+        url_from: backlink.url_from,
+        url_to: backlink.url_to,
+        domain_from_rank: backlink.domain_from_rank,
+        anchor_details: backlink.anchor_details,
+        is_new: backlink.is_new,
+        is_lost: backlink.is_lost,
+        is_broken: backlink.is_broken,
+        first_seen: backlink.first_seen,
+        last_seen: backlink.last_seen,
+        spam_score: backlink.spam_score,
+      })),
+    );
+  }
+  if (lostLinks) {
+    logger.info("NEW LINKS ", lostLinks.backlinks.map((item) => item.url_from+" "+item.url_to));
+    await upsertBacklinks(
+      lostLinks.backlinks.map((backlink) => ({
+        id: randomUUID(),
+        site_id: siteId,
+        owner_type: "",
+        url_from: backlink.url_from,
+        url_to: backlink.url_to,
+        domain_from_rank: backlink.domain_from_rank,
+        anchor_details: backlink.anchor_details,
+        is_new: backlink.is_new,
+        is_lost: backlink.is_lost,
+        is_broken: backlink.is_broken,
+        first_seen: backlink.first_seen,
+        last_seen: backlink.last_seen,
+        spam_score: backlink.spam_score,
+      })),
+    );
+  }
+  if (toxicLinks) {
+    logger.info("NEW LINKS ", toxicLinks.toxic_links.map((item) => item.url_from+" "+item.url_to));
+    await upsertBacklinks(
+      toxicLinks.toxic_links.map((backlink) => ({
+        id: randomUUID(),
+        site_id: siteId,
+        owner_type: "",
+        url_from: backlink.url_from,
+        url_to: backlink.url_to,
+        domain_from_rank: backlink.domain_from_rank,
+        anchor_details: backlink.anchor_details,
+        is_new: backlink.is_new,
+        is_lost: backlink.is_lost,
+        is_broken: backlink.is_broken,
+        first_seen: backlink.first_seen,
+        last_seen: backlink.last_seen,
+        spam_score: backlink.spam_score,
+      })),
+    );
+  }
 
   logger.info(
     `[step1] new=${newLinks?.count} lost=${lostLinks?.count} toxic=${toxicLinks?.count} trend=${velocity?.trend}`,

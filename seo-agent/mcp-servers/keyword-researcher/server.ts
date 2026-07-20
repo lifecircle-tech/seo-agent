@@ -1,3 +1,4 @@
+import { getDomain } from "../../../libs/functions.js";
 import {
   getSearchConsoleClient,
   getSheetsClient,
@@ -13,6 +14,14 @@ export interface KeywordOpportunity {
   current_position: number | null;
   opportunity_score?: number;
   cluster?: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  cpc: number | null;
+  competition: number | null;
+  competition_level: string | null;
+  monthly_searches: any[] | null;
+  page: number | null;
 }
 
 /**
@@ -37,6 +46,67 @@ function extractTopic(keyword: string): string {
   return words[0] || "general";
 }
 
+export async function discoverSiteKeywords(siteUrl: string) {
+  logger.info(
+    `[keyword-researcher] Discovering keywords for: ${getDomain(siteUrl)}`,
+  );
+  // 1. Fetch related keywords
+  const suggestions = (await getKeywordsSuggestions(getDomain(siteUrl))) as [];
+  logger.debug(`SUGGESTIONS ${suggestions.length}`);
+
+  const discovered = suggestions.map((item: any) => ({
+    keyword: item.keyword,
+    volume: item.keyword_info.search_volume,
+    difficulty: item.keyword_properties.keyword_difficulty,
+    cpc: item.keyword_info.cpc * 100 || 0,                    // USD to INR
+    competition: item.keyword_info.competition ?? 0,
+    competition_level: item.keyword_info.competition_level ?? null,
+    monthly_searches: item.keyword_info.monthly_searches?.slice(0, 6) ?? null,
+  }));
+
+  // 2. Check current rankings in GSC to identify position gaps
+  const searchConsole = getSearchConsoleClient();
+
+  const gscResponse = await searchConsole.searchanalytics.query({
+    siteUrl,
+    requestBody: {
+      startDate: new Date(Date.now() - 28 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split("T")[0],
+      endDate: new Date().toISOString().split("T")[0],
+      dimensions: ["query", "page"],
+      rowLimit: 5000,
+    },
+  });
+
+  const rankingMap = new Map<string, any>();
+  (gscResponse.data.rows ?? []).forEach((row) => {
+    if (row.keys?.[0])
+      rankingMap.set(row.keys[0].toLowerCase(), {
+        page: row?.keys?.[1],
+        position: row.position ?? 100,
+        clicks: row.clicks ?? 0,
+        impressions: row.impressions ?? 0,
+        ctr: row.ctr ?? 0,
+      });
+  });
+
+  // 3. Merge data
+  const opportunities: KeywordOpportunity[] = discovered.map((opp) => {
+    const rank_keyword = rankingMap.get(opp.keyword.toLowerCase());
+    return {
+      ...opp,
+      page: rank_keyword?.page,
+      current_position: rank_keyword?.position ?? null,
+      clicks: rank_keyword?.clicks,
+      impressions: rank_keyword?.impressions,
+      ctr: rank_keyword?.ctr,
+    };
+  });
+
+  return opportunities.slice(0, 100);
+}
+
 /**
  * Tool: discover_city_keywords
  * Queries DataForSEO for related keywords and cross-references GSC for current rankings.
@@ -51,12 +121,20 @@ export async function discoverCityKeywords(
   logger.info(`[keyword-researcher] Discovering keywords for: ${seedKeyword}`);
 
   // 1. Fetch related keywords
-  const suggestions = (await getKeywordsSuggestions(seedKeyword)) as [];
+  const suggestions = (await getKeywordsSuggestions(
+    getDomain(siteUrl),
+    seedKeyword,
+  )) as [];
+  logger.info(`SUGGESTIONS ${suggestions.length}`);
 
   const discovered = suggestions.map((item: any) => ({
     keyword: item.keyword,
     volume: item.keyword_info.search_volume,
     difficulty: item.keyword_properties.keyword_difficulty,
+    cpc: item.keyword_info.cpc ?? 0,
+    competition: item.keyword_info.competition ?? 0,
+    competition_level: item.keyword_info.competition_level ?? null,
+    monthly_searches: item.keyword_info.monthly_searches?.slice(0, 6) ?? null,
   }));
 
   // 2. Query SerpAPI for PAA/Related (Conceptual implementation)
@@ -77,19 +155,32 @@ export async function discoverCityKeywords(
     },
   });
 
-  const rankingMap = new Map<string, number>();
+  const rankingMap = new Map<string, any>();
   (gscResponse.data.rows ?? []).forEach((row) => {
     if (row.keys?.[0])
-      rankingMap.set(row.keys[0].toLowerCase(), row.position ?? 100);
+      rankingMap.set(row.keys[0].toLowerCase(), {
+        page: row?.keys?.[1],
+        position: row.position ?? 100,
+        clicks: row.clicks ?? 0,
+        impressions: row.impressions ?? 0,
+        ctr: row.ctr ?? 0,
+      });
   });
 
   // 4. Merge data
-  const opportunities: KeywordOpportunity[] = discovered.map((opp) => ({
-    ...opp,
-    current_position: rankingMap.get(opp.keyword.toLowerCase()) ?? null,
-  }));
+  const opportunities: KeywordOpportunity[] = discovered.map((opp) => {
+    const rank_keyword = rankingMap.get(opp.keyword.toLowerCase());
+    return {
+      ...opp,
+      page: rank_keyword?.page,
+      current_position: rank_keyword?.position ?? null,
+      clicks: rank_keyword?.clicks,
+      impressions: rank_keyword?.impressions,
+      ctr: rank_keyword?.ctr,
+    };
+  });
 
-  return opportunities.slice(0, 50);
+  return opportunities.slice(0, 100);
 }
 
 /**
@@ -139,7 +230,9 @@ export async function writeToSheet(
   tabName: string,
   rows: unknown[][],
 ) {
-  logger.info(`============= Sheets GSC Auth *************** site_id: ${siteId}`);
+  logger.info(
+    `============= Sheets GSC Auth *************** site_id: ${siteId}`,
+  );
   const sheets = getSheetsClient();
   const spreadsheetId = getSpreadsheetId();
 

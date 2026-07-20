@@ -10,6 +10,8 @@ export interface CityConfig extends RowDataPacket {
   country: string; // VARCHAR(255)
   target_keywords: string[]; // JSON (list of strings)
   services: string[] | null; // JSON (list of service names), nullable
+  site_name: string | null; // joined from sites_config
+  domain: string | null;     // joined from sites_config
   created_at: Date; // DATETIME(3)
 }
 
@@ -21,6 +23,8 @@ export interface CityConfigJSON {
   country: string;
   target_keywords: string[];
   services: string[] | null;
+  site_name: string | null;
+  domain: string | null;
   created_at: string;
 }
 

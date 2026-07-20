@@ -7,6 +7,7 @@ export interface CompetitorConfig extends RowDataPacket {
   site_id: number; // INT
   domain: string; // VARCHAR(255)
   competitor_domain: string[]; // JSON (list of URLs)
+  site_name: string | null; // joined from sites_config
   created_at: Date; // DATETIME(3)
 }
 
@@ -15,6 +16,7 @@ export interface CompetitorConfigJSON {
   site_id: number;
   domain: string;
   competitor_domain: string[];
+  site_name: string | null;
   created_at: string;
 }
 

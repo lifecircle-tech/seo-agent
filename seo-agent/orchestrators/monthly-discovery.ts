@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   BetaMessage,
@@ -9,14 +10,15 @@ import { getSheetsClient, getSpreadsheetId } from "../../libs/google.js";
 
 // Import controllers for database operations
 import { listSitesConfigs } from "../controllers/sites.controller.js";
+import { upsertKeywords } from "../controllers/keywords.controller.js";
+import { createOpportunity } from "../controllers/opportunities.controller.js";
+import { listCitiesConfigs } from "../controllers/cities.controller.js";
 
 // MCP Server Imports
 import {
-  discoverCityKeywords,
-  getKeywordClusters,
   prioritiseKeywords,
-  writeKeywordMatrix,
   KeywordOpportunity,
+  discoverSiteKeywords,
 } from "../mcp-servers/keyword-researcher/server.js";
 import { postMonthlyDiscoveryToSlack } from "../mcp-servers/reporting/server.js";
 
@@ -92,8 +94,8 @@ async function callWithRetry(
  */
 async function writeToContentCalendar(
   siteId: number,
-  city: string,
   opportunities: ContentOpportunity[],
+  city: string = "",
 ) {
   logger.info(`[city] Writing contents to Sheets...`);
   const sheets = getSheetsClient();
@@ -124,8 +126,9 @@ async function writeToContentCalendar(
  * Uses Claude to identify content strategies based on keyword data
  */
 async function analyzeWithAI(
-  site: SiteDiscoveryConfig,
-  city: string,
+  site: Omit<SiteDiscoveryConfig, "cities"> & {
+    cities: Array<Record<string, any>>;
+  },
   keywords: KeywordOpportunity[],
 ) {
   const client: Anthropic = new Anthropic({
@@ -133,7 +136,7 @@ async function analyzeWithAI(
   });
 
   const prompt = `You are a world-class SEO strategist.
-Analyze these prioritized keywords for ${site.brand_name} (${site.industry}) in ${city}.
+Analyze these prioritized keywords for ${site.brand_name} (${site.industry}).
 
 Data:
 ${JSON.stringify(keywords.slice(0, 30), null, 2)}
@@ -187,52 +190,128 @@ async function runMonthlyDiscovery() {
   logger.info(`[monthly-discovery] ══════════════════════════════════════════`);
 
   // 1. Fetch Config from Database
-  const { sites } = await listSitesConfigs({ limit: 1000 });
+  let { sites } = await listSitesConfigs({ limit: 1000 });
+  const { cities } = await listCitiesConfigs({ limit: 100 });
+
+  const detailed_sites = sites.map((site) => {
+    const city = cities.filter((city) => city.site_id == site.site_id);
+    return {
+      ...site,
+      cities: city.map((city) => ({
+        city: city.city,
+        state: city.state,
+        country: city.country,
+        services: city.services,
+        get fullLocation() {
+          return `${this.city},${this.state},${this.country}`;
+        },
+      })),
+    };
+  });
 
   const overallSummary: string[] = [];
 
-  // 2. Loop Sites and Cities
-  const site = sites[0];
+  // 2. Loop Sites
+  const site = detailed_sites[0];
+
   // for (const site of sites) {
   logger.info(`[site] ${site.domain} (${site.brand_name})`);
   let siteKeywordsTotal = 0;
   let siteOpportunitiesTotal = 0;
 
-  const cities = site.cities;
-  for (const city of cities) {
-    try {
-      logger.info(`  [city] Researching: ${city}...`);
+  try {
+    logger.info(`[city] Researching: ${site.brand_name}...`);
 
-      // Call keyword-researcher MCP logic
-      const rawKeywords = await discoverCityKeywords(
-        site.site_id,
-        site.domain,
-        city,
-        site.industry,
-      );
-      const clustered = getKeywordClusters(rawKeywords);
-      const prioritised = prioritiseKeywords(clustered);
+    // Call keyword-researcher MCP logic
+    const rawKeywords = await discoverSiteKeywords(site.domain);
 
-      siteKeywordsTotal += prioritised.length;
+    const pages = new Map();
 
-      if (!DRY_RUN) {
-        // Write to Keywords Matrix
-        await writeKeywordMatrix(site.site_id, city, prioritised);
-
-        // AI Analysis
-        const { opportunities } = await analyzeWithAI(site, city, prioritised);
-        siteOpportunitiesTotal += opportunities.length;
-
-        if (opportunities.length > 0) {
-          await writeToContentCalendar(site.site_id, city, opportunities);
+    rawKeywords.map((item) => {
+      if (pages.has(item.keyword)) {
+        if (item.page) {
+          pages.set(item.keyword, [...pages.get(item.keyword), item.page]);
+        }
+      } else {
+        if (item.page) {
+          pages.set(item.keyword, [item.page]);
         }
       }
-    } catch (err: any) {
-      logger.error(`  [error] Failed discovery for ${city}: ${err.message}`);
+    });
+    if (rawKeywords.length > 0) {
+      try {
+        await upsertKeywords(
+          rawKeywords.map((k) => ({
+            id: randomUUID(),
+            site_id: site.site_id,
+            keyword: k.keyword,
+            is_new: true,
+            search_volume: k.volume ?? null,
+            difficulty: k.difficulty ?? null,
+            position: k.current_position ?? null,
+            clicks: k.clicks,
+            impressions: k.impressions,
+            ctr: k.ctr,
+            cpc: k.cpc ?? null,
+            competition: k.competition ?? null,
+            competition_level: k.competition_level ?? null,
+            monthly_searches: k.monthly_searches || null,
+            pages_used: pages.get(k.keyword),
+          })),
+        );
+        logger.info(`[city] Persisted ${rawKeywords.length} keywords to DB`);
+      } catch (err) {
+        logger.error(`[city] Failed to persist keywords:`, err);
+      }
     }
+
+    // const clustered = getKeywordClusters(rawKeywords);
+    const prioritised = prioritiseKeywords(rawKeywords);
+
+    siteKeywordsTotal += prioritised.length;
+
+    if (!DRY_RUN) {
+      // Write to Keywords Matrix
+      // await writeKeywordMatrix(site.site_id, city, prioritised);
+
+      // AI Analysis
+      const { opportunities } = await analyzeWithAI(site, prioritised);
+      siteOpportunitiesTotal += opportunities.length;
+
+      if (opportunities.length > 0) {
+        for (const opp of opportunities) {
+          try {
+            await createOpportunity({
+              id: randomUUID(),
+              site_id: site.site_id,
+              opportunity_type: "content",
+              priority: opp.priority ?? null,
+              reasoning: opp.reasoning ?? null,
+              opportunity_details: {
+                title: opp.title,
+                topic: opp.topic,
+                target_keywords: opp.target_keywords,
+              },
+            });
+          } catch (err) {
+            logger.error(
+              `[monthly-discovery] Failed to save opportunity:`,
+              err,
+            );
+          }
+        }
+        logger.info(
+          `[monthly-discovery] Persisted ${opportunities.length} opportunities to DB`,
+        );
+      }
+    }
+  } catch (err: any) {
+    logger.error(
+      `[error] Failed discovery for ${site.brand_name}: ${err.message}`,
+    );
   }
 
-  const siteReport = `${site.brand_name}(${site.domain}): Discovered ${siteKeywordsTotal} keywords across ${site.cities.length} cities. Created ${siteOpportunitiesTotal} content ideas.`;
+  const siteReport = `${site.brand_name}(${site.domain}): Discovered ${siteKeywordsTotal} keywords for ${site.brand_name}. Created ${siteOpportunitiesTotal} content ideas.`;
   overallSummary.push(siteReport);
   logger.info(
     `[monthly-discovery] All Cities for site_id ${site.site_id} Finished`,

@@ -1,5 +1,10 @@
-import { getSearchConsoleClient } from "../../../libs/google.js";
+import {
+  getKeywordsMetrics,
+  getSearchConsoleClient,
+} from "../../../libs/google.js";
 import { logger } from "../../utils/logger.js";
+import { MONTHS_NAME, MONTHS_TO_NUMBER } from "../../utils/constants.js";
+import { listKeywords } from "../../controllers/keywords.controller.js";
 
 export function validateSiteId(siteId: unknown): number {
   const id = Number(siteId);
@@ -39,11 +44,12 @@ export async function getRankings(
         requestBody: {
           startDate: fmt(startDate),
           endDate: fmt(endDate),
-          dimensions: ["query"],
+          dimensions: ["query", "page"],
           dimensionFilterGroups: [
             {
               filters: [
                 { dimension: "query", operator: "equals", expression: keyword },
+                { dimension: "country", expression: "ind" },
               ],
             },
           ],
@@ -53,7 +59,8 @@ export async function getRankings(
 
       const row = response.data.rows?.[0];
       return {
-        keyword,
+        keyword: keyword.toLowerCase(),
+        page: row?.keys?.[1],
         position: row?.position ?? null,
         clicks: row?.clicks ?? 0,
         impressions: row?.impressions ?? 0,
@@ -62,10 +69,50 @@ export async function getRankings(
     }),
   );
 
+  const metricStartDate = new Date();
+  metricStartDate.setMonth(endDate.getMonth() - 6);
+
+  const keywordsMetrics = await getKeywordsMetrics(
+    results.map((key) => key.keyword),
+    {
+      start: {
+        month: MONTHS_NAME[metricStartDate.getMonth()],
+        year: metricStartDate.getFullYear(),
+      },
+      end: {
+        month: MONTHS_NAME[endDate.getMonth()],
+        year: endDate.getFullYear(),
+      },
+    },
+  );
+
+  let rankings = [] as any[];
+  rankings = results.map((key) => {
+    const metrics = keywordsMetrics?.find(
+      (m_key) => m_key.text.toLowerCase() === key.keyword.toLowerCase(),
+    );
+
+    return {
+      ...key,
+      cpc: (metrics?.keywordMetrics?.averageCpcMicros / 1_000_000) || undefined,
+      page: key.page,
+      volume: metrics?.keywordMetrics?.avgMonthlySearches || null,
+      difficulty: metrics?.keywordMetrics?.competitionIndex || null,
+      competition_level: metrics?.keywordMetrics?.competition || null,
+      monthly_searches:
+        metrics?.keywordMetrics?.monthlySearchVolumes
+          .slice(0, 6)
+          .map((search: any) => ({
+            year: Number(search.year),
+            month: MONTHS_TO_NUMBER[search.month],
+            search_volume: Number(search.monthlySearches),
+          })) || null,
+    };
+  });
   logger.info(
     `============= GSC Search Query Results *************** ${results.length}`,
   );
-  return { site_id: siteId, site_url: siteUrl, rankings: results };
+  return { site_id: siteId, site_url: siteUrl, rankings: rankings };
 }
 
 export async function getRankingHistory(
@@ -300,4 +347,11 @@ const getKeywordRankings = async (
   return await getRankings(siteId, site_url, keywords);
 };
 
-export { getKeywordRankings };
+const getRankingOfNewKeywords = async (site_id: number, site_url: string) => {
+  const newKeywords = await listKeywords({ site_id, is_new: true, limit: 200 });
+  const keywordsList = newKeywords.keywords.map((key) => key.keyword);
+
+  return await getRankings(site_id, site_url, keywordsList);
+};
+
+export { getKeywordRankings, getRankingOfNewKeywords };

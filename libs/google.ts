@@ -53,6 +53,17 @@ interface GbpCredentials {
   access_token: string;
 }
 
+interface TimePeriod {
+  start: {
+    month: string;
+    year: number;
+  };
+  end: {
+    month: string;
+    year: number;
+  };
+}
+
 function getGbpCredentials(): GbpCredentials {
   const raw = process.env.GBP_OAUTH_SITE;
   const id = process.env.GBP_CLIENT_ID;
@@ -160,4 +171,38 @@ export async function getGbpReviewsClient(
 
   logger.info("Reviews : ", response.data);
   return response.data;
+}
+
+export async function getKeywordsMetrics(
+  keywords: string[],
+  timePeriod?: TimePeriod,
+) {
+  logger.info(`============= GBP Fetching Keywords Metrics ***************`);
+  const oauth2Client = getGbpOAuth();
+  const customerId = process.env.ADS_ACCOUNT_SITE;
+  const developer_token = process.env.GOOGLE_ADS_TOKEN as string;
+
+  const body = {
+    keywords,
+    historicalMetricsOptions: {
+      include_average_cpc: true,
+    },
+  } as Record<string, any>;
+
+  timePeriod && (body.historicalMetricsOptions.yearMonthRange = timePeriod);
+
+  try {
+    const response = (await oauth2Client.request({
+      url: `https://googleads.googleapis.com/v24/customers/${customerId}:generateKeywordHistoricalMetrics`,
+      method: "POST",
+      headers: {
+        "developer-token": developer_token,
+      },
+      body: JSON.stringify(body),
+    })) as { data: { results: Array<any> } };
+    
+    return response?.data?.results;
+  } catch (err: any) {
+    logger.error("KEYWORDS ERROR ", err);
+  }
 }

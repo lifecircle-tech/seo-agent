@@ -91,16 +91,8 @@ export function createWeeklyDigest(
 ) {
   logger.info("========== Creating Weekly Digest **********");
   const today = new Date().toISOString().split("T")[0];
-  const { rankings, summary, schemaGaps, competitorsAlerts, locationsInsight } =
+  const { summary, schemaGaps, competitorsAlerts, locationsInsight } =
     data || {};
-
-  // Cap rankings at 15 to stay within block text limits
-  const rankLines = rankings.length
-    ? `Performance for ${rankings.length} keywords is added to google sheet
-Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y_t3TXp1iI7S3ZidQf6VHtH8UQTY/edit?usp=sharing\n
-    `
-    : "No ranking data available.";
-  logger.info("========== Rankings Processed **********");
 
   // Build schema gaps section
   const gaps = (schemaGaps || []).filter((g: any) => g.has_gaps);
@@ -190,12 +182,10 @@ Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y
       elements: [{ type: "mrkdwn", text: `*Report date:* ${today}` }],
     },
     { type: "divider" },
-    sectionBlock(`*Keyword Rankings*\n${rankLines}`),
+    sectionBlock(`*Schema Gaps*\n${schemaLines}`),
   ];
 
   blocks.push(
-    { type: "divider" },
-    sectionBlock(`*Schema Gaps*\n${schemaLines}`),
     { type: "divider" },
     sectionBlock(`*Competitor Keyword Gaps*\n${competitorsLines}`),
     { type: "divider" },

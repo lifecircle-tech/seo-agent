@@ -1,18 +1,18 @@
 import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { pool } from "../../db.js";
 import {
-  CompetitorConfig,
-  CompetitorConfigJSON,
-} from "../models/competitor-config.model.js";
+  KeywordConfig,
+  KeywordConfigJSON,
+} from "../models/keywords-config.model.js";
 
 // ── Row serialiser ────────────────────────────────────────────────────
-function toJSON(row: CompetitorConfig): CompetitorConfigJSON {
+function toJSON(row: KeywordConfig): KeywordConfigJSON {
   return {
     ...row,
-    competitor_domain:
-      typeof row.competitor_domain === "string"
-        ? JSON.parse(row.competitor_domain)
-        : row.competitor_domain,
+    target_keywords:
+      typeof row.target_keywords === "string"
+        ? JSON.parse(row.target_keywords)
+        : row.target_keywords,
     created_at:
       row.created_at instanceof Date
         ? row.created_at.toISOString()
@@ -21,40 +21,32 @@ function toJSON(row: CompetitorConfig): CompetitorConfigJSON {
 }
 
 // ── CREATE ────────────────────────────────────────────────────────────
-export async function createCompetitorConfig(
-  data: Pick<
-    CompetitorConfig,
-    "id" | "site_id" | "domain" | "competitor_domain"
-  >,
-): Promise<CompetitorConfigJSON> {
-  const [existing] = await pool.query<CompetitorConfig[]>(
-    "SELECT id FROM competitor_config WHERE site_id = ? LIMIT 1",
+export async function createKeywordConfig(
+  data: Pick<KeywordConfig, "id" | "site_id" | "domain" | "target_keywords">,
+): Promise<KeywordConfigJSON> {
+  const [existing] = await pool.query<KeywordConfig[]>(
+    "SELECT id FROM keywords_config WHERE site_id = ? LIMIT 1",
     [data.site_id],
   );
-  if ((existing as CompetitorConfig[]).length > 0) {
-    throw new Error(`Competitor config for Site ID=${data.site_id} already exists`);
+  if ((existing as KeywordConfig[]).length > 0) {
+    throw new Error(`Keywords for Site ID=${data.site_id} already exists`);
   }
 
   await pool.query<ResultSetHeader>(
-    `INSERT INTO competitor_config (id, site_id, domain, competitor_domain, created_at)
+    `INSERT INTO keywords_config (id, site_id, domain, target_keywords, created_at)
      VALUES (?, ?, ?, ?, NOW(3))`,
-    [
-      data.id,
-      data.site_id,
-      data.domain,
-      JSON.stringify(data.competitor_domain),
-    ],
+    [data.id, data.site_id, data.domain, JSON.stringify(data.target_keywords)],
   );
-  const config = await getCompetitorConfigById(data.id);
+  const config = await getKeywordConfigById(data.id);
   return config!;
 }
 
 // ── LIST ──────────────────────────────────────────────────────────────
-export async function listCompetitorConfigs(filters: {
+export async function listKeywordsConfigs(filters: {
   limit?: number;
   offset?: number;
 }): Promise<{
-  competitors: CompetitorConfigJSON[];
+  keywords: KeywordConfigJSON[];
   total: number;
   limit: number;
   offset: number;
@@ -73,62 +65,66 @@ export async function listCompetitorConfigs(filters: {
 
   const [[countRow], [rows]] = await Promise.all([
     pool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) AS count FROM competitor_config cc ${where}`,
+      `SELECT COUNT(*) AS count FROM keywords_config k ${where}`,
       params,
     ),
-    pool.query<CompetitorConfig[]>(
-      `SELECT cc.*, s.brand_name as site_name, s.domain
-       FROM competitor_config cc
-       LEFT JOIN sites_config s ON cc.site_id = s.site_id
-       ${where} ORDER BY cc.site_id ASC LIMIT ? OFFSET ?`,
+    pool.query<KeywordConfig[]>(
+      `SELECT k.*, s.brand_name as site_name, s.domain
+       FROM keywords_config k
+       LEFT JOIN sites_config s ON k.site_id = s.site_id
+       ${where} ORDER BY k.site_id ASC LIMIT ? OFFSET ?`,
       [...params, limit, offset],
     ),
   ]);
 
   const total = Number((countRow as RowDataPacket[])[0].count);
-  const competitors = (rows as CompetitorConfig[]).map(toJSON);
-  return { competitors, total, limit, offset };
+  const keywords = (rows as KeywordConfig[]).map(toJSON);
+  return { keywords, total, limit, offset };
 }
 
 // ── GET BY ID ─────────────────────────────────────────────────────────
-export async function getCompetitorConfigById(
+export async function getKeywordConfigById(
   id: string,
-): Promise<CompetitorConfigJSON | null> {
-  const [rows] = await pool.query<CompetitorConfig[]>(
-    "SELECT * FROM competitor_config WHERE id = ?",
+): Promise<KeywordConfigJSON | null> {
+  const [rows] = await pool.query<KeywordConfig[]>(
+    "SELECT * FROM keywords_config WHERE id = ?",
     [id],
   );
   return rows.length ? toJSON(rows[0]) : null;
 }
 
 // ── UPDATE ────────────────────────────────────────────────────────────
-export async function updateCompetitorConfig(
+export async function updateKeywordConfig(
   id: string,
-  data: Partial<Pick<CompetitorConfig, "competitor_domain">>,
-): Promise<CompetitorConfigJSON | null> {
+  data: Partial<Pick<KeywordConfig, "domain" | "target_keywords">>,
+): Promise<KeywordConfigJSON | null> {
   const fields: string[] = [];
   const params: unknown[] = [];
 
-  if (data.competitor_domain !== undefined) {
-    fields.push("competitor_domain = ?");
-    params.push(JSON.stringify(data.competitor_domain));
+  if (data.domain !== undefined) {
+    fields.push("domain = ?");
+    params.push(data.domain);
+  }
+  if (data.target_keywords !== undefined) {
+    fields.push("target_keywords = ?");
+    params.push(JSON.stringify(data.target_keywords));
   }
 
-  if (fields.length === 0) return getCompetitorConfigById(id);
+  if (fields.length === 0) return getKeywordConfigById(id);
 
   const [result] = await pool.query<ResultSetHeader>(
-    `UPDATE competitor_config SET ${fields.join(", ")} WHERE id = ?`,
+    `UPDATE keywords_config SET ${fields.join(", ")} WHERE id = ?`,
     [...params, id],
   );
 
   if (result.affectedRows === 0) return null;
-  return getCompetitorConfigById(id);
+  return getKeywordConfigById(id);
 }
 
 // ── DELETE ────────────────────────────────────────────────────────────
-export async function deleteCompetitorConfig(id: string): Promise<boolean> {
+export async function deleteKeywordConfig(id: string): Promise<boolean> {
   const [result] = await pool.query<ResultSetHeader>(
-    "DELETE FROM competitor_config WHERE id = ?",
+    "DELETE FROM keywords_config WHERE id = ?",
     [id],
   );
   return result.affectedRows > 0;

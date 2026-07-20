@@ -15,6 +15,14 @@ function toJSON(row: SiteConfig): SiteConfigJSON {
 export async function createSiteConfig(
   data: Pick<SiteConfig, "id" | "site_id" | "domain" | "brand_name" | "industry" | "cities">
 ): Promise<SiteConfigJSON> {
+  const [existing] = await pool.query<SiteConfig[]>(
+    "SELECT id FROM sites_config WHERE site_id = ? LIMIT 1",
+    [data.site_id]
+  );
+  if ((existing as SiteConfig[]).length > 0) {
+    throw new Error(`Site for Site ID=${data.site_id} already exists`);
+  }
+
   await pool.query<ResultSetHeader>(
     `INSERT INTO sites_config (id, site_id, domain, brand_name, industry, cities, created_at)
      VALUES (?, ?, ?, ?, ?, ?, NOW(3))`,

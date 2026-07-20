@@ -24,7 +24,7 @@ import {
   listKeywordsConfigs,
   updateKeywordConfig,
   deleteKeywordConfig,
-} from "../controllers/keywords.controller.js";
+} from "../controllers/keywords-config.controller.js";
 import {
   createCompetitorConfig,
   listCompetitorConfigs,
@@ -108,7 +108,10 @@ router.post("/sites", async (req: Request, res: Response) => {
       });
       res.status(201).json({ ok: true, created: config });
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.message?.includes("already exists")) {
+      return res.status(409).json({ error: err.message });
+    }
     logger.error("[sites POST]", err);
     res.status(500).json({ error: String(err) });
   }
@@ -215,7 +218,10 @@ router.post("/cities", async (req: Request, res: Response) => {
       });
       res.status(201).json({ ok: true, created: config });
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.message?.includes("already exists")) {
+      return res.status(409).json({ error: err.message });
+    }
     logger.error("[cities POST]", err);
     res.status(500).json({ error: String(err) });
   }
@@ -305,7 +311,10 @@ router.post("/keywords", async (req: Request, res: Response) => {
       });
       res.status(201).json({ ok: true, created: config });
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.message?.includes("already exists")) {
+      return res.status(409).json({ error: err.message });
+    }
     logger.error("[keywords POST]", err);
     res.status(500).json({ error: String(err) });
   }
@@ -394,7 +403,10 @@ router.post("/competitors", async (req: Request, res: Response) => {
       });
       res.status(201).json({ ok: true, created: config });
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.message?.includes("already exists")) {
+      return res.status(409).json({ error: err.message });
+    }
     logger.error("[competitors POST]", err);
     res.status(500).json({ error: String(err) });
   }

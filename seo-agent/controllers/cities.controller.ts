@@ -36,6 +36,14 @@ export async function createCityConfig(
     | "services"
   >,
 ): Promise<CityConfigJSON> {
+  const [existing] = await pool.query<CityConfig[]>(
+    "SELECT id FROM cities_config WHERE site_id = ? AND city = ? LIMIT 1",
+    [data.site_id, data.city],
+  );
+  if ((existing as CityConfig[]).length > 0) {
+    throw new Error(`City for Site ID=${data.site_id} and city="${data.city}" already exists`);
+  }
+
   await pool.query<ResultSetHeader>(
     `INSERT INTO cities_config (id, site_id, city, state, country, target_keywords, services, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, NOW(3))`,
@@ -77,11 +85,14 @@ export async function listCitiesConfigs(filters: {
 
   const [[countRow], [rows]] = await Promise.all([
     pool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) AS count FROM cities_config ${where}`,
+      `SELECT COUNT(*) AS count FROM cities_config c ${where}`,
       params,
     ),
     pool.query<CityConfig[]>(
-      `SELECT * FROM cities_config ${where} ORDER BY site_id ASC LIMIT ? OFFSET ?`,
+      `SELECT c.*, s.brand_name as site_name, s.domain
+       FROM cities_config c
+       LEFT JOIN sites_config s ON c.site_id = s.site_id
+       ${where} ORDER BY c.site_id ASC LIMIT ? OFFSET ?`,
       [...params, limit, offset],
     ),
   ]);

@@ -52,16 +52,9 @@ export async function getCompetitorsKeywords(
   return keywords;
 }
 
-export async function getSitesBacklinks(domain: string) {
-  const post_array = [
-    {
-      target: getDomain(domain),
-      order_by: ["domain_from_rank,asc", "rank,asc"],
-      filters: [["domain_from_rank", ">", 0], "and", ["rank", ">", 0]],
-      limit: 5,
-    },
-  ];
-  
+export async function getSitesBacklinks(post_body: Record<string, any>) {
+  const post_array = [post_body];
+
   logger.info("[dataForSEO.service] Calling DataForSEO API : Sites Backlinks");
   const resp = await fetch(`${dataForSEO_URL}/backlinks/backlinks/live`, {
     method: "POST",
@@ -78,13 +71,18 @@ export async function getSitesBacklinks(domain: string) {
   return results;
 }
 
-export async function getKeywordsSuggestions(keywords: string) {
+export async function getKeywordsSuggestions(
+  domain: string,
+  keywords?: string,
+) {
   const post_array = [
     {
-      keyword: keywords,
+      target: domain,
       language_name: "English",
       location_name: "India",
-      limit: 20,
+      include_subdomains: false,
+      //   order_by: ["keyword_info.search_volume,desc"],
+      limit: 100,
     },
   ];
 
@@ -92,7 +90,7 @@ export async function getKeywordsSuggestions(keywords: string) {
     "[dataForSEO.service] Calling DataForSEO API : Keywords Suggestions",
   );
   const resp = await fetch(
-    `${dataForSEO_URL}/dataforseo_labs/google/keyword_suggestions/live`,
+    `${dataForSEO_URL}/dataforseo_labs/google/keywords_for_site/live`,
     {
       method: "POST",
       headers: {
@@ -120,7 +118,9 @@ export async function getKeywordsOverview(keywords: string[]) {
     },
   ];
 
-  logger.info("[dataForSEO.service] Calling DataForSEO API : Keywords Overview");
+  logger.info(
+    "[dataForSEO.service] Calling DataForSEO API : Keywords Overview",
+  );
   const resp = await fetch(
     `${dataForSEO_URL}/dataforseo_labs/google/keyword_overview/live`,
     {

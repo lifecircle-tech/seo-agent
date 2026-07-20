@@ -4,6 +4,7 @@ import {
   getSitesBacklinks,
 } from "../../services/dataForSEO.service.js";
 import { logger } from "../../utils/logger.js";
+import { getDomain } from "../../../libs/functions.js";
 
 // ── 24-hour JSON cache ────────────────────────────────────────────────
 const CACHE_DIR = "/tmp/cache";
@@ -64,7 +65,12 @@ export async function getCompetitorBacklinks(
     };
   }
 
-  const results = await getSitesBacklinks(competitorDomain);
+  const results = await getSitesBacklinks({
+    target: getDomain(competitorDomain),
+    order_by: ["domain_from_rank,asc", "rank,asc"],
+    filters: [["domain_from_rank", ">", 0], "and", ["rank", ">", 0]],
+    limit: 5,
+  });
 
   const backlinks = results.map((item: any) => ({
     url_from: item.url_from,
