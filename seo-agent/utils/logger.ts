@@ -15,6 +15,9 @@ function getLogFilePath(): string {
 function getErrorLogFilePath(): string {
   return path.join(LOG_DIR, `seo-agent-error.log`);
 }
+function getDebugLogFilePath(): string {
+  return path.join(LOG_DIR, `seo-agent-debug.log`);
+}
 
 function formatLine(level: LogLevel, message: string, meta?: unknown): string {
   const ts = new Date().toISOString();
@@ -31,6 +34,9 @@ function write(level: LogLevel, message: string, meta?: unknown): void {
   fs.appendFileSync(getLogFilePath(), line);
   if (level === "ERROR") {
     fs.appendFileSync(getErrorLogFilePath(), line);
+  }
+  if (level === "DEBUG") {
+    fs.appendFileSync(getDebugLogFilePath(), line);
   }
 }
 

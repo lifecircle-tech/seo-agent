@@ -1,10 +1,12 @@
 import { getDomain } from "../../../libs/functions.js";
 import {
+  getKeywordsSuggestionForDomain,
   getSearchConsoleClient,
   getSheetsClient,
   getSpreadsheetId,
 } from "../../../libs/google.js";
 import { getKeywordsSuggestions } from "../../services/dataForSEO.service.js";
+import { MONTHS_TO_NUMBER } from "../../utils/constants.js";
 import { logger } from "../../utils/logger.js";
 
 export interface KeywordOpportunity {
@@ -19,9 +21,9 @@ export interface KeywordOpportunity {
   ctr: number;
   cpc: number | null;
   competition: number | null;
-  competition_level: string | null;
-  monthly_searches: any[] | null;
-  page: number | null;
+  competition_level?: string | null;
+  monthly_searches?: any[] | null;
+  page?: number | null;
 }
 
 /**
@@ -51,18 +53,29 @@ export async function discoverSiteKeywords(siteUrl: string) {
     `[keyword-researcher] Discovering keywords for: ${getDomain(siteUrl)}`,
   );
   // 1. Fetch related keywords
-  const suggestions = (await getKeywordsSuggestions(getDomain(siteUrl))) as [];
-  logger.debug(`SUGGESTIONS ${suggestions.length}`);
+  const suggestions = (await getKeywordsSuggestionForDomain(
+    getDomain(siteUrl),
+  )) as [];
 
-  const discovered = suggestions.map((item: any) => ({
-    keyword: item.keyword,
-    volume: item.keyword_info.search_volume,
-    difficulty: item.keyword_properties.keyword_difficulty,
-    cpc: item.keyword_info.cpc * 100 || 0,                    // USD to INR
-    competition: item.keyword_info.competition ?? 0,
-    competition_level: item.keyword_info.competition_level ?? null,
-    monthly_searches: item.keyword_info.monthly_searches?.slice(0, 6) ?? null,
-  }));
+  const discovered = suggestions
+    .map((item: any) => ({
+      keyword: item.keyword,
+      volume: item.avgSearchVolume,
+      difficulty: item.competitionIndex,
+      cpc: item?.avgCpcMicros / 1_000_000 || null,
+      competition: 0,
+      competition_level: item.competition,
+      monthly_searches: item.monthlySearches.map((search: any) => ({
+        year: Number(search.year),
+        month: MONTHS_TO_NUMBER[search.month],
+        search_volume: Number(search.monthlySearches),
+      })),
+    }))
+    .sort((a, b) =>
+      b.volume - a.volume != 0
+        ? b.volume - a.volume
+        : a.difficulty - b.difficulty,
+    );
 
   // 2. Check current rankings in GSC to identify position gaps
   const searchConsole = getSearchConsoleClient();
@@ -104,7 +117,9 @@ export async function discoverSiteKeywords(siteUrl: string) {
     };
   });
 
-  return opportunities.slice(0, 100);
+  return opportunities
+    .sort((a, b) => (a.current_position || 100) - (b.current_position || 100))
+    .slice(0, 100);
 }
 
 /**
@@ -201,9 +216,7 @@ export function getKeywordClusters(
  * Tool: prioritise_keywords
  * Formula: (volume * 0.4) + ((100 - difficulty) * 0.4) + (position_gap * 0.2)
  */
-export function prioritiseKeywords(
-  keywords: KeywordOpportunity[],
-): KeywordOpportunity[] {
+export function prioritiseKeywords(keywords: KeywordOpportunity[]) {
   logger.info(`[keyword-researcher] Sorting Keywords by Opportunity...`);
   return keywords
     .map((k) => {

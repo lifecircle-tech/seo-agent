@@ -3,6 +3,7 @@ import { PageContent } from "../models/page-content.model.js";
 import { updateUpdatedPageDetails } from "../controllers/page-content.controller.js";
 import { verifyPageUpdate } from "./page-content.service.js";
 import { logger } from "../utils/logger.js";
+import { ResultSetHeader } from "mysql2";
 
 export async function checkPageContents(): Promise<void> {
   try {
@@ -14,7 +15,7 @@ export async function checkPageContents(): Promise<void> {
     );
 
     logger.info(
-      `[schedulers] checkPageContents: ${rows.length} record(s) acknowledged in the last 24 hours`,
+      `[schedulers.page-content] checkPageContents: ${rows.length} record(s) acknowledged in the last 24 hours`,
     );
 
     for (const row of rows) {
@@ -25,13 +26,33 @@ export async function checkPageContents(): Promise<void> {
           checkedAt: new Date().toISOString(),
         });
         logger.info(
-          `[schedulers] ${row.id} — match: ${result.matchPercentage}%`,
+          `[schedulers.page-content] ${row.id} — match: ${result.matchPercentage}%`,
         );
       } catch (err) {
-        logger.error(`[schedulers] failed for ${row.id}:`, err);
+        logger.error(`[schedulers.page-content] failed for ${row.id}:`, err);
       }
     }
   } catch (err: any) {
-    logger.error(`[schedulers] ERROR : ${err.message}`, err);
+    logger.error(`[schedulers.page-content] ERROR : ${err.message}`, err);
+  }
+}
+
+export async function updateNewKeywordsToFalse() {
+  try {
+    const [results] = await pool.query<ResultSetHeader>(
+      `UPDATE keywords SET is_new = false WHERE is_new = true`,
+    );
+
+    logger.info(`[schedulers.keywords] ${results.affectedRows} Updated`);
+  } catch (err: any) {
+    logger.error(`[schedulers.keywords] ERROR : ${err.message}`, err);
+  }
+}
+
+export async function contentGenerationFromNewKeywords () {
+  try {
+
+  } catch(err: any) {
+    logger.error(`[schedulers.keywords] ERROR : ${err.message}`, err);
   }
 }

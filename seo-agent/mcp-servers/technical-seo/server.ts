@@ -1,4 +1,7 @@
-import { getSearchConsoleClient } from "../../../libs/google.js";
+import {
+  getSearchConsoleClient,
+  getIndexingClient,
+} from "../../../libs/google.js";
 import { RowDataPacket } from "mysql2/promise";
 import { pool } from "../../../db.js";
 import { logger } from "../../utils/logger.js";
@@ -51,6 +54,121 @@ async function fetchPsi(
   return res.json();
 }
 
+// ── URL Inspection state maps ─────────────────────────────────────────
+// States to silently ignore (intentional by site owner)
+const SKIP_COVERAGE_STATES = new Set([
+  "Page with redirect",
+  "Blocked by robots.txt",
+]);
+
+// States confirming a page is indexed
+const INDEXED_STATES = new Set([
+  "Submitted and indexed",
+  "Indexed, not submitted in sitemap",
+]);
+
+// States indicating a hard crawl/server error → sitemap_error
+const ERROR_STATES = new Set([
+  "Not found (404)",
+  "Soft 404",
+  "Server error (5xx)",
+  "Blocked due to unauthorized request (401)",
+  "Blocked due to access forbidden (403)",
+  "Blocked due to page execution issue",
+  "Redirect error",
+]);
+
+// States indicating a content/canonicalisation issue → sitemap_warning
+const WARNING_STATES = new Set([
+  "Excluded by 'noindex' tag",
+  "Alternate page with proper canonical tag",
+  "Duplicate without user-selected canonical",
+  "Duplicate, Google chose different canonical than user",
+]);
+
+// States where Google simply hasn't indexed the page yet → not_indexed
+const PENDING_STATES = new Set([
+  "Discovered - currently not indexed",
+  "Crawled - currently not indexed",
+  "URL is unknown to Google",
+]);
+
+type UrlInspectionResult = {
+  url: string;
+  coverageState: string;
+  lastCrawlTime?: string | null;
+};
+
+// Collects all page URLs from every submitted sitemap, including one level of sub-sitemaps
+async function fetchAllSitemapUrls(sitemaps: any[]): Promise<string[]> {
+  const allUrls: string[] = [];
+  for (const sitemap of sitemaps) {
+    const path = sitemap.path;
+    if (!path) continue;
+    try {
+      const xmlRes = await fetch(path);
+      if (!xmlRes.ok) continue;
+      const xml = await xmlRes.text();
+      const locs = [...xml.matchAll(/<loc>(.*?)<\/loc>/gi)].map((m) =>
+        m[1].trim(),
+      );
+      const subSitemaps = locs.filter((u) => u.endsWith(".xml"));
+      allUrls.push(...locs.filter((u) => !u.endsWith(".xml")));
+      for (const subPath of subSitemaps) {
+        try {
+          const subRes = await fetch(subPath);
+          if (!subRes.ok) continue;
+          const subXml = await subRes.text();
+          allUrls.push(
+            ...[...subXml.matchAll(/<loc>(.*?)<\/loc>/gi)]
+              .map((m) => m[1].trim())
+              .filter((u) => !u.endsWith(".xml")),
+          );
+        } catch {
+          // non-fatal
+        }
+      }
+    } catch (err: any) {
+      logger.error(`[fetchAllSitemapUrls] Could not fetch ${path}: `, err);
+    }
+  }
+  return [...new Set(allUrls)];
+}
+
+// Inspects each URL via GSC URL Inspection API (sequential to respect quota limits)
+export async function inspectUrls(
+  sitePropertyUrl: string,
+  urls: string[],
+): Promise<UrlInspectionResult[]> {
+  const searchConsole = getSearchConsoleClient();
+
+  const results: UrlInspectionResult[] = [];
+  // for (const [index, url] of urls.entries()) {
+  await Promise.all(
+    urls.map(async (url, index) => {
+      console.log("Inspecting page ", index + 1);
+
+      try {
+        const res = await searchConsole.urlInspection.index.inspect({
+          requestBody: { inspectionUrl: url, siteUrl: sitePropertyUrl },
+        });
+        const coverageState =
+          res.data.inspectionResult?.indexStatusResult?.coverageState ??
+          "Unknown";
+        const lastCrawlTime =
+          res.data.inspectionResult?.indexStatusResult?.lastCrawlTime;
+        results.push({ url, coverageState, lastCrawlTime });
+      } catch (err: any) {
+        logger.error(`[inspectUrls] Failed to inspect ${url}: `, err);
+      }
+    }),
+  );
+
+  // }
+  logger.debug(`[inspectUrls] Inspected ${results.length} urls`);
+  return results;
+}
+
 async function getSiteDomain(siteId: number): Promise<string> {
   const [rows] = await pool.query<RowDataPacket[]>(
     "SELECT domain FROM sites_config WHERE site_id = ? LIMIT 1",
@@ -90,6 +208,7 @@ export type CrawlErrorItem = {
   sitemap?: string;
   detail: string;
   info?: string;
+  lastCrawlTime?: string;
 };
 
 export type CrawlErrorResult = {
@@ -109,6 +228,21 @@ export type IndexCoverageResult = {
   coverage_pct: number;
   not_indexed_urls: string[];
   alerts: string[];
+};
+
+export type IndexingSubmitItem = {
+  url: string;
+  status: "ok" | "error";
+  error?: string;
+};
+
+export type IndexingSubmitResult = {
+  site_id: number;
+  site_url: string;
+  type: "URL_UPDATED" | "URL_DELETED";
+  submitted: IndexingSubmitItem[];
+  success_count: number;
+  error_count: number;
 };
 
 export type CoreWebVitalsResult = {
@@ -225,8 +359,9 @@ export async function checkCrawlErrors(
 
   const searchConsole = getSearchConsoleClient();
   const errors: CrawlErrorItem[] = [];
+  const sitePropertyUrl = siteUrl.endsWith("/") ? siteUrl : siteUrl + "/";
 
-  // 1. Check sitemaps for submission errors
+  // 1. Check sitemaps for submission-level errors
   let sitemaps: any[] = [];
   try {
     const sitemapRes = await searchConsole.sitemaps.list({ siteUrl });
@@ -238,7 +373,6 @@ export async function checkCrawlErrors(
   for (const sitemap of sitemaps) {
     const errCount = Number(sitemap.errors ?? 0);
     const warnCount = Number(sitemap.warnings ?? 0);
-
     if (errCount > 0) {
       errors.push({
         type: "sitemap_error",
@@ -255,62 +389,45 @@ export async function checkCrawlErrors(
     }
   }
 
-  // 2. Cross-reference sitemap URLs vs GSC analytics to find unindexed pages
-  let sitemapUrls: string[] = [];
-  const primarySitemap = sitemaps[0]?.path;
-  if (primarySitemap) {
-    try {
-      const xmlRes = await fetch(primarySitemap);
-      if (xmlRes.ok) {
-        const xml = await xmlRes.text();
-        // Extract <loc> URLs from sitemap
-        const locMatches = [...xml.matchAll(/<loc>(.*?)<\/loc>/gi)];
-        sitemapUrls = locMatches
-          .map((m) => m[1].trim())
-          .filter((u) => !u.endsWith(".xml")); // skip sitemap index entries
-      }
-    } catch (err: any) {
-      logger.error(`[check_crawl_errors] Could not fetch sitemap XML: `, err);
-    }
-  }
+  // 2. Collect all page URLs from every sitemap (including sub-sitemaps)
+  const sitemapUrls = await fetchAllSitemapUrls(sitemaps);
+  logger.info(
+    `[check_crawl_errors] Inspecting ${sitemapUrls.length} URLs via URL Inspection API...`,
+  );
 
-  if (sitemapUrls.length > 0) {
-    // Get pages that have appeared in GSC (last 28 days)
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - 28);
-    const fmtDate = (d: Date) => d.toISOString().split("T")[0];
+  // 3. Inspect each URL and classify by coverage state
+  const inspectionResults = await inspectUrls(
+    sitePropertyUrl,
+    sitemapUrls.slice(0, 100),
+  );
 
-    try {
-      const gscRes = await searchConsole.searchanalytics.query({
-        siteUrl,
-        requestBody: {
-          startDate: fmtDate(start),
-          endDate: fmtDate(end),
-          dimensions: ["page"],
-          rowLimit: 1000,
-        },
+  for (const { url, coverageState, lastCrawlTime } of inspectionResults) {
+    if (SKIP_COVERAGE_STATES.has(coverageState)) continue;
+
+    if (ERROR_STATES.has(coverageState)) {
+      errors.push({
+        type: "sitemap_error",
+        url,
+        detail: coverageState,
+        info: `Crawl error on ${url}: ${coverageState}`,
+        lastCrawlTime: lastCrawlTime as string,
       });
-
-      const indexedUrls = new Set(
-        (gscRes.data.rows ?? []).map((r) => (r.keys?.[0] ?? "").toLowerCase()),
-      );
-
-      // Sitemap URLs not appearing in GSC = potentially not indexed
-      const notIndexed = sitemapUrls.filter(
-        (u) => !indexedUrls.has(u.toLowerCase()),
-      );
-
-      for (const url of notIndexed) {
-        errors.push({
-          type: "not_indexed",
-          url,
-          detail: "URL is in sitemap but not indexed in GSC",
-          info: "URL is in sitemap but not indexed in GSC : " + url,
-        });
-      }
-    } catch (err: any) {
-      logger.error(`[check_crawl_errors] GSC query failed: `, err);
+    } else if (WARNING_STATES.has(coverageState)) {
+      errors.push({
+        type: "sitemap_warning",
+        url,
+        detail: coverageState,
+        info: `Content/canonical issue on ${url}: ${coverageState}`,
+        lastCrawlTime: lastCrawlTime as string,
+      });
+    } else if (PENDING_STATES.has(coverageState)) {
+      errors.push({
+        type: "not_indexed",
+        url,
+        detail: coverageState,
+        info: `Not yet indexed; Last Crawlled by google : ${lastCrawlTime?.split("T")[0]}`,
+        lastCrawlTime: lastCrawlTime as string,
+      });
     }
   }
 
@@ -319,7 +436,6 @@ export async function checkCrawlErrors(
     (e) => e.type === "sitemap_warning",
   ).length;
 
-  logger.info("[check_crawl_errors] Crawl Errors: ", errors);
   logger.info(
     `[check_crawl_errors] ${errorCount} errors, ${warningCount} warnings`,
   );
@@ -343,93 +459,47 @@ export async function checkIndexCoverage(
   );
 
   const searchConsole = getSearchConsoleClient();
+  const sitePropertyUrl = siteUrl.endsWith("/") ? siteUrl : siteUrl + "/";
 
-  // 1. Try to get submitted vs indexed counts from GSC sitemaps
-  let submittedCount = 0;
-  let indexedCount = 0;
+  // 1. Collect all page URLs from every submitted sitemap (including sub-sitemaps)
+  let sitemaps: any[] = [];
   try {
     const sitemapRes = await searchConsole.sitemaps.list({ siteUrl });
-    for (const sitemap of sitemapRes.data.sitemap ?? []) {
-      for (const content of sitemap.contents ?? []) {
-        submittedCount += Number(content.submitted ?? 0);
-        indexedCount += Number(content.indexed ?? 0);
-      }
-    }
+    sitemaps = sitemapRes.data.sitemap ?? [];
   } catch (err: any) {
     logger.error(`[check_index_coverage] Sitemaps API failed: `, err);
   }
 
-  // 2. If sitemaps didn't give us data, count from GSC analytics
-  if (submittedCount === 0) {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - 28);
-    const fmtDate = (d: Date) => d.toISOString().split("T")[0];
+  const sitemapUrls = await fetchAllSitemapUrls(sitemaps);
+  const submittedCount = sitemapUrls.length;
 
-    try {
-      const gscRes = await searchConsole.searchanalytics.query({
-        siteUrl,
-        requestBody: {
-          startDate: fmtDate(start),
-          endDate: fmtDate(end),
-          dimensions: ["page"],
-          rowLimit: 1000,
-        },
-      });
-      indexedCount = (gscRes.data.rows ?? []).length;
-      submittedCount = indexedCount; // best estimate when sitemap data is unavailable
-    } catch (err: any) {
-      logger.error(`[check_index_coverage] GSC analytics failed: `, err);
-    }
-  }
+  logger.debug(
+    `[check_index_coverage] ${submittedCount} URLs found across all sitemaps`,
+  );
 
-  // 3. Find specific not-indexed URLs from sitemap cross-reference
+  // 2. Inspect each URL via URL Inspection API to get real indexing status
+  let indexedCount = 0;
   const notIndexedUrls: string[] = [];
-  try {
-    const sitemapRes = await searchConsole.sitemaps.list({ siteUrl });
-    const primarySitemap = sitemapRes.data.sitemap?.[0]?.path;
-    if (primarySitemap) {
-      const xmlRes = await fetch(primarySitemap);
-      if (xmlRes.ok) {
-        const xml = await xmlRes.text();
-        const locMatches = [...xml.matchAll(/<loc>(.*?)<\/loc>/gi)];
-        const sitemapUrls = locMatches
-          .map((m) => m[1].trim())
-          .filter((u) => !u.endsWith(".xml"));
 
-        const end = new Date();
-        const start = new Date();
-        start.setDate(end.getDate() - 28);
-        const fmtDate = (d: Date) => d.toISOString().split("T")[0];
+  if (submittedCount > 0) {
+    logger.info(
+      `[check_index_coverage] Inspecting ${submittedCount} URLs via URL Inspection API...`,
+    );
+    const inspectionResults = await inspectUrls(sitePropertyUrl, sitemapUrls);
 
-        const gscRes = await searchConsole.searchanalytics.query({
-          siteUrl,
-          requestBody: {
-            startDate: fmtDate(start),
-            endDate: fmtDate(end),
-            dimensions: ["page"],
-            rowLimit: 1000,
-          },
-        });
-        const indexedSet = new Set(
-          (gscRes.data.rows ?? []).map((r) =>
-            (r.keys?.[0] ?? "").toLowerCase(),
-          ),
-        );
+    for (const { url, coverageState } of inspectionResults) {
+      if (SKIP_COVERAGE_STATES.has(coverageState)) continue;
 
-        notIndexedUrls.push(
-          ...sitemapUrls
-            .filter((u) => !indexedSet.has(u.toLowerCase()))
-            .slice(0, 50),
-        );
+      if (INDEXED_STATES.has(coverageState)) {
+        indexedCount++;
+      } else {
+        // ERROR_STATES, WARNING_STATES, PENDING_STATES all count as not indexed
+        notIndexedUrls.push(url);
       }
     }
-  } catch {
-    // non-fatal
   }
 
-  const notIndexedCount =
-    submittedCount > 0 ? submittedCount - indexedCount : notIndexedUrls.length;
+  const notIndexedCount = notIndexedUrls.length;
   const coveragePct =
     submittedCount > 0
       ? Math.round((indexedCount / submittedCount) * 100)
@@ -451,10 +521,75 @@ export async function checkIndexCoverage(
     site_url: siteUrl,
     submitted_count: submittedCount,
     indexed_count: indexedCount,
-    not_indexed_count: Math.max(0, notIndexedCount),
+    not_indexed_count: notIndexedCount,
     coverage_pct: coveragePct,
     not_indexed_urls: notIndexedUrls,
     alerts,
+  };
+}
+
+export async function checkIndexedStatus(domain: string, urls: string[]) {
+  const sitePropertyUrl = domain.endsWith("/") ? domain : domain + "/";
+  const inspectionResults = await inspectUrls(sitePropertyUrl, urls);
+
+  const indexed_urls = [];
+
+  for (const { url, coverageState } of inspectionResults) {
+    if (INDEXED_STATES.has(coverageState)) {
+      indexed_urls.push(url);
+    }
+  }
+
+  return {
+    indexed_count: indexed_urls.length,
+    indexed_urls,
+  };
+}
+
+// ── Tool: request_indexing ────────────────────────────────────────────
+export async function requestIndexing(
+  siteId: number,
+  urls: string[],
+  type: "URL_UPDATED" | "URL_DELETED" = "URL_UPDATED",
+): Promise<IndexingSubmitResult> {
+  const siteUrl = await getSiteDomain(siteId);
+  logger.info(
+    `[request_indexing] Submitting ${urls.length} URLs for indexing (type=${type}, site_id=${siteId})...`,
+  );
+
+  const indexing = getIndexingClient();
+  const submitted: IndexingSubmitItem[] = [];
+
+  for (const url of urls) {
+    logger.info(`[request_indexing] Requesting Indexing for: ${url}`);
+    try {
+      await indexing.urlNotifications.publish({
+        requestBody: { url, type },
+      });
+      logger.info(`[request_indexing] OK: ${url}`);
+      submitted.push({ url, status: "ok" });
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.error?.message ?? err?.message ?? "Unknown error";
+      logger.error(`[request_indexing] FAILED: ${url} — ${msg}`, err);
+      submitted.push({ url, status: "error", error: msg });
+    }
+  }
+
+  const successCount = submitted.filter((r) => r.status === "ok").length;
+  const errorCount = submitted.filter((r) => r.status === "error").length;
+
+  logger.info(
+    `[request_indexing] Done. success=${successCount}, errors=${errorCount}`,
+  );
+
+  return {
+    site_id: siteId,
+    site_url: siteUrl,
+    type,
+    submitted,
+    success_count: successCount,
+    error_count: errorCount,
   };
 }
 

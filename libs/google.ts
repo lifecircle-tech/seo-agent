@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { logger } from "../seo-agent/utils/logger";
+import { MONTHS_NAME } from "../seo-agent/utils/constants";
 
 function getGSCAuth() {
   const envKey = `GSC_OAUTH_SITE`;
@@ -24,6 +25,16 @@ export function getGscAuth() {
 export function getSearchConsoleClient() {
   const auth = getGscAuth();
   return google.searchconsole({ version: "v1", auth });
+}
+
+export function getIndexingClient() {
+  const raw = getGSCAuth();
+  const credentials = JSON.parse(raw);
+  const auth = new google.auth.GoogleAuth({
+    credentials,
+    scopes: ["https://www.googleapis.com/auth/indexing"],
+  });
+  return google.indexing({ version: "v3", auth });
 }
 
 // ── Sheets helpers ─────────────────────────────────────────────────────
@@ -200,9 +211,90 @@ export async function getKeywordsMetrics(
       },
       body: JSON.stringify(body),
     })) as { data: { results: Array<any> } };
-    
+
     return response?.data?.results;
   } catch (err: any) {
     logger.error("KEYWORDS ERROR ", err);
   }
+}
+
+export async function getKeywordsSuggestionForDomain(
+  domain: string,
+  timePeriod?: TimePeriod,
+) {
+  logger.info(`============= GBP Fetching Keywords for Domain ***************`);
+  const oauth2Client = getGbpOAuth();
+  const customerId = process.env.ADS_ACCOUNT_SITE;
+  const developer_token = process.env.GOOGLE_ADS_TOKEN as string;
+
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setMonth(endDate.getMonth() - 6);
+
+  const body = {
+    siteSeed: { site: domain },
+    historicalMetricsOptions: {
+      include_average_cpc: true,
+      yearMonthRange: {
+        start: {
+          month: MONTHS_NAME[startDate.getMonth()],
+          year: startDate.getFullYear(),
+        },
+        end: {
+          month: MONTHS_NAME[endDate.getMonth()],
+          year: endDate.getFullYear(),
+        },
+      },
+    },
+  } as Record<string, any>;
+
+  timePeriod && (body.historicalMetricsOptions.yearMonthRange = timePeriod);
+
+  try {
+    const response = (await oauth2Client.request({
+      url: `https://googleads.googleapis.com/v24/customers/${customerId}:generateKeywordIdeas`,
+      method: "POST",
+      headers: {
+        "developer-token": developer_token,
+      },
+      body: JSON.stringify(body),
+    })) as { data: { results: Array<any> } };
+
+    const results = response?.data?.results;
+
+    return results.map((item) => ({
+      keyword: item.text,
+      avgSearchVolume: item.keywordIdeaMetrics.avgMonthlySearches,
+      competition: item.keywordIdeaMetrics.competition,
+      competitionIndex: item.keywordIdeaMetrics.competitionIndex,
+      avgCpcMicros: item.keywordIdeaMetrics?.averageCpcMicros,
+      monthlySearches: item.keywordIdeaMetrics.monthlySearchVolumes,
+    }));
+  } catch (err: any) {
+    logger.error("KEYWORDS ERROR ", err);
+  }
+}
+
+export async function getConsoleAnalytics() {
+  const sc = google.searchconsole({ version: "v1", auth: getGscAuth() });
+
+  function fmt(d: Date): string {
+    return d.toISOString().split("T")[0];
+  }
+
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - 28);
+
+  const posRes = await sc.searchanalytics.query({
+    siteUrl: "https://lifecircle.in",
+    requestBody: {
+      startDate: fmt(start),
+      endDate: fmt(end),
+      dimensions: ["date"],
+      rowLimit: 30,
+    },
+  });
+
+  logger.debug(JSON.stringify(posRes.data.rows, null, 2));
 }

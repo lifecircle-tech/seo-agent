@@ -23,6 +23,12 @@ function toJSON(row: Alert): AlertJSON {
         ? row.resolved_at.toISOString()
         : String(row.resolved_at)
       : null,
+    closed_at: row.closed_at
+      ? row.closed_at instanceof Date
+        ? row.closed_at.toISOString()
+        : String(row.closed_at)
+      : null,
+    closed_by: row.closed_by ?? null,
   };
 }
 
@@ -139,13 +145,18 @@ export async function listAlerts(filters: {
   ]);
 
   const userIds = new Set();
+  const closedByIds = new Set();
   rows.forEach((row) => {
     if (row.actioned_by) {
       userIds.add(row.actioned_by);
     }
+    if (row.closed_by) {
+      closedByIds.add(row.closed_by);
+    }
   });
 
   const userMap = {} as Record<string, string>;
+  const userMap2 = {} as Record<string, string>;
   if (userIds.size > 0) {
     const [users] = await lc_pool.query<any[]>(
       `SELECT emp_name, det_id from life_emp_details WHERE det_id IN (?)`,
@@ -157,6 +168,16 @@ export async function listAlerts(filters: {
     });
   }
 
+  if (closedByIds.size > 0) {
+    const [users2] = await lc_pool.query<any[]>(
+      `SELECT emp_name, det_id from life_emp_details WHERE det_id IN (?)`,
+      [[...closedByIds]],
+    );
+    users2.forEach((user) => {
+      userMap2[user.det_id] = user.emp_name;
+    });
+  }
+
   const total = Number((countRow as RowDataPacket[])[0].count);
   const alerts = (rows as Alert[]).map(toJSON).map((approval) => {
     return {
@@ -164,6 +185,7 @@ export async function listAlerts(filters: {
       actioned_user_name: approval.actioned_by
         ? userMap[approval.actioned_by]
         : null,
+      closed_by_user: approval.closed_by ? userMap2[approval.closed_by] : null,
     };
   });
   return { alerts, total, limit, offset };
@@ -192,7 +214,8 @@ export async function acknowledgeAlert(
 }
 
 // ── RESOLVE ───────────────────────────────────────────────────────────
-export async function resolveAlert(id: string,
+export async function resolveAlert(
+  id: string,
   actionedBy: string,
 ): Promise<AlertJSON | null> {
   const [result] = await pool.query<ResultSetHeader>(
@@ -201,4 +224,57 @@ export async function resolveAlert(id: string,
   );
   if (result.affectedRows === 0) return null;
   return getAlertById(id);
+}
+
+// ── CLOSE ─────────────────────────────────────────────────────────────
+export async function closeAlert(
+  id: string,
+  closedBy: string,
+): Promise<AlertJSON | null> {
+  const [result] = await pool.query<ResultSetHeader>(
+    "UPDATE alerts SET status = 'closed', closed_at = NOW(3), closed_by = ? WHERE id = ?",
+    [closedBy, id],
+  );
+  if (result.affectedRows === 0) return null;
+  return getAlertById(id);
+}
+
+// ── CONTROLLERS FOR ORCHESTRATORS ─────────────────────────────────────
+
+export async function getOpenIndexedAlert(site_id: number) {
+  const [rows] = await pool.query<Alert[]>(
+    "SELECT * from alerts WHERE site_id = ? AND module = 'index_error' AND status = 'open'",
+    [site_id],
+  );
+
+  return rows.map(toJSON);
+}
+
+export async function getResolvedIndexedAlert(site_id: number) {
+  const [rows] = await pool.query<Alert[]>(
+    "SELECT * from alerts WHERE site_id = ? AND module = 'index_error' AND status = 'resolved'",
+    [site_id],
+  );
+
+  return rows.map(toJSON);
+}
+
+export async function updateAlertsStatusToResolved(ids: string[]) {
+  if (ids.length === 0) return 0;
+  const [result] = await pool.query<ResultSetHeader>(
+    "UPDATE alerts SET status = 'resolved', actioned_by = ?, resolved_at = NOW(3) WHERE id IN (?)",
+    ["agent", ids],
+  );
+
+  return result.affectedRows;
+}
+
+export async function updateAlertsStatusToClosed(ids: string[]) {
+  if (ids.length === 0) return 0;
+  const [result] = await pool.query<ResultSetHeader>(
+    "UPDATE alerts SET status = 'closed', closed_by = ?, closed_at = NOW(3) WHERE id IN (?)",
+    ["agent", ids],
+  );
+
+  return result.affectedRows;
 }

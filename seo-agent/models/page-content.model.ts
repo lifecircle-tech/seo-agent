@@ -2,18 +2,28 @@ import { RowDataPacket } from "mysql2/promise";
 import { pool } from "../../db.js";
 
 // ── TYPES ─────────────────────────────────────────────────────────────
+type STATUS =
+  | "pending"
+  | "acknowledged"
+  | "new_page"
+  | "created"
+  | "error"
+  | "rejected";
+
 export interface PageContent extends RowDataPacket {
   id: string;
   site_id: number;
   page_meta_details: Record<string, unknown>;
   content: string; // LONGTEXT in MySQL
-  status: "pending" | "acknowledged" | "created" | "error" | "rejected";
+  images: Array<Record<string, any>> | null;
+  links: Record<string, any> | null;
+  status: STATUS;
   url: string;
   acknowledged_by: number | null;
   acknowledged_at: Date | null;
   reasoning: string;
   remark: string;
-  page_updated: boolean;
+  is_new: boolean;
   update_details: Record<string, unknown> | null;
   keywords_analytics: Array<any> | null;
   created_at: Date; // DATETIME(3)
@@ -24,13 +34,15 @@ export interface PageContentJSON {
   site_id: number;
   page_meta_details: Record<string, unknown>;
   content: string;
-  status: "pending" | "acknowledged" | "created" | "error" | "rejected";
+  images: Array<Record<string, any>> | null;
+  links: Record<string, any> | null;
+  status: STATUS;
   url: string;
   acknowledged_by: number | null;
   acknowledged_at: string | null;
   reasoning: string;
   remark: string;
-  page_updated: boolean;
+  is_new: boolean;
   update_details: Record<string, unknown> | null;
   keywords_analytics: Array<any> | null;
   created_at: string;
@@ -45,13 +57,15 @@ export async function createPageContentTable(): Promise<void> {
       site_id           INT           NOT NULL,
       page_meta_details JSON          NOT NULL,
       content           LONGTEXT      NOT NULL,
+      images            JSON          NOT NULL,
+      links             JSON          NOT NULL,
       status            VARCHAR(16)   NOT NULL DEFAULT 'pending',
       url               VARCHAR(512)  NOT NULL,
       acknowledged_by   INT           NULL,
       acknowledged_at   DATETIME(3)   NULL,
       reasoning         TEXT          NULL,
       remark            TEXT          NULL,
-      page_updated      BOOLEAN       NULL DEFAULT false,
+      is_new            BOOLEAN       NULL DEFAULT false,
       update_details    JSON          NULL,
       keywords_analytics    JSON      NULL,
       created_at        DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),

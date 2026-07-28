@@ -1,5 +1,6 @@
 import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { Keyword, KeywordJSON } from "../models/keywords.model.js";
+import { Page } from "../models/page.model.js";
 import { pool } from "../../db.js";
 
 // ── Row serialiser ────────────────────────────────────────────────────
@@ -73,14 +74,31 @@ export async function createKeyword(
 }
 
 // ── LIST ──────────────────────────────────────────────────────────────
+const SORTABLE_COLUMNS = new Set([
+  "keyword",
+  "clicks",
+  "impressions",
+  "search_volume",
+  "difficulty",
+  "position",
+  "cpc",
+  "ctr",
+  "competition",
+  "is_new",
+  "updated_at",
+  "created_at",
+]);
+
 export async function listKeywords(filters: {
   site_id?: number;
   is_new?: boolean;
   keyword?: string;
   limit?: number;
   offset?: number;
+  sort_by?: string;
+  sort_dir?: "asc" | "desc";
 }): Promise<{
-  keywords: KeywordJSON[];
+  keywords: (KeywordJSON & { pages_used: number })[];
   total: number;
   limit: number;
   offset: number;
@@ -89,15 +107,15 @@ export async function listKeywords(filters: {
   const conditions: string[] = [];
 
   if (filters.site_id !== undefined) {
-    conditions.push("site_id = ?");
+    conditions.push("k.site_id = ?");
     params.push(filters.site_id);
   }
   if (filters.is_new !== undefined) {
-    conditions.push("is_new = ?");
+    conditions.push("k.is_new = ?");
     params.push(filters.is_new);
   }
   if (filters.keyword) {
-    conditions.push("keyword LIKE ?");
+    conditions.push("k.keyword LIKE ?");
     params.push(`%${filters.keyword}%`);
   }
 
@@ -105,20 +123,35 @@ export async function listKeywords(filters: {
   const limit = Math.min(filters.limit ?? 20, 100);
   const offset = filters.offset ?? 0;
 
+  const sortCol =
+    filters.sort_by && SORTABLE_COLUMNS.has(filters.sort_by)
+      ? filters.sort_by
+      : null;
+  const sortDir = filters.sort_dir === "asc" ? "ASC" : "DESC";
+  const orderBy = sortCol
+    ? `${sortCol} ${sortDir}, k.is_new DESC, k.updated_at DESC`
+    : "k.is_new DESC, k.updated_at DESC";
+
   const [[countRow], [rows]] = await Promise.all([
     pool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) AS count FROM keywords ${where}`,
+      `SELECT COUNT(*) AS count FROM keywords k ${where}`,
       params,
     ),
     pool.query<Keyword[]>(
-      `SELECT * FROM keywords ${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
+      `SELECT k.*, COUNT(pk.page_id) as pages_used FROM keywords k
+      LEFT JOIN page_keywords pk ON pk.keyword_id = k.id
+      ${where} GROUP BY k.id
+      ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
       [...params, limit, offset],
     ),
   ]);
 
   const total = Number((countRow as RowDataPacket[])[0].count);
-  const keywords = (rows as Keyword[]).map(toJSON);
-  return { keywords, total, limit, offset };
+  const keywordRows = (rows as Keyword[]).map(toJSON) as (KeywordJSON & {
+    pages_used: number;
+  })[];
+
+  return { keywords: keywordRows, total, limit, offset };
 }
 
 // ── GET BY ID ─────────────────────────────────────────────────────────
@@ -253,14 +286,13 @@ export async function upsertKeywords(
       | "competition"
       | "competition_level"
       | "monthly_searches"
-      | "pages_used"
     >
   >,
 ): Promise<number> {
   if (records.length === 0) return 0;
 
   const placeholders = records
-    .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
     .join(", ");
   const params = records.flatMap((r) => [
     r.id,
@@ -277,14 +309,13 @@ export async function upsertKeywords(
     r.competition ?? null,
     r.competition_level ?? null,
     r.monthly_searches != null ? JSON.stringify(r.monthly_searches) : null,
-    r.pages_used != null ? JSON.stringify(r.pages_used) : null,
   ]);
 
   const [result] = await pool.query<ResultSetHeader>(
     `INSERT INTO keywords
       (id, site_id, is_new, keyword, clicks, impressions, search_volume,
        difficulty, position, cpc, ctr, competition, competition_level,
-       monthly_searches, pages_used)
+       monthly_searches)
     VALUES ${placeholders}
     ON DUPLICATE KEY UPDATE
       is_new            = COALESCE(VALUES(is_new), is_new),
@@ -297,10 +328,84 @@ export async function upsertKeywords(
       ctr               = COALESCE(VALUES(ctr), ctr),
       competition       = COALESCE(VALUES(competition), competition),
       competition_level = COALESCE(VALUES(competition_level), competition_level),
-      monthly_searches  = COALESCE(VALUES(monthly_searches), monthly_searches),
-      pages_used        = COALESCE(VALUES(pages_used), pages_used)`,
+      monthly_searches  = COALESCE(VALUES(monthly_searches), monthly_searches)`,
     params,
   );
 
   return result.affectedRows;
+}
+
+// ── GET PAGES FOR KEYWORD ─────────────────────────────────────────────
+// Returns all pages linked to the given keyword via page_keywords.
+
+export async function getKeywordPages(keywordId: string) {
+  const keyword = await getKeywordById(keywordId);
+
+  if (!keyword) {
+    return { keyword: null, pages: [] };
+  }
+
+  const [rows] = await pool.query<Page[]>(
+    `SELECT p.url, pk.impressions, pk.clicks, pk.position
+     FROM pages p
+     INNER JOIN page_keywords pk ON pk.page_id = p.id
+     WHERE pk.keyword_id = ?
+     ORDER BY pk.impressions DESC`,
+    [keywordId],
+  );
+
+  return { keyword, pages: rows as Page[] };
+}
+
+// ── CONTROLLERS FOR ORCHESTRATORS ─────────────────────────────────────
+
+export async function getSiteKeywords(filters: {
+  site_id: number;
+  is_new?: boolean;
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  keywords: KeywordJSON[];
+  total: number;
+}> {
+  const params: unknown[] = [];
+  const conditions: string[] = [];
+
+  if (filters.site_id !== undefined) {
+    conditions.push("site_id = ?");
+    params.push(filters.site_id);
+  }
+  if (filters.is_new !== undefined) {
+    conditions.push("is_new = ?");
+    params.push(filters.is_new);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const limit = filters.limit ?? 100;
+  const offset = filters.offset ?? 0;
+
+  const [[countRow], [rows]] = await Promise.all([
+    pool.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS count FROM keywords ${where}`,
+      params,
+    ),
+    pool.query<Keyword[]>(
+      `SELECT * FROM keywords ${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
+      [...params, limit, offset],
+    ),
+  ]);
+
+  const total = Number((countRow as RowDataPacket[])[0].count);
+  const keywords = (rows as Keyword[]).map(toJSON);
+  return { keywords, total };
+}
+
+export async function getKeywordsAnalytics(keywords: string[]) {
+  const [rows] = await pool.query<Keyword[]>(
+    `SELECT keyword, impressions, search_volume, cpc, competition_level
+      from keywords WHERE keyword IN (?)`,
+    [keywords],
+  );
+
+  return rows.map(toJSON);
 }

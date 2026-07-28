@@ -31,7 +31,7 @@ function fmt(d: Date): string {
 // GET /sites/:site_id/overview
 router.get("/:site_id/overview", async (req: Request, res: Response) => {
   const { site_id } = req.params;
-  const { site_url } = req.query as { site_url?: string   };
+  const { site_url } = req.query as { site_url?: string };
 
   // Open alerts count — direct DB query instead of internal fetch
   let open_alerts = 0;
@@ -48,6 +48,7 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
   // GSC: avg position + 28-day click sparkline
   let avg_position: number | null = null;
   const traffic_sparkline: Array<{ date: string; clicks: number }> = [];
+  const position_sparkline: Array<{ date: string; position: number }> = [];
 
   try {
     const siteUrl = site_url;
@@ -59,12 +60,12 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
     const start = new Date();
     start.setDate(end.getDate() - 28);
 
-    const [posRes, clickRes] = await Promise.all([
+    const [avgPos, posRes, clickRes] = await Promise.all([
       sc.searchanalytics.query({
         siteUrl,
         requestBody: {
           startDate: fmt(start),
-          endDate:   fmt(end),
+          endDate: fmt(end),
           dimensions: [],
           rowLimit: 1,
         },
@@ -73,20 +74,36 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
         siteUrl,
         requestBody: {
           startDate: fmt(start),
-          endDate:   fmt(end),
+          endDate: fmt(end),
           dimensions: ["date"],
-          dataState: 'all',
+          rowLimit: 28,
+        },
+      }),
+      sc.searchanalytics.query({
+        siteUrl,
+        requestBody: {
+          startDate: fmt(start),
+          endDate: fmt(end),
+          dimensions: ["date"],
+          dataState: "all",
           rowLimit: 28,
         },
       }),
     ]);
 
-    avg_position = posRes.data.rows?.[0]?.position ?? null;
+    avg_position = avgPos.data.rows?.[0]?.position ?? null;
 
     for (const row of clickRes.data.rows ?? []) {
       traffic_sparkline.push({
-        date:   row.keys?.[0] ?? "",
+        date: row.keys?.[0] ?? "",
         clicks: row.clicks ?? 0,
+      });
+    }
+
+    for (const row of posRes.data.rows ?? []) {
+      position_sparkline.push({
+        date: row.keys?.[0] ?? "",
+        position: Number(row.position?.toFixed(2)) ?? 0,
       });
     }
   } catch (err) {
@@ -94,13 +111,14 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
   }
 
   res.json({
-    site_id:          Number(site_id),
+    site_id: Number(site_id),
     avg_position,
-    gbp_pack:         null,
-    avg_rating:       null,
+    gbp_pack: null,
+    avg_rating: null,
     open_alerts,
     traffic_sparkline,
-    last_updated:     new Date().toISOString(),
+    position_sparkline,
+    last_updated: new Date().toISOString(),
   });
 });
 

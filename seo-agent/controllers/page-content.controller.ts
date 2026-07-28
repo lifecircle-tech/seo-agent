@@ -6,6 +6,9 @@ import { lc_pool, pool } from "../../db.js";
 function toJSON(row: PageContent): PageContentJSON {
   return {
     ...row,
+    images:
+      typeof row.images === "string" ? JSON.parse(row.images) : row.images,
+    links: typeof row.links === "string" ? JSON.parse(row.links) : row.links,
     page_meta_details:
       typeof row.page_meta_details === "string"
         ? JSON.parse(row.page_meta_details)
@@ -241,4 +244,38 @@ export async function getAcknowledgedPageByUrl(
     [url],
   );
   return rows.length ? toJSON(rows[0]) : null;
+}
+
+// ── CONTROLLERS FOR ORCHESTRATORS ─────────────────────────────────────
+
+export async function createNewPageContent(
+  data: Pick<
+    PageContent,
+    | "id"
+    | "site_id"
+    | "page_meta_details"
+    | "content"
+    | "url"
+    | "images"
+    | "links"
+    | "keywords_analytics"
+  >,
+) {
+  await pool.query<ResultSetHeader>(
+    `INSERT INTO page_content 
+      (id, site_id, page_meta_details, content, images, links, url, status, keywords_analytics, is_new) 
+    VALUES (?, ?, ?, ?, ?, ?, 'new_page', ?, true)`,
+    [
+      data.id,
+      data.site_id,
+      JSON.stringify(data.page_meta_details),
+      data.content,
+      JSON.stringify(data.images),
+      JSON.stringify(data.links),
+      data.url,
+      JSON.stringify(data.keywords_analytics),
+    ],
+  );
+  const record = await getPageContentById(data.id);
+  return record!;
 }

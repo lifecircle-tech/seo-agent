@@ -12,6 +12,7 @@ import {
   listAlerts,
   acknowledgeAlert,
   resolveAlert,
+  closeAlert,
 } from "../controllers/alerts.controller.js";
 
 import type { Alert } from "../models/alert.model.js";
@@ -122,6 +123,30 @@ export function alertsRouter(io: SocketIOServer): Router {
         res.json({ success: true, ...alert });
       } catch (err) {
         logger.error("[alerts] resolve error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
+      }
+    },
+  );
+
+  // POST /alerts/:id/close
+  router.post(
+    "/:id/close",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const { userId } = (req as AuthRequest).user!;
+        const alert = await closeAlert(
+          req.params.id,
+          String(userId) ?? "operator",
+        );
+        if (!alert) {
+          res.status(404).json({ success: false, error: "Alert not found" });
+          return;
+        }
+        io.emit("alert:updated", alert);
+        res.json({ success: true, ...alert });
+      } catch (err) {
+        logger.error("[alerts] close error:", err);
         res.status(500).json({ success: false, error: "Database error" });
       }
     },

@@ -17,7 +17,6 @@ export interface Keyword extends RowDataPacket {
   competition: number | null;            // DOUBLE
   competition_level: string | null;      // VARCHAR(32)
   monthly_searches: Array<Record<string, unknown>> | null; // JSON
-  pages_used: Array<Record<string, any>> | null;          // INT
   created_at: Date;                      // DATETIME(3)
   updated_at: Date;                      // DATETIME(3)
 }
@@ -37,7 +36,6 @@ export interface KeywordJSON {
   competition: number | null;
   competition_level: string | null;
   monthly_searches: Array<Record<string, any>> | null;
-  pages_used: Array<Record<string, any>> | null;
   created_at: string;
   updated_at: string;
 }
@@ -61,7 +59,6 @@ export async function createKeywordsTable(): Promise<void> {
       competition       DOUBLE        NULL,
       competition_level VARCHAR(32)   NULL,
       monthly_searches  JSON          NULL,
-      pages_used        JSON          NULL,
       created_at        DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
       updated_at        DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
       UNIQUE KEY uq_keywords_site_keyword (site_id, keyword(255)),

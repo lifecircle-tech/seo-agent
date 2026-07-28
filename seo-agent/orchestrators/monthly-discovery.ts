@@ -134,18 +134,38 @@ async function analyzeWithAI(
   const client: Anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
+  logger.info("Analyzing opportunities by AI...");
+
+  let prompt_keywords = keywords.map((k) => {
+    return {
+      keyword: k.keyword,
+      volume: k.volume,
+      difficulty: k.difficulty,
+      current_position: k.current_position,
+      opportunity_score: k.opportunity_score,
+      clicks: k.clicks,
+      impressions: k.impressions,
+      ctr: k.ctr,
+      cpc: k.cpc,
+      competition: k.competition_level,
+      monthlySearches: k.monthly_searches?.slice(0,2)
+    }
+  })
 
   const prompt = `You are a world-class SEO strategist.
 Analyze these prioritized keywords for ${site.brand_name} (${site.industry}).
 
 Data:
-${JSON.stringify(keywords.slice(0, 30), null, 2)}
+${JSON.stringify(prompt_keywords.slice(0, 40), null, 2)}
 
 Task:
 - Using the data provided, identify the top 10 content opportunities (blog posts, landing pages, or local guides).
+- Cluster related keywords together for content.
 
 Return ONLY a JSON object with an "opportunities" array.
-  - Each object MUST have: "title", "topic", "target_keywords" (array), "reasoning", "priority" ("High"|"Medium"|"Low").
+  - Each object MUST have: "opportunity_type", "title", "topic", "target_keywords" (array), "content_description", "reasoning", "priority" ("High"|"Medium"|"Low").
+
+"target_keywords": mention primary keywords as first element of the array followed by secondary keywords
 `;
 
   const response = await callWithRetry(client, "step1", {
@@ -245,14 +265,14 @@ async function runMonthlyDiscovery() {
             id: randomUUID(),
             site_id: site.site_id,
             keyword: k.keyword,
-            is_new: true,
+            is_new: pages.get(k.keyword) ? false : true,
             search_volume: k.volume ?? null,
             difficulty: k.difficulty ?? null,
             position: k.current_position ?? null,
             clicks: k.clicks,
             impressions: k.impressions,
             ctr: k.ctr,
-            cpc: k.cpc ?? null,
+            cpc: k.cpc,
             competition: k.competition ?? null,
             competition_level: k.competition_level ?? null,
             monthly_searches: k.monthly_searches || null,
@@ -291,6 +311,8 @@ async function runMonthlyDiscovery() {
                 title: opp.title,
                 topic: opp.topic,
                 target_keywords: opp.target_keywords,
+                description: opp.content_description,
+                type: opp.opportunity_type,
               },
             });
           } catch (err) {

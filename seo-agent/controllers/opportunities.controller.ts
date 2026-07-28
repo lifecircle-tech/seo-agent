@@ -237,3 +237,88 @@ export async function deleteOpportunity(id: string): Promise<boolean> {
   );
   return result.affectedRows > 0;
 }
+
+// ── CONTROLLERS FOR ORCHESTRATORS ─────────────────────────────────────
+
+export async function getNewOpportunities(filters: {
+  site_id?: number;
+  status?: string;
+  opportunity_type?: string;
+  priority?: string;
+}): Promise<{
+  opportunities: OpportunityJSON[];
+  total: number;
+}> {
+  const params: unknown[] = [];
+  const conditions: string[] = [];
+
+  if (filters.site_id !== undefined) {
+    conditions.push("site_id = ?");
+    params.push(filters.site_id);
+  }
+  if (filters.status) {
+    conditions.push("status = ?");
+    params.push(filters.status);
+  }
+  if (filters.opportunity_type) {
+    conditions.push("opportunity_type = ?");
+    params.push(filters.opportunity_type);
+  }
+  if (filters.priority) {
+    conditions.push("priority = ?");
+    params.push(filters.priority);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const [[countRow], [rows]] = await Promise.all([
+    pool.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS count FROM opportunities ${where}`,
+      params,
+    ),
+    pool.query<Opportunity[]>(
+      `SELECT * FROM opportunities ${where} ORDER BY created_at DESC`,
+      [...params],
+    ),
+  ]);
+
+  const userIds = new Set();
+  rows.forEach((row) => {
+    if (row.actioned_by) {
+      userIds.add(row.actioned_by);
+    }
+  });
+
+  const userMap = {} as Record<string, string>;
+  if (userIds.size > 0) {
+    const [users] = await lc_pool.query<any[]>(
+      `SELECT emp_name, det_id from life_emp_details WHERE det_id IN (?)`,
+      [[...userIds]],
+    );
+
+    users.forEach((user) => {
+      userMap[user.det_id] = user.emp_name;
+    });
+  }
+
+  const total = Number((countRow as RowDataPacket[])[0].count);
+  const opportunities = (rows as Opportunity[]).map(toJSON).map((approval) => {
+    return {
+      ...approval,
+      actioned_user_name: approval.actioned_by
+        ? userMap[approval.actioned_by]
+        : null,
+    };
+  });
+
+  return { opportunities, total };
+}
+
+export async function updateStatusToGenerated(id: string) {
+  const [result] = await pool.query<ResultSetHeader>(
+    `UPDATE opportunities SET status = 'generated' WHERE id = ?`,
+    [id],
+  );
+  if (result.affectedRows === 0) return null;
+  return getOpportunityById(id);
+}

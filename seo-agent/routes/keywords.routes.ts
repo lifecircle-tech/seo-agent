@@ -6,12 +6,14 @@ import {
   createKeyword,
   listKeywords,
   getKeywordById,
+  getKeywordPages,
   updateKeyword,
   deleteKeyword,
   upsertKeywords,
 } from "../controllers/keywords.controller.js";
 import { requireAuth } from "../../middleware/auth.middleware.js";
 import { logger } from "../utils/logger.js";
+import { getSiteBySiteID } from "../controllers/sites.controller.js";
 
 export function keywordsRouter(io: SocketIOServer): Router {
   const router = Router();
@@ -33,7 +35,7 @@ export function keywordsRouter(io: SocketIOServer): Router {
         competition,
         competition_level,
         monthly_searches,
-        pages_used
+        pages_used,
       } = req.body;
 
       if (!site_id || !keyword) {
@@ -57,7 +59,7 @@ export function keywordsRouter(io: SocketIOServer): Router {
         competition: competition ?? null,
         competition_level: competition_level ?? null,
         monthly_searches: monthly_searches ?? null,
-        pages_used: pages_used ?? null
+        pages_used: pages_used ?? null,
       });
 
       io.emit("keyword:created", record);
@@ -95,7 +97,7 @@ export function keywordsRouter(io: SocketIOServer): Router {
           competition: r.competition ?? null,
           competition_level: r.competition_level ?? null,
           monthly_searches: r.monthly_searches ?? null,
-          pages_used: r.pages_used ?? null
+          pages_used: r.pages_used ?? null,
         })),
       );
 
@@ -109,10 +111,8 @@ export function keywordsRouter(io: SocketIOServer): Router {
   // GET /keywords
   router.get("/", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { site_id, is_new, keyword, limit, offset } = req.query as Record<
-        string,
-        string
-      >;
+      const { site_id, is_new, keyword, limit, offset, sort_by, sort_dir } =
+        req.query as Record<string, string>;
 
       const result = await listKeywords({
         site_id: site_id ? Number(site_id) : undefined,
@@ -120,11 +120,34 @@ export function keywordsRouter(io: SocketIOServer): Router {
         keyword: keyword ?? undefined,
         limit: limit ? Number(limit) : undefined,
         offset: offset ? Number(offset) : undefined,
+        sort_by: sort_by ?? undefined,
+        sort_dir:
+          sort_dir === "asc" ? "asc" : sort_dir === "desc" ? "desc" : undefined,
       });
 
-      res.json({ success: true, ...result });
+      const site = await getSiteBySiteID(Number(site_id));
+
+      res.json({
+        success: true,
+        ...result,
+        site: { domain: site?.domain, site_name: site?.brand_name },
+      });
     } catch (err) {
       logger.error("[keywords] list error:", err);
+      res.status(500).json({ success: false, error: "Database error" });
+    }
+  });
+
+  // GET /keywords/:id/pages — all pages linked to this keyword
+  router.get("/:id/pages", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const result = await getKeywordPages(req.params.id);
+      if (!result.keyword) {
+        return res.status(404).json({ success: false, error: "Keyword not found" });
+      }
+      res.json({ success: true, keyword: result.keyword, pages: result.pages, count: result.pages.length });
+    } catch (err) {
+      logger.error("[keywords] pages error:", err);
       res.status(500).json({ success: false, error: "Database error" });
     }
   });

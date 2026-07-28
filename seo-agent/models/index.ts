@@ -9,8 +9,11 @@ import { createSeoReportsTable } from "./seo-report.model.js";
 import { createKeywordsTable } from "./keywords.model.js";
 import { createOpportunitiesTable } from "./opportunities.model.js";
 import { createBacklinksTable } from "./backlinks.model.js";
+import { createPagesTable, createPageKeywordsTable } from "./page.model.js";
 
 export async function initSEOModels() {
+  // pages must exist before page_keywords (composite FK dependency)
+  await createPagesTable();
   await Promise.all([
     createApprovalsTable(),
     createAlertsTable(),
@@ -23,6 +26,7 @@ export async function initSEOModels() {
     createKeywordsTable(),
     createOpportunitiesTable(),
     createBacklinksTable(),
+    createPageKeywordsTable(),
   ]);
   console.log("[seo-agent] tables ready");
 }

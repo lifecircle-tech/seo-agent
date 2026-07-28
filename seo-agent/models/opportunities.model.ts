@@ -2,25 +2,20 @@ import { RowDataPacket } from "mysql2/promise";
 import { pool } from "../../db.js";
 
 // ── TYPES ─────────────────────────────────────────────────────────────
-enum STATUS {
-    'planned',
-    'pending',
-    'completed',
-    'ignore'
-}
+type STATUS = "planned" | "generated" | "pending" | "completed" | "ignore";
 
 export interface Opportunity extends RowDataPacket {
-  id: string;                                // VARCHAR(36) UUID
-  site_id: number;                           // INT
-  opportunity_type: string;                  // VARCHAR(64)
-  priority: string | null;                   // VARCHAR(16)
-  reasoning: string | null;                  // TEXT
+  id: string; // VARCHAR(36) UUID
+  site_id: number; // INT
+  opportunity_type: string; // VARCHAR(64)
+  priority: string | null; // VARCHAR(16)
+  reasoning: string | null; // TEXT
   opportunity_details: Record<string, any> | null; // JSON
-  status: STATUS;                            // VARCHAR(16)
-  actioned_by: string | null;                // VARCHAR(36)
-  actioned_at: Date | null;                  // DATETIME(3)
-  created_at: Date;                          // DATETIME(3)
-  updated_at: Date;                          // DATETIME(3)
+  status: STATUS; // VARCHAR(16)
+  actioned_by: string | null; // VARCHAR(36)
+  actioned_at: Date | null; // DATETIME(3)
+  created_at: Date; // DATETIME(3)
+  updated_at: Date; // DATETIME(3)
 }
 
 export interface OpportunityJSON {
@@ -59,7 +54,10 @@ export async function createOpportunitiesTable(): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
   } catch (err) {
-    console.error("[opportunities_table] Error creating opportunities table:", err);
+    console.error(
+      "[opportunities_table] Error creating opportunities table:",
+      err,
+    );
     throw err;
   }
 }

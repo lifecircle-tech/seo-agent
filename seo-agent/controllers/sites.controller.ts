@@ -117,3 +117,10 @@ export async function deleteSiteConfig(id: string): Promise<boolean> {
   );
   return result.affectedRows > 0;
 }
+
+// ── CONTROLLERS FOR ORCHESTRATORS ─────────────────────────────────────
+
+export async function getSiteBySiteID(siteId: number) {
+  const [rows] = await pool.query<SiteConfig[]>("SELECT * FROM sites_config WHERE site_id = ?", [siteId]);
+  return rows.length ? toJSON(rows[0]) : null;
+}

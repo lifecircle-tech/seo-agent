@@ -34,9 +34,13 @@ import { weeklySitemapAdsTasks } from "./seo-agent/orchestrators/weekly_sitemaps
 // Monthly orchestrators
 import { monthlyDiscovery } from "./seo-agent/orchestrators/monthly-discovery.js";
 import { monthlyAudit } from "./seo-agent/orchestrators/monthly_audit.js";
+import { opportunityContentGeneration } from "./seo-agent/orchestrators/monthly_opportunity_content";
 
 // Services
-import { checkPageContents } from "./seo-agent/services/schedulers.service.js";
+import {
+  checkPageContents,
+  updateNewKeywordsToFalse,
+} from "./seo-agent/services/schedulers.service.js";
 
 cron.schedule(
   "0 8 * 1,4,10 1,3,5",
@@ -85,11 +89,23 @@ cron.schedule(
 cron.schedule(
   "0 7 1 * *",
   () => {
+    updateNewKeywordsToFalse();
     monthlyDiscovery();
   },
   {
     timezone: "IST",
     name: "Monthly Discovery",
+  },
+);
+
+cron.schedule(
+  "30 7 1 * *",
+  () => {
+    opportunityContentGeneration();
+  },
+  {
+    timezone: "IST",
+    name: "Page Generation from opportunity",
   },
 );
 

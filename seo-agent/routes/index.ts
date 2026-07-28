@@ -11,6 +11,7 @@ import { seoReportRouter } from "./seo-report.routes.js";
 import { keywordsRouter } from "./keywords.routes.js";
 import { opportunitiesRouter } from "./opportunities.routes.js";
 import { backlinksRouter } from "./backlinks.routes.js";
+import { pagesRouter } from "./pages.routes.js";
 
 export function seoAgentRouter (io: SocketIOServer): Router {
     const router = Router();
@@ -24,6 +25,7 @@ export function seoAgentRouter (io: SocketIOServer): Router {
     router.use("/keywords", keywordsRouter(io));
     router.use("/opportunities", opportunitiesRouter(io));
     router.use("/backlinks", backlinksRouter(io));
+    router.use("/pages", pagesRouter);
 
     return router;
 }

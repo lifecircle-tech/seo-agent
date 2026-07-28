@@ -11,11 +11,20 @@ import { logger } from "../utils/logger.js";
 import { listSitesConfigs } from "../controllers/sites.controller.js";
 import { listKeywordsConfigs } from "../controllers/keywords-config.controller.js";
 import { listCompetitorConfigs } from "../controllers/competitor.controller.js";
-import { upsertKeywords } from "../controllers/keywords.controller.js";
+import {
+  upsertKeywords,
+  getSiteKeywords,
+} from "../controllers/keywords.controller.js";
+import {
+  upsertPages,
+  bulkLinkKeywords,
+  getPageIdsByUrls,
+} from "../controllers/page.controller.js";
 
 // MCP Server Imports
 import {
   getKeywordRankings,
+  getPageRankings,
   getRankingOfNewKeywords,
 } from "../mcp-servers/keyword-tracker/server.js";
 import {
@@ -45,6 +54,7 @@ import {
   draftReviewResponse,
   getReviewMetrics,
 } from "../mcp-servers/reputation-manager/server.js";
+import { KeywordJSON } from "../models/keywords.model.js";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -132,89 +142,167 @@ async function callWithRetry(
 // ── Step 1: Keyword rankings ──────────────────────────────────────────
 async function step1KeywordRankings(siteId: number) {
   logger.info(`[step1] Getting keyword rankings for site_id=${siteId}...`);
-  const siteKeywords = sitesKeywordsConfig[siteId].keywords || [];
-  const site = sitesConfig.find((site) => site.site_id === siteId);
 
-  const keywordRanking = await getKeywordRankings(
-    siteId,
-    site?.domain as string,
-    siteKeywords,
+  const site = sitesConfig.find((s) => s.site_id === siteId);
+  const domain = site?.domain as string;
+
+  // 1a. Fetch tracked keywords already in DB
+  const { keywords: trackedKeywords } = await getSiteKeywords({
+    site_id: siteId,
+    is_new: false,
+    limit: 1000,
+  });
+  const siteKeywords = trackedKeywords.map((k) => k.keyword).slice(0, 200);
+
+  // 1b. GSC rankings for tracked keywords
+  const keywordRanking = await getKeywordRankings(siteId, domain, siteKeywords);
+  const rankings = keywordRanking.rankings || [];
+
+  // 1c. GSC rankings for newly discovered keywords
+  const newResult = await getRankingOfNewKeywords(siteId, domain);
+  const newRankings = newResult.rankings || [];
+
+  const allRankings = [...rankings, ...newRankings];
+
+  // 2. Fetch per-page GSC metrics for every keyword
+  //    getPageRankings returns all pages that rank for a given keyword.
+  logger.info(
+    `[step1] Fetching page rankings for ${allRankings.length} keywords...`,
   );
 
-  const rankings = keywordRanking.rankings || [];
-  const pages = new Map();
+  const pageRankingsMap = new Map<
+    string,
+    Array<{
+      url: string;
+      clicks: number;
+      impressions: number;
+      position: number;
+    }>
+  >();
 
-  rankings.map((item) => {
-    if (pages.has(item.keyword)) {
-      if (item.page) {
-        pages.set(item.keyword, [...pages.get(item.keyword), item.page]);
-      }
-    } else {
-      if (item.page) {
-        pages.set(item.keyword, [item.page]);
-      }
-    }
-  });
-
-  if (rankings.length > 0) {
+  for await (let r of allRankings) {
     try {
-      await upsertKeywords(
-        rankings.map((r) => ({
-          id: randomUUID(),
-          site_id: siteId,
-          keyword: r.keyword,
-          is_new: false,
-          clicks: r.clicks,
-          impressions: r.impressions,
-          position: r.position ?? null,
-          ctr: r.ctr,
-          search_volume: r.volume ?? null,
-          difficulty: r.difficulty || null,
-          cpc: r.cpc,
-          competition: r.competition ?? null,
-          competition_level: r.competition_level ?? null,
-          monthly_searches: r.monthly_searches || null,
-          pages_used: pages.get(r.keyword),
-        })),
+      const result = await getPageRankings(domain, r.keyword);
+      const validPages = (result.pages ?? []).filter((p) => !!p.url) as Array<{
+        url: string;
+        clicks: number;
+        impressions: number;
+        position: number;
+      }>;
+      if (validPages.length > 0) {
+        pageRankingsMap.set(r.keyword, validPages);
+      }
+    } catch (err: any) {
+      logger.warn(
+        `[step1] getPageRankings failed for "${r.keyword}": ${err.message}`,
       );
-      logger.info(
-        `[step1] Persisted ${rankings.length} keyword rankings to DB`,
-      );
-    } catch (err) {
-      logger.error(`[step1] Failed to persist keyword rankings:`, err);
     }
   }
 
-  const newResult = await getRankingOfNewKeywords(
-    siteId,
-    site?.domain as string,
+  logger.info(
+    `[step1] Page metrics collected for ${pageRankingsMap.size} keywords`,
   );
-  if (newResult.rankings.length > 0) {
+
+  // 3. Resolve keyword text → DB id (needed for page_keywords FK)
+  const { keywords: allKeywords } = await getSiteKeywords({
+    site_id: siteId,
+    limit: 1000,
+  });
+  const keywordIdMap = new Map(
+    allKeywords.map((k) => [k.keyword.toLowerCase(), k.id]),
+  );
+
+  // 4. Upsert all keywords (existing + new) in one shot
+  if (allRankings.length > 0) {
     try {
       await upsertKeywords(
-        newResult.rankings.map((r) => ({
+        allRankings.map((r, idx) => {
+          const temp_kw = allKeywords.find(
+            (k) => k.keyword.toLowerCase() == r.keyword,
+          ) as KeywordJSON;
+
+          return {
+            id: randomUUID(),
+            site_id: siteId,
+            keyword: r.keyword,
+            is_new: pageRankingsMap.get(r.keyword) ? false : temp_kw.is_new,
+            clicks: r.clicks,
+            impressions: r.impressions,
+            position: r.position ?? null,
+            ctr: r.ctr,
+            search_volume: r.volume ?? null,
+            difficulty: r.difficulty ?? null,
+            cpc: r.cpc ?? null,
+            competition: r.competition ?? null,
+            competition_level: r.competition_level ?? null,
+            monthly_searches: r.monthly_searches ?? null,
+          };
+        }),
+      );
+      logger.info(`[step1] Upserted ${allRankings.length} keyword rankings`);
+    } catch (err) {
+      logger.error(`[step1] Failed to upsert keyword rankings:`, err);
+    }
+  }
+
+  // 5. Collect unique page URLs to upsert
+  const uniqueUrls = new Set<string>();
+  for (const pages of pageRankingsMap.values()) {
+    for (const p of pages) uniqueUrls.add(p.url);
+  }
+
+  if (uniqueUrls.size > 0) {
+    try {
+      await upsertPages(
+        [...uniqueUrls].map((url) => ({
           id: randomUUID(),
           site_id: siteId,
-          keyword: r.keyword,
-          is_new: pages.get(r.keywords) ? false : true,
-          clicks: r.clicks,
-          impressions: r.impressions,
-          position: r.position ?? null,
-          ctr: r.ctr,
-          search_volume: r.volume ?? null,
-          difficulty: r.difficulty || null,
-          cpc: r.cpc,
-          competition: r.competition ?? null,
-          competition_level: r.competition_level ?? null,
-          monthly_searches: r.monthly_searches || null,
-          pages_used: pages.get(r.keyword),
+          url,
         })),
       );
-      logger.info(
-        `[step1] Persisted ${newResult.rankings.length} new keyword rankings to DB`,
-      );
+      logger.info(`[step1] Upserted ${uniqueUrls.size} page(s)`);
     } catch (err) {
-      logger.error(`[step1] Failed to persist new keyword rankings:`, err);
+      logger.error(`[step1] Failed to upsert pages:`, err);
+    }
+
+    // 6. Resolve URL → page_id, then bulk-link keywords to pages with metrics
+    try {
+      const urlToPageId = await getPageIdsByUrls(siteId, [...uniqueUrls]);
+      const links: Array<{
+        page_id: string;
+        keyword_id: string;
+        site_id: number;
+        position: number | null;
+        clicks: number | null;
+        impressions: number | null;
+        ctr: number | null;
+      }> = [];
+
+      for (const [keyword, pages] of pageRankingsMap) {
+        const keywordId = keywordIdMap.get(keyword);
+        if (!keywordId) continue;
+
+        for (const p of pages) {
+          const pageId = urlToPageId.get(p.url);
+          if (!pageId) continue;
+          links.push({
+            page_id: pageId,
+            keyword_id: keywordId,
+            site_id: siteId,
+            position: p.position ?? null,
+            clicks: p.clicks ?? null,
+            impressions: p.impressions ?? null,
+            ctr: null, // GSC page-level endpoint does not return CTR per keyword
+          });
+        }
+      }
+
+      if (links.length > 0) {
+        await bulkLinkKeywords(links);
+        logger.info(`[step1] Linked ${links.length} keyword-page pair(s)`);
+      }
+    } catch (err) {
+      logger.error(`[step1] Failed to link keywords to pages:`, err);
     }
   }
 
@@ -465,8 +553,6 @@ async function step5Reporting(
   Return ONLY a JSON object with keys:
   - summary: string with concise insights and recommendations
   - recommendations: array of objects with module, recommendation_text`;
-
-  logger.info("Prompt Length ", prompt.split(" ").length);
 
   const response = await callWithRetry(client, "step5", {
     model: "claude-sonnet-4-6",

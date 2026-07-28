@@ -4,7 +4,7 @@ import {
 } from "../../../libs/google.js";
 import { logger } from "../../utils/logger.js";
 import { MONTHS_NAME, MONTHS_TO_NUMBER } from "../../utils/constants.js";
-import { listKeywords } from "../../controllers/keywords.controller.js";
+import { getSiteKeywords } from "../../controllers/keywords.controller.js";
 
 export function validateSiteId(siteId: unknown): number {
   const id = Number(siteId);
@@ -21,8 +21,12 @@ export async function getRankings(
   siteUrl: string,
   keywords: string[],
 ) {
-  if (!Array.isArray(keywords) || keywords.length === 0) {
+  if (!Array.isArray(keywords)) {
     throw new Error("keywords must be a non-empty array");
+  }
+
+  if (keywords.length === 0) {
+    return { site_id: siteId, site_url: siteUrl, rankings: [] };
   }
 
   logger.info(
@@ -38,13 +42,13 @@ export async function getRankings(
 
   logger.info("============= Ranking GSC Search Query ***************");
   const results = await Promise.all(
-    keywords.slice(0, 200).map(async (keyword) => {
+    keywords.map(async (keyword) => {
       const response = await searchConsole.searchanalytics.query({
         siteUrl,
         requestBody: {
           startDate: fmt(startDate),
           endDate: fmt(endDate),
-          dimensions: ["query", "page"],
+          dimensions: ["query"],
           dimensionFilterGroups: [
             {
               filters: [
@@ -60,7 +64,6 @@ export async function getRankings(
       const row = response.data.rows?.[0];
       return {
         keyword: keyword.toLowerCase(),
-        page: row?.keys?.[1],
         position: row?.position ?? null,
         clicks: row?.clicks ?? 0,
         impressions: row?.impressions ?? 0,
@@ -94,8 +97,7 @@ export async function getRankings(
 
     return {
       ...key,
-      cpc: (metrics?.keywordMetrics?.averageCpcMicros / 1_000_000) || undefined,
-      page: key.page,
+      cpc: metrics?.keywordMetrics?.averageCpcMicros / 1_000_000 || undefined,
       volume: metrics?.keywordMetrics?.avgMonthlySearches || null,
       difficulty: metrics?.keywordMetrics?.competitionIndex || null,
       competition_level: metrics?.keywordMetrics?.competition || null,
@@ -113,6 +115,56 @@ export async function getRankings(
     `============= GSC Search Query Results *************** ${results.length}`,
   );
   return { site_id: siteId, site_url: siteUrl, rankings: rankings };
+}
+
+export async function getPageRankings(siteUrl: string, keyword: string) {
+  if (!keyword) {
+    throw new Error("invalid keyword");
+  }
+
+  logger.info(`============= GSC Getting Page Metrics ***************`);
+
+  const searchConsole = getSearchConsoleClient();
+
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(endDate.getDate() - 28);
+
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
+
+  logger.info("============= Ranking GSC Search Query ***************");
+  const results = await searchConsole.searchanalytics.query({
+    siteUrl,
+    requestBody: {
+      startDate: fmt(startDate),
+      endDate: fmt(endDate),
+      dimensions: ["query", "page"],
+      dimensionFilterGroups: [
+        {
+          filters: [
+            { dimension: "query", operator: "equals", expression: keyword },
+            { dimension: "country", expression: "ind" },
+          ],
+        },
+      ],
+      rowLimit: 100,
+    },
+  });
+
+  const rows = results.data.rows;
+  const page_metrics = rows?.map((item) => ({
+    url: item.keys?.[1],
+    clicks: item.clicks,
+    impressions: item.impressions,
+    position: item.position,
+  }));
+
+  const data = {
+    keyword: keyword.toLowerCase(),
+    pages: page_metrics,
+  };
+
+  return data;
 }
 
 export async function getRankingHistory(
@@ -348,10 +400,16 @@ const getKeywordRankings = async (
 };
 
 const getRankingOfNewKeywords = async (site_id: number, site_url: string) => {
-  const newKeywords = await listKeywords({ site_id, is_new: true, limit: 200 });
-  const keywordsList = newKeywords.keywords.map((key) => key.keyword);
+  const newKeywords = await getSiteKeywords({
+    site_id,
+    is_new: true,
+    limit: 200,
+  });
+  const keywordsList = newKeywords.keywords
+    .map((key) => key.keyword)
+    ?.slice(0, 100);
 
-  return await getRankings(site_id, site_url, keywordsList);
+  return await getRankings(site_id, site_url, keywordsList || []);
 };
 
 export { getKeywordRankings, getRankingOfNewKeywords };
