@@ -10,9 +10,14 @@ import { getSheetsClient, getSpreadsheetId } from "../../libs/google.js";
 
 // Import controllers for database operations
 import { listSitesConfigs } from "../controllers/sites.controller.js";
-import { upsertKeywords } from "../controllers/keywords.controller.js";
+import {
+  upsertKeywords,
+  getKeywordsAnalytics,
+} from "../controllers/keywords.controller.js";
 import { createOpportunity } from "../controllers/opportunities.controller.js";
 import { listCitiesConfigs } from "../controllers/cities.controller.js";
+import { bulkUpsertPaaQuestions } from "../controllers/paa.controller.js";
+import { getPaaQuestions } from "../services/dataForSEO.service.js";
 
 // MCP Server Imports
 import {
@@ -148,9 +153,9 @@ async function analyzeWithAI(
       ctr: k.ctr,
       cpc: k.cpc,
       competition: k.competition_level,
-      monthlySearches: k.monthly_searches?.slice(0,2)
-    }
-  })
+      monthlySearches: k.monthly_searches?.slice(0, 2),
+    };
+  });
 
   const prompt = `You are a world-class SEO strategist.
 Analyze these prioritized keywords for ${site.brand_name} (${site.industry}).
@@ -166,6 +171,9 @@ Return ONLY a JSON object with an "opportunities" array.
   - Each object MUST have: "opportunity_type", "title", "topic", "target_keywords" (array), "content_description", "reasoning", "priority" ("High"|"Medium"|"Low").
 
 "target_keywords": mention primary keywords as first element of the array followed by secondary keywords
+
+Points to remember for response:
+- do not cluster keywords for different city
 `;
 
   const response = await callWithRetry(client, "step1", {
@@ -204,6 +212,7 @@ Return ONLY a JSON object with an "opportunities" array.
  */
 async function runMonthlyDiscovery() {
   const startTime = Date.now();
+  const reportText = [] as string[];
 
   logger.info(`[monthly-discovery] ══════════════════════════════════════════`);
   logger.info(`[monthly-discovery] Starting Monthly Discovery...`);
@@ -276,7 +285,6 @@ async function runMonthlyDiscovery() {
             competition: k.competition ?? null,
             competition_level: k.competition_level ?? null,
             monthly_searches: k.monthly_searches || null,
-            pages_used: pages.get(k.keyword),
           })),
         );
         logger.info(`[city] Persisted ${rawKeywords.length} keywords to DB`);
@@ -299,6 +307,68 @@ async function runMonthlyDiscovery() {
       siteOpportunitiesTotal += opportunities.length;
 
       if (opportunities.length > 0) {
+        // ── PAA Discovery ──────────────────────────────────────────────
+        // Collect target keywords across all opportunities,
+        // fetch their PAA questions, and persist before creating opportunities.
+        try {
+          const allTargetKeywords = Array.from(
+            new Set<string>(
+              opportunities.flatMap(
+                (opp: any) => opp.target_keywords as string[],
+              ),
+            ),
+          );
+
+          // Resolve keyword text → DB id for junction FK
+          const keywords = await getKeywordsAnalytics(
+            rawKeywords.map((k) => k.keyword),
+          );
+          const kwIdMap = new Map(
+            keywords.map((k) => [k.keyword.toLowerCase(), k.id]),
+          );
+
+          logger.info(
+            `[monthly-discovery] Fetching PAA for ${allTargetKeywords.length} opportunity keywords...`,
+          );
+
+          const paaItems: Parameters<typeof bulkUpsertPaaQuestions>[0] = [];
+
+          await Promise.all(
+            allTargetKeywords.map(async (kwText) => {
+              try {
+                const results = await getPaaQuestions(kwText);
+                const keywordId = kwIdMap.get(kwText.toLowerCase());
+                if (!keywordId) return; // keyword not in DB yet — skip
+                for (const r of results) {
+                  paaItems.push({
+                    id: randomUUID(),
+                    site_id: site.site_id,
+                    keyword_id: keywordId,
+                    question: r.question,
+                    answer: r.answer,
+                    source_url: r.source_url,
+                    category: null,
+                  });
+                }
+              } catch (err: any) {
+                logger.warn(
+                  `[monthly-discovery] PAA fetch failed for "${kwText}": ${err.message}`,
+                );
+              }
+            }),
+          );
+
+          if (paaItems.length > 0) {
+            await bulkUpsertPaaQuestions(paaItems);
+            logger.info(
+              `[monthly-discovery] Persisted ${paaItems.length} PAA questions to DB`,
+            );
+            reportText.push(`    - Found ${paaItems.length} PAA opportunities`);
+          }
+        } catch (err) {
+          logger.error(`[monthly-discovery] PAA discovery failed:`, err);
+        }
+
         for (const opp of opportunities) {
           try {
             await createOpportunity({
@@ -333,7 +403,10 @@ async function runMonthlyDiscovery() {
     );
   }
 
-  const siteReport = `${site.brand_name}(${site.domain}): Discovered ${siteKeywordsTotal} keywords for ${site.brand_name}. Created ${siteOpportunitiesTotal} content ideas.`;
+  const siteReport = `${site.brand_name} (${site.domain}):
+    - Discovered ${siteKeywordsTotal} keywords.
+    - Created ${siteOpportunitiesTotal} content ideas.
+    ${reportText.join("\n")}`;
   overallSummary.push(siteReport);
   logger.info(
     `[monthly-discovery] All Cities for site_id ${site.site_id} Finished`,

@@ -12,6 +12,7 @@ import { keywordsRouter } from "./keywords.routes.js";
 import { opportunitiesRouter } from "./opportunities.routes.js";
 import { backlinksRouter } from "./backlinks.routes.js";
 import { pagesRouter } from "./pages.routes.js";
+import { paaRouter } from "./paa.routes.js";
 
 export function seoAgentRouter (io: SocketIOServer): Router {
     const router = Router();
@@ -26,6 +27,7 @@ export function seoAgentRouter (io: SocketIOServer): Router {
     router.use("/opportunities", opportunitiesRouter(io));
     router.use("/backlinks", backlinksRouter(io));
     router.use("/pages", pagesRouter);
+    router.use("/paa", paaRouter);
 
     return router;
 }

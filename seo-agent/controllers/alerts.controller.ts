@@ -139,7 +139,9 @@ export async function listAlerts(filters: {
       params,
     ),
     pool.query<Alert[]>(
-      `SELECT * FROM alerts ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      `SELECT * FROM alerts ${where}
+      ORDER BY closed_at DESC, resolved_at DESC, created_at ASC
+      LIMIT ? OFFSET ?`,
       [...params, limit, offset],
     ),
   ]);

@@ -12,6 +12,10 @@ import { OpportunityJSON } from "../models/opportunities.model.js";
 import { createNewPageContent } from "../controllers/page-content.controller.js";
 import { getSiteBySiteID } from "../controllers/sites.controller.js";
 import { getKeywordsAnalytics } from "../controllers/keywords.controller.js";
+import {
+  getPaaQuestionsForKeywords,
+  markPaaQuestionsAsUsed,
+} from "../controllers/paa.controller.js";
 
 // ── Config ────────────────────────────────────────────────────────────
 dotenv.config();
@@ -34,7 +38,10 @@ function extractJson(text: string) {
   }
 }
 
-async function writePageContentWithAI(opportunity: OpportunityJSON) {
+async function writePageContentWithAI(
+  opportunity: OpportunityJSON,
+  paaQuestions: string[],
+) {
   const opp = opportunity.opportunity_details;
 
   // Generate page content using AI
@@ -43,6 +50,11 @@ async function writePageContentWithAI(opportunity: OpportunityJSON) {
   const client: Anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
+
+  const faqSection =
+    paaQuestions.length > 0
+      ? `\nPeople Also Ask (use these as FAQ section — answer them in the content):\n${paaQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n")}\n`
+      : "";
 
   const prompt = `
   You are an expert SEO content writer and strategist with deep knowledge of on-page 
@@ -101,7 +113,15 @@ these rules:
    - Recommend alt text for any implied images based on section content.
    - Include a suggested URL slug (lowercase, hyphenated, includes primary keyword).
 
-6. OUTPUT FORMAT
+6. FAQ SECTION (if PAA questions are provided)
+  ${faqSection}   
+   - If People Also Ask questions are listed above, include a dedicated FAQ
+     section answering each one concisely (2-4 sentences per answer).
+   - Use the question text verbatim as the H3 heading inside the FAQ section.
+   - Neglect repeated question, if any present.
+   - Include this section near the end of the article, before the conclusion.
+
+7. OUTPUT FORMAT
    Return the response in JSON structure:
     - title,
     - meta_description,
@@ -111,7 +131,7 @@ these rules:
     - images : array of object with image context and alt text
     - page_type : "page" or "post" (for WordPress)
 
-7. CONSTRAINTS
+8. CONSTRAINTS
    - Stay within ±10% of the target word count.
    - Do not fabricate statistics, studies, or quotes.
    - Do not use generic filler phrases ("In today's fast-paced world...", 
@@ -156,11 +176,26 @@ export async function opportunityContentGeneration() {
   });
 
   // const opp = opportunities[0];
-  for await (let opp of opportunities) {
+  for await (let opp of opportunities.slice(0, 10)) {
     const site = await getSiteBySiteID(opp.site_id);
-    const response = await writePageContentWithAI(opp);
 
-    logger.info(JSON.stringify(response, null, 2));
+    // Fetch PAA questions for this opportunity's target keywords
+    const targetKeywords = opp.opportunity_details?.target_keywords ?? [];
+    const keywords = await import("../controllers/keywords.controller.js").then(
+      (m) => m.getKeywordsAnalytics(targetKeywords),
+    );
+    const relevantKeywordIds = keywords
+      .filter((k) => targetKeywords.includes(k.keyword.toLowerCase()))
+      .map((k) => k.id);
+
+    const temp_paaMap = await getPaaQuestionsForKeywords(relevantKeywordIds);
+    const paaMap = [...temp_paaMap.values()].flat().slice(0, 4);
+    const paaQuestions = paaMap.map((q) => q.question);
+    const paaIds = paaMap.map((q) => q.id);
+
+    const response = await writePageContentWithAI(opp, paaQuestions);
+
+    logger.debug(JSON.stringify(response, null, 2));
 
     // Get keywords analytics from keywords table
     const temp_keywords = await getKeywordsAnalytics(
@@ -189,7 +224,15 @@ export async function opportunityContentGeneration() {
       links: response.suggestions,
       keywords_analytics: keywords_analytics,
     });
+    logger.info("[monthly.opportunity_content] Page content created");
 
     await updateStatusToGenerated(opp.id);
+    logger.info("[monthly.opportunity_content] Opportunity status updated");
+
+    // Mark consumed PAA questions so they aren't re-used in future content runs
+    if (paaIds.length > 0) {
+      await markPaaQuestionsAsUsed(paaIds);
+      logger.info("[monthly.opportunity_content] PAA question marked as used");
+    }
   }
 }

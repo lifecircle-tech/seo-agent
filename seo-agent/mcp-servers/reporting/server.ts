@@ -225,10 +225,6 @@ export function createMonthlyDiscoveryDigest(data: Record<string, any>) {
       elements: [{ type: "mrkdwn", text: `*Report date:* ${today}` }],
     },
     { type: "divider" },
-    sectionBlock(
-      "Check your sheet here : https://docs.google.com/spreadsheets/d/1iiyTPzblQ17-u54Y_t3TXp1iI7S3ZidQf6VHtH8UQTY/edit?usp=sharing\n",
-    ),
-    { type: "divider" },
   ];
 
   blocks.push(...summary.map((item: string) => sectionBlock(item)));

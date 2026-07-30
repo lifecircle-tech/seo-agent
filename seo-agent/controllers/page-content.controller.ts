@@ -264,7 +264,7 @@ export async function createNewPageContent(
   await pool.query<ResultSetHeader>(
     `INSERT INTO page_content 
       (id, site_id, page_meta_details, content, images, links, url, status, keywords_analytics, is_new) 
-    VALUES (?, ?, ?, ?, ?, ?, 'new_page', ?, true)`,
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'new_page', ?, true)`,
     [
       data.id,
       data.site_id,

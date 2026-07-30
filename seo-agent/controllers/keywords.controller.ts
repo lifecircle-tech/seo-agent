@@ -328,7 +328,8 @@ export async function upsertKeywords(
       ctr               = COALESCE(VALUES(ctr), ctr),
       competition       = COALESCE(VALUES(competition), competition),
       competition_level = COALESCE(VALUES(competition_level), competition_level),
-      monthly_searches  = COALESCE(VALUES(monthly_searches), monthly_searches)`,
+      monthly_searches  = COALESCE(VALUES(monthly_searches), monthly_searches),
+      updated_at        = NOW(3)`,
     params,
   );
 
@@ -402,7 +403,7 @@ export async function getSiteKeywords(filters: {
 
 export async function getKeywordsAnalytics(keywords: string[]) {
   const [rows] = await pool.query<Keyword[]>(
-    `SELECT keyword, impressions, search_volume, cpc, competition_level
+    `SELECT id, keyword, impressions, search_volume, cpc, competition_level
       from keywords WHERE keyword IN (?)`,
     [keywords],
   );

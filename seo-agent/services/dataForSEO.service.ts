@@ -108,6 +108,62 @@ export async function getKeywordsSuggestions(
   return suggestions;
 }
 
+// ── PAA via SERP organic live/advanced ───────────────────────────────
+// Returns PAA questions (and answer snippet when available) for a keyword.
+
+export interface PaaResult {
+  question: string;
+  answer: string | null;
+  source_url: string | null;
+}
+
+export async function getPaaQuestions(keyword: string): Promise<PaaResult[]> {
+  const post_array = [
+    {
+      keyword,
+      language_name: "English",
+      location_name: "India",
+      device: "desktop",
+      os: "windows",
+      depth: 10,
+    },
+  ];
+
+  logger.info(
+    `[dataForSEO.service] Calling DataForSEO API : PAA for "${keyword}"`,
+  );
+
+  const resp = await fetch(
+    `${dataForSEO_URL}/serp/google/organic/live/advanced`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${btoa(`${dataForSEO_USERNAME}:${dataForSEO_PASSWORD}`)}`,
+      },
+      body: JSON.stringify(post_array),
+    },
+  );
+
+  const data = await resp.json();
+  const items: any[] = data.tasks?.[0]?.result?.[0]?.items ?? [];
+
+  // DataForSEO groups PAA as a single item with type "people_also_ask"
+  // whose own .items[] are the individual question elements.
+  const paaBlock = items.find((item: any) => item.type === "people_also_ask");
+  if (!paaBlock?.items?.length) return [];
+
+  return (paaBlock.items as any[]).map((el: any) => {
+    // Answer snippet lives inside expanded_element[0]
+    const expanded = el.expanded_element?.[0];
+    return {
+      question: el.title ?? el.question ?? "",
+      answer: expanded?.description ?? expanded?.text ?? null,
+      source_url: expanded?.url ?? null,
+    };
+  }).filter((r: PaaResult) => !!r.question);
+}
+
 export async function getKeywordsOverview(keywords: string[]) {
   const post_array = [
     {

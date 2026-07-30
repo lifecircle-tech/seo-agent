@@ -10,6 +10,7 @@ import { createKeywordsTable } from "./keywords.model.js";
 import { createOpportunitiesTable } from "./opportunities.model.js";
 import { createBacklinksTable } from "./backlinks.model.js";
 import { createPagesTable, createPageKeywordsTable } from "./page.model.js";
+import { createPaaQuestionsTable } from "./paa.model.js";
 
 export async function initSEOModels() {
   // pages must exist before page_keywords (composite FK dependency)
@@ -27,6 +28,7 @@ export async function initSEOModels() {
     createOpportunitiesTable(),
     createBacklinksTable(),
     createPageKeywordsTable(),
+    createPaaQuestionsTable(),
   ]);
   console.log("[seo-agent] tables ready");
 }
