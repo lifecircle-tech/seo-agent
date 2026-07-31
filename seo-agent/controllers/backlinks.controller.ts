@@ -73,6 +73,7 @@ export async function listBacklinks(filters: {
   is_new?: boolean;
   is_lost?: boolean;
   is_broken?: boolean;
+  is_prospect?: boolean;
   owner_type?: string;
   limit?: number;
   offset?: number;
@@ -104,6 +105,13 @@ export async function listBacklinks(filters: {
   if (filters.owner_type) {
     conditions.push("owner_type = ?");
     params.push(filters.owner_type);
+  }
+  if (filters.is_prospect !== undefined) {
+    conditions.push("is_prospect = ?");
+    params.push(filters.is_prospect);
+  } else {
+    conditions.push("is_prospect = ?");
+    params.push(false);
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -235,13 +243,13 @@ export async function upsertBacklinks(
       | "first_seen"
       | "last_seen"
       | "spam_score"
-    >
+    > & {is_prospect?: boolean}
   >,
 ): Promise<number> {
   if (records.length === 0) return 0;
 
   const placeholders = records
-    .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
     .join(", ");
 
   const params = records.flatMap((r) => [
@@ -255,6 +263,7 @@ export async function upsertBacklinks(
     r.is_new ?? false,
     r.is_lost ?? false,
     r.is_broken ?? false,
+    r.is_prospect ?? false,
     r.first_seen ?? null,
     r.last_seen ?? null,
     r.spam_score ?? null,
@@ -263,7 +272,7 @@ export async function upsertBacklinks(
   const [result] = await pool.query<ResultSetHeader>(
     `INSERT INTO backlinks
       (id, site_id, owner_type, url_from, url_to, domain_from_rank,
-       anchor_details, is_new, is_lost, is_broken, first_seen, last_seen, spam_score)
+       anchor_details, is_new, is_lost, is_broken, is_prospect, first_seen, last_seen, spam_score)
      VALUES ${placeholders}
      ON DUPLICATE KEY UPDATE
        owner_type        = COALESCE(VALUES(owner_type), owner_type ),
@@ -272,6 +281,7 @@ export async function upsertBacklinks(
        is_new            = COALESCE(VALUES(is_new), is_new),
        is_lost           = COALESCE(VALUES(is_lost), is_lost),
        is_broken         = COALESCE(VALUES(is_broken), is_broken),
+       is_prospect       = COALESCE(VALUES(is_prospect), is_prospect),
        first_seen        = COALESCE(VALUES(first_seen), first_seen),
        last_seen         = COALESCE(VALUES(last_seen), last_seen),
        spam_score        = COALESCE(VALUES(spam_score), spam_score)`,

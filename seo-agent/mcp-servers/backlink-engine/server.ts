@@ -1,39 +1,6 @@
-import { getDomain } from "../../../libs/functions.js";
-import { logger } from "../../utils/logger.js"
-
-// ── DataForSEO helpers ────────────────────────────────────────────────
-
-function dfsAuth(): string {
-  const user = process.env.DATAFORSEO_USERNAME;
-  const pass = process.env.DATAFORSEO_PASSWORD;
-  if (!user || !pass)
-    throw new Error("Missing DATAFORSEO_USERNAME or DATAFORSEO_PASSWORD");
-  return `Basic ${btoa(`${user}:${pass}`)}`;
-}
-
-function dfsBase(): string {
-  return (
-    process.env.DATAFORSEO_BASEURL ?? "https://api.dataforseo.com/v3"
-  ).replace(/\/$/, "");
-}
-
-async function dfsPost<T = any>(endpoint: string, body: object[]): Promise<T> {
-  const res = await fetch(`${dfsBase()}${endpoint}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: dfsAuth(),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const msg = await res.text().catch(() => res.statusText);
-    throw new Error(
-      `DataForSEO ${endpoint} error ${res.status}: ${msg.slice(0, 300)}`,
-    );
-  }
-  return res.json() as Promise<T>;
-}
+import { createBatches, getDomain } from "../../../libs/functions.js";
+import { getCompetitorBacklinksDomain } from "../../services/dataForSEO.service.js";
+import { logger } from "../../utils/logger.js";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -86,37 +53,29 @@ export async function findLinkProspects(
     `[backlink-engine:prospects] site_id=${siteId} our=${ourDomain} competitors=${competitorDomains.join(", ")}`,
   );
 
-  const targetDomains = competitorDomains.reduce((acc: any, cur, idx) => {
-    acc[idx + 1] = cur;
-    return acc;
-  }, {});
+  let rawItems = [] as any[];
+  const batches = createBatches(competitorDomains, 3);
 
-  // Build targets: all competitor domains.
-  // exclude_targets: our domain — DataForSEO filters out referring domains
-  // that already link to us.
-  const data = await dfsPost("/backlinks/domain_intersection/live", [
-    {
-      targets: targetDomains,
-      exclude_targets: [ourDomain],
-      backlinks_filters: [["domain_from_rank", ">", 0]],
-      limit: 10,
-    },
-  ]);
+  for (let competitor of batches.slice(0, 2)) {
+    const result = await getCompetitorBacklinksDomain(ourDomain, competitor);
+    rawItems = [...rawItems, ...result];
+  }
 
-  const rawItems: any[] = data?.tasks?.[0]?.result?.[0]?.items ?? [];
-
+  logger.debug(`[prospects] Backlinks Count ${rawItems.length}`);
   // Group items by referring domain to count how many competitors each links to
   const domainMap = new Map<
     string,
     { rank: number; competitors: Set<string> }
   >();
 
-  const prospects: string[] = rawItems.map((item) => {
+  const prospects = new Set();
+  rawItems.forEach((item) => {
     const intersections = item.domain_intersection
       ? (Object.values(item.domain_intersection) as Record<string, any>[])
       : [];
-    return getDomain(intersections[0].target);
+    prospects.add(getDomain(intersections[0].target));
   });
+  logger.debug("backlinks prospect ", prospects.size);
 
   //   for (const item of rawItems) {
   //     const refDomain: string = getDomain(
@@ -154,7 +113,7 @@ export async function findLinkProspects(
     site_id: siteId,
     our_domain: ourDomain,
     competitors_checked: competitorDomains,
-    prospects,
-    count: prospects.length,
+    prospects: [...prospects] as string[],
+    count: prospects.size,
   };
 }

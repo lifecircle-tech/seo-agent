@@ -64,3 +64,17 @@ export function getDomain(url: string): string {
     return ""; // Invalid URL
   }
 }
+
+// Splits an array into batches of a specific size.
+export function createBatches(arr: any[], size: number) {
+  // Handle edge cases (invalid size or non-array)
+  if (!Array.isArray(arr) || size <= 0) return [];
+
+  const batches = [];
+  for (let i = 0; i < arr.length; i += size) {
+    // Extract a chunk from the current index up to the batch size
+    batches.push(arr.slice(i, i + size));
+  }
+  
+  return batches;
+}

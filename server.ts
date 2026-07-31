@@ -43,7 +43,7 @@ import {
 } from "./seo-agent/services/schedulers.service.js";
 
 cron.schedule(
-  "0 8 * 1,4,10 1,3,5",
+  "0 8 * 1,4,7,10 1,3,5",
   () => {
     dailyWPPagesTasks();
   },

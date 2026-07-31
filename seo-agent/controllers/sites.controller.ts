@@ -6,14 +6,14 @@ import { SiteConfig, SiteConfigJSON } from "../models/sites-config.model.js";
 function toJSON(row: SiteConfig): SiteConfigJSON {
   return {
     ...row,
-    cities: typeof row.cities === "string" ? JSON.parse(row.cities) : row.cities,
+    about: row.about ?? "",
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   };
 }
 
 // ── CREATE ────────────────────────────────────────────────────────────
 export async function createSiteConfig(
-  data: Pick<SiteConfig, "id" | "site_id" | "domain" | "brand_name" | "industry" | "cities">
+  data: Pick<SiteConfig, "id" | "site_id" | "domain" | "brand_name" | "industry" | "about">
 ): Promise<SiteConfigJSON> {
   const [existing] = await pool.query<SiteConfig[]>(
     "SELECT id FROM sites_config WHERE site_id = ? LIMIT 1",
@@ -24,9 +24,9 @@ export async function createSiteConfig(
   }
 
   await pool.query<ResultSetHeader>(
-    `INSERT INTO sites_config (id, site_id, domain, brand_name, industry, cities, created_at)
+    `INSERT INTO sites_config (id, site_id, domain, brand_name, industry, about, created_at)
      VALUES (?, ?, ?, ?, ?, ?, NOW(3))`,
-    [data.id, data.site_id, data.domain, data.brand_name, data.industry, JSON.stringify(data.cities)]
+    [data.id, data.site_id, data.domain, data.brand_name, data.industry, data.about ?? ""]
   );
   const config = await getSiteConfigById(data.id);
   return config!;
@@ -76,7 +76,7 @@ export async function getSiteConfigById(id: string): Promise<SiteConfigJSON | nu
 // ── UPDATE ────────────────────────────────────────────────────────────
 export async function updateSiteConfig(
   id: string,
-  data: Partial<Pick<SiteConfig, "domain" | "brand_name" | "industry" | "cities">>
+  data: Partial<Pick<SiteConfig, "domain" | "brand_name" | "industry" | "about">>
 ): Promise<SiteConfigJSON | null> {
   const fields: string[] = [];
   const params: unknown[] = [];
@@ -93,9 +93,9 @@ export async function updateSiteConfig(
     fields.push("industry = ?");
     params.push(data.industry);
   }
-  if (data.cities !== undefined) {
-    fields.push("cities = ?");
-    params.push(JSON.stringify(data.cities));
+  if (data.about !== undefined) {
+    fields.push("about = ?");
+    params.push(data.about);
   }
 
   if (fields.length === 0) return getSiteConfigById(id);

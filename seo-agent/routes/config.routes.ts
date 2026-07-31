@@ -63,21 +63,17 @@ router.get("/sites", async (req: Request, res: Response) => {
 // POST /config/sites (create or update)
 router.post("/sites", async (req: Request, res: Response) => {
   try {
-    const { id, site_id, domain, brand_name, industry, cities } = req.body as {
+    const { id, site_id, domain, brand_name, industry, about } = req.body as {
       id?: string;
       site_id: number;
       domain: string;
       brand_name: string;
       industry: string;
-      cities: string[];
+      about: string;
     };
 
-    if (!site_id || !domain || !brand_name || !industry || !cities) {
+    if (!site_id || !domain || !brand_name || !industry) {
       return res.status(400).json({ error: "Missing required fields" });
-    }
-
-    if (typeof cities !== "object") {
-      return res.status(400).json({ error: "Cities must be an array" });
     }
 
     let config;
@@ -87,7 +83,7 @@ router.post("/sites", async (req: Request, res: Response) => {
         domain,
         brand_name,
         industry,
-        cities,
+        about,
       });
       if (!config) {
         return res
@@ -104,7 +100,7 @@ router.post("/sites", async (req: Request, res: Response) => {
         domain,
         brand_name,
         industry,
-        cities,
+        about,
       });
       res.status(201).json({ ok: true, created: config });
     }

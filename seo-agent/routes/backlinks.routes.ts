@@ -104,7 +104,7 @@ export function backlinksRouter(io: SocketIOServer): Router {
   // GET /backlinks
   router.get("/", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { site_id, is_new, is_lost, is_broken, owner_type, limit, offset } =
+      const { site_id, is_new, is_lost, is_broken, is_prospect, owner_type, limit, offset } =
         req.query as Record<string, string>;
 
       const result = await listBacklinks({
@@ -112,6 +112,7 @@ export function backlinksRouter(io: SocketIOServer): Router {
         is_new: is_new !== undefined ? is_new === "true" : undefined,
         is_lost: is_lost !== undefined ? is_lost === "true" : undefined,
         is_broken: is_broken !== undefined ? is_broken === "true" : undefined,
+        is_prospect: is_prospect !== undefined ? is_prospect === "true" : undefined,
         owner_type: owner_type ?? undefined,
         limit: limit ? Number(limit) : undefined,
         offset: offset ? Number(offset) : undefined,

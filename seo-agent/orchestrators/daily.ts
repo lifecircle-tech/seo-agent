@@ -201,27 +201,27 @@ async function runDailyCheckForSite(
 
   // ── SERP feature opportunities ──────────────────────────────────
   // Informational only — add as info-level items, never cause an alert on their own
-  try {
-    logger.info(`[daily:serp] Checking SERP feature opportunities...`);
-    const serp = await getFeatureOpportunities(siteId);
+  // try {
+  //   logger.info(`[daily:serp] Checking SERP feature opportunities...`);
+  //   const serp = await getFeatureOpportunities(siteId);
 
-    // Only flag as issue if competitor owns featured snippet for primary keywords
-    const featuredSnippetLosses = serp.opportunities.filter(
-      (o) => o.opportunity_type === "featured_snippet",
-    );
-    if (featuredSnippetLosses.length > 0) {
-      issues.push({
-        module: "SERP Features",
-        severity: "info",
-        message: `${featuredSnippetLosses.length} keyword(s) where competitor owns the featured snippet`,
-      });
-    }
-    logger.info(
-      `[daily:serp] checked=${serp.keywords_checked} opportunities=${serp.opportunities_count}`,
-    );
-  } catch (err: any) {
-    logger.error(`[daily:serp] ERROR: `, err);
-  }
+  //   // Only flag as issue if competitor owns featured snippet for primary keywords
+  //   const featuredSnippetLosses = serp.opportunities.filter(
+  //     (o) => o.opportunity_type === "featured_snippet",
+  //   );
+  //   if (featuredSnippetLosses.length > 0) {
+  //     issues.push({
+  //       module: "SERP Features",
+  //       severity: "info",
+  //       message: `${featuredSnippetLosses.length} keyword(s) where competitor owns the featured snippet`,
+  //     });
+  //   }
+  //   logger.info(
+  //     `[daily:serp] checked=${serp.keywords_checked} opportunities=${serp.opportunities_count}`,
+  //   );
+  // } catch (err: any) {
+  //   logger.error(`[daily:serp] ERROR: `, err);
+  // }
 
   logger.info(`[daily] site_id=${siteId}: ${issues.length} issue(s) found`);
   return issues;
@@ -285,7 +285,9 @@ async function checkIndexedPagesUpdate(
 
   await updateAlertsStatusToClosed(alert_ids);
 
-  logger.info("[check_indexing_status] Finished indexing check");
+  logger.info(
+    `[check_indexing_status] Finished indexing check. Indexed count : ${inspected_results.indexed_count}`,
+  );
   return {
     type: "Indexed",
     indexed_count: inspected_results.indexed_count,

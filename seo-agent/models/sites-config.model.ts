@@ -8,7 +8,7 @@ export interface SiteConfig extends RowDataPacket {
   domain: string; // VARCHAR(255)
   brand_name: string; // VARCHAR(255)
   industry: string; // VARCHAR(64)
-  cities: string[]; // JSON (list of strings)
+  about: string; // VARCHAR(500)
   created_at: Date; // DATETIME(3)
 }
 
@@ -18,7 +18,7 @@ export interface SiteConfigJSON {
   domain: string;
   brand_name: string;
   industry: string;
-  cities: string[];
+  about: string;
   created_at: string;
 }
 
@@ -32,7 +32,7 @@ export async function createSitesConfigTable(): Promise<void> {
       domain        VARCHAR(255)  NOT NULL,
       brand_name    VARCHAR(255)  NOT NULL,
       industry      VARCHAR(64)   NOT NULL,
-      cities        JSON          NOT NULL,
+      about         VARCHAR(500)  NOT NULL DEFAULT '',
       created_at    DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
       INDEX idx_sites_config_site_id (site_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

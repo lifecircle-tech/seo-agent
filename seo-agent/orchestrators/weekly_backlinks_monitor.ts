@@ -137,13 +137,32 @@ async function linkProspects(siteId: number) {
   const prospects = await findLinkProspects(
     siteId,
     site?.domain as string,
-    site?.competitors_domain.slice(0, 5) as string[],
+    site?.competitors_domain as string[],
   );
 
   logger.info(
     `[step2] ${prospects.count} prospect(s) found across ${prospects.competitors_checked.length} competitor(s)`,
   );
   logger.info(`[step2] Done`);
+
+  await upsertBacklinks(
+      prospects.prospects.map((backlink) => ({
+        id: randomUUID(),
+        site_id: siteId,
+        owner_type: "",
+        url_from: backlink,
+        url_to: "",
+        domain_from_rank: null,
+        anchor_details: null,
+        is_new: false,
+        is_lost: false,
+        is_broken: false,
+        is_prospect: true,
+        first_seen: null,
+        last_seen: null,
+        spam_score: null,
+      })),
+    );
   return prospects;
 }
 

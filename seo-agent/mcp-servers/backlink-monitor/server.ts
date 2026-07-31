@@ -2,39 +2,10 @@ import { pool } from "../../../db.js";
 import { RowDataPacket } from "mysql2/promise";
 import { getDomain } from "../../../libs/functions.js";
 import { logger } from "../../utils/logger.js";
-import { getSitesBacklinks } from "../../services/dataForSEO.service.js";
-
-// ── DataForSEO helpers ────────────────────────────────────────────────
-
-function dfsAuth(): string {
-  const user = process.env.DATAFORSEO_USERNAME;
-  const pass = process.env.DATAFORSEO_PASSWORD;
-  if (!user || !pass)
-    throw new Error("Missing DATAFORSEO_USERNAME or DATAFORSEO_PASSWORD");
-  return `Basic ${btoa(`${user}:${pass}`)}`;
-}
-
-function dfsBase(): string {
-  return (
-    process.env.DATAFORSEO_BASEURL ?? "https://api.dataforseo.com/v3"
-  ).replace(/\/$/, "");
-}
-
-async function dfsPost<T = any>(endpoint: string, body: object[]): Promise<T> {
-  const res = await fetch(`${dfsBase()}${endpoint}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: dfsAuth(),
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const msg = await res.text().catch(() => res.statusText);
-    throw new Error(`DataForSEO ${endpoint} error ${res.status}: ${msg}`);
-  }
-  return res.json() as Promise<T>;
-}
+import {
+  getBacklinksTimeSeries,
+  getSitesBacklinks,
+} from "../../services/dataForSEO.service.js";
 
 // ── Domain helper ─────────────────────────────────────────────────────
 async function getSiteDomain(siteId: number): Promise<string> {
@@ -254,16 +225,7 @@ export async function getLinkVelocity(
   logger.info(`[backlink-monitor:velocity] site_id=${siteId} domain=${domain}`);
 
   try {
-    const data = await dfsPost("/backlinks/timeseries_new_lost_summary/live", [
-      {
-        target: domain,
-        date_from: dateFrom,
-        date_to: dateTo,
-        group_range: "day",
-      },
-    ]);
-
-    const rawItems: any[] = data?.tasks?.[0]?.result?.[0]?.items ?? [];
+    const rawItems = await getBacklinksTimeSeries(domain, { dateFrom, dateTo });
 
     const weeklyVelocity: WeeklyVelocity[] = rawItems.map((item: any) => ({
       date: item.date ?? "",

@@ -7,12 +7,13 @@ export interface Backlink extends RowDataPacket {
   site_id: number;                               // INT
   owner_type: string | null;                     // VARCHAR(64)
   url_from: string;                              // VARCHAR(2048)
-  url_to: string;                                // VARCHAR(2048)
+  url_to: string | null;                         // VARCHAR(2048)
   domain_from_rank: number | null;               // INT
   anchor_details: Record<string, unknown> | null; // JSON
   is_new: boolean;                               // BOOLEAN
   is_lost: boolean;                              // BOOLEAN
   is_broken: boolean;                            // BOOLEAN
+  is_prospect: boolean;                          // BOOLEAN
   first_seen: string | null;                     // DATE
   last_seen: string | null;                      // DATE
   spam_score: number | null;                     // DOUBLE
@@ -25,12 +26,13 @@ export interface BacklinkJSON {
   site_id: number;
   owner_type: string | null;
   url_from: string;
-  url_to: string;
+  url_to: string | null;
   domain_from_rank: number | null;
   anchor_details: Record<string, unknown> | null;
   is_new: boolean;
   is_lost: boolean;
   is_broken: boolean;
+  is_prospect: boolean;
   first_seen: string | null;
   last_seen: string | null;
   spam_score: number | null;
@@ -47,12 +49,13 @@ export async function createBacklinksTable(): Promise<void> {
       site_id           INT            NOT NULL,
       owner_type        VARCHAR(64)    NULL,
       url_from          VARCHAR(2048)  NOT NULL,
-      url_to            VARCHAR(2048)  NOT NULL,
+      url_to            VARCHAR(2048)  NULL,
       domain_from_rank  INT            NULL,
       anchor_details    JSON           NULL,
       is_new            BOOLEAN        NOT NULL DEFAULT false,
       is_lost           BOOLEAN        NOT NULL DEFAULT false,
       is_broken         BOOLEAN        NOT NULL DEFAULT false,
+      is_prospect       BOOLEAN        NOT NULL DEFAULT false,
       first_seen        DATETIME       NULL,
       last_seen         DATETIME       NULL,
       spam_score        DOUBLE         NULL,

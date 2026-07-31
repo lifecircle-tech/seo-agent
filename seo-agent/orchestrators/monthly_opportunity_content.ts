@@ -6,7 +6,7 @@ import { logger } from "../utils/logger.js";
 // Import controllers for database operations
 import {
   getNewOpportunities,
-  updateStatusToGenerated,
+  markStatusToCompleted,
 } from "../controllers/opportunities.controller.js";
 import { OpportunityJSON } from "../models/opportunities.model.js";
 import { createNewPageContent } from "../controllers/page-content.controller.js";
@@ -226,7 +226,7 @@ export async function opportunityContentGeneration() {
     });
     logger.info("[monthly.opportunity_content] Page content created");
 
-    await updateStatusToGenerated(opp.id);
+    await markStatusToCompleted(opp.id);
     logger.info("[monthly.opportunity_content] Opportunity status updated");
 
     // Mark consumed PAA questions so they aren't re-used in future content runs
