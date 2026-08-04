@@ -332,7 +332,8 @@ export async function upsertKeywords(
       updated_at        = NOW(3)`,
     params,
   );
-
+  
+  console.log("Upserted keywords:", result);
   return result.affectedRows;
 }
 

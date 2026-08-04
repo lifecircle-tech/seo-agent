@@ -14,6 +14,7 @@ import {
 import { requireAuth } from "../../middleware/auth.middleware.js";
 import { logger } from "../utils/logger.js";
 import { getSiteBySiteID } from "../controllers/sites.controller.js";
+import { discoverNewKeywordsForSite } from "../services/dashboard.service.js";
 
 export function keywordsRouter(io: SocketIOServer): Router {
   const router = Router();
@@ -108,6 +109,19 @@ export function keywordsRouter(io: SocketIOServer): Router {
     }
   });
 
+  // POST /keywords/discover
+  router.post("/discover", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { site_id } = req.body as { site_id: number };
+
+      discoverNewKeywordsForSite(site_id);
+      res.json({ success: true, message: "Keyword discovery initiated" });
+    } catch (err) {
+      logger.error("[keywords] discover error:", err);
+      res.status(500).json({ success: false, error: "Database error" });
+    }
+  });
+
   // GET /keywords
   router.get("/", requireAuth, async (req: Request, res: Response) => {
     try {
@@ -143,9 +157,16 @@ export function keywordsRouter(io: SocketIOServer): Router {
     try {
       const result = await getKeywordPages(req.params.id);
       if (!result.keyword) {
-        return res.status(404).json({ success: false, error: "Keyword not found" });
+        return res
+          .status(404)
+          .json({ success: false, error: "Keyword not found" });
       }
-      res.json({ success: true, keyword: result.keyword, pages: result.pages, count: result.pages.length });
+      res.json({
+        success: true,
+        keyword: result.keyword,
+        pages: result.pages,
+        count: result.pages.length,
+      });
     } catch (err) {
       logger.error("[keywords] pages error:", err);
       res.status(500).json({ success: false, error: "Database error" });

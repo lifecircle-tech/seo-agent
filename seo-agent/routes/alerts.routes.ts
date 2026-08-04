@@ -3,7 +3,7 @@
  * Requires `io` (Socket.io server) injected via factory function.
  */
 
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { randomUUID } from "node:crypto";
 import { Server as SocketIOServer } from "socket.io";
 
@@ -18,6 +18,40 @@ import {
 import type { Alert } from "../models/alert.model.js";
 import { AuthRequest, requireAuth } from "../../middleware/auth.middleware.js";
 import { logger } from "../utils/logger.js";
+
+import { checkIndexingRequestUpdate } from "../services/dashboard.service.js";
+
+// Rate limiter: max 5 requests per IP per 5 hours for /check-indexing
+const RATE_LIMIT_WINDOW_MS = 5 * 60 * 60 * 1000;
+const RATE_LIMIT_MAX = 1;
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+function checkIndexingRateLimiter(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const ip = req.ip ?? req.socket.remoteAddress ?? "unknown";
+  const now = Date.now();
+  const entry = rateLimitStore.get(ip);
+
+  if (!entry || now > entry.resetAt) {
+    rateLimitStore.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return next();
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX) {
+    const retryAfterSec = Math.ceil((entry.resetAt - now) / (1000 * 60)); // Convert ms to min
+    res.setHeader("Retry-After", retryAfterSec);
+    return res.status(429).json({
+      success: false,
+      error: `Try again in ${retryAfterSec}m.`,
+    });
+  }
+
+  entry.count++;
+  next();
+}
 
 // Request body shape for POST /alerts (all strings from JSON body)
 interface CreateAlertBody {
@@ -148,6 +182,29 @@ export function alertsRouter(io: SocketIOServer): Router {
       } catch (err) {
         logger.error("[alerts] close error:", err);
         res.status(500).json({ success: false, error: "Database error" });
+      }
+    },
+  );
+
+  router.get(
+    "/check-indexing",
+    checkIndexingRateLimiter,
+    requireAuth,
+    async (req: Request, res: Response) => {
+      const user = (req as AuthRequest).user!;
+      logger.info("[dashboard] Checking indexing status. Requested by ", user);
+
+      try {
+        const results = await checkIndexingRequestUpdate();
+        res.json({
+          success: true,
+          report: `${results.count} URL(s) are indexed`,
+        });
+      } catch (err) {
+        logger.error("[dashboard] check-indexing error:", err);
+        res
+          .status(500)
+          .json({ success: false, error: "Error checking indexing status" });
       }
     },
   );

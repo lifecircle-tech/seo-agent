@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
 export interface AuthRequest extends Request {
-  user?: { userId: number };
+  user?: { userId: number; companyId: number };
 }
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "somesecret";
@@ -28,8 +28,9 @@ export function requireAuth(
   try {
     const payload = jwt.verify(token, JWT_SECRET) as {
       user_id: number;
+      company_id: number;
     };
-    req.user = { userId: payload.user_id };
+    req.user = { userId: payload.user_id, companyId: payload.company_id };
     next();
   } catch (err) {
     const isExpired = err instanceof jwt.TokenExpiredError;

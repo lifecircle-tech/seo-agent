@@ -26,7 +26,7 @@ interface SitesConfig {
   domain: string;
   brand_name: string;
   industry: string;
-  cities: string[];
+  about: string;
 }
 
 interface StepError {

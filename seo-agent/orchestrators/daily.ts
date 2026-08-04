@@ -409,14 +409,16 @@ export async function dailyTechnicalAudit() {
   const site = sites[0];
   // for (const site of sites) {
   try {
+    const issues = [] as any;
+    const requested = { success_count: 0 } as any;
     // 1. Checked updates for requested indexing
     const indexed = await checkIndexedPagesUpdate(site.site_id, site.domain);
 
     // 2. Checking all issues
-    const issues = await runDailyCheckForSite(site.site_id, site.domain);
+    // const issues = await runDailyCheckForSite(site.site_id, site.domain);
 
     // 3. Request for not indexed pages
-    const requested = await requestIndexingForNotIndexedPages(site.site_id);
+    // const requested = await requestIndexingForNotIndexedPages(site.site_id);
 
     if (
       issues.length === 0 &&

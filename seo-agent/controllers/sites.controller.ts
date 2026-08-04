@@ -7,17 +7,23 @@ function toJSON(row: SiteConfig): SiteConfigJSON {
   return {
     ...row,
     about: row.about ?? "",
-    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    created_at:
+      row.created_at instanceof Date
+        ? row.created_at.toISOString()
+        : String(row.created_at),
   };
 }
 
 // ── CREATE ────────────────────────────────────────────────────────────
 export async function createSiteConfig(
-  data: Pick<SiteConfig, "id" | "site_id" | "domain" | "brand_name" | "industry" | "about">
+  data: Pick<
+    SiteConfig,
+    "id" | "site_id" | "domain" | "brand_name" | "industry" | "about"
+  >,
 ): Promise<SiteConfigJSON> {
   const [existing] = await pool.query<SiteConfig[]>(
     "SELECT id FROM sites_config WHERE site_id = ? LIMIT 1",
-    [data.site_id]
+    [data.site_id],
   );
   if ((existing as SiteConfig[]).length > 0) {
     throw new Error(`Site for Site ID=${data.site_id} already exists`);
@@ -26,7 +32,14 @@ export async function createSiteConfig(
   await pool.query<ResultSetHeader>(
     `INSERT INTO sites_config (id, site_id, domain, brand_name, industry, about, created_at)
      VALUES (?, ?, ?, ?, ?, ?, NOW(3))`,
-    [data.id, data.site_id, data.domain, data.brand_name, data.industry, data.about ?? ""]
+    [
+      data.id,
+      data.site_id,
+      data.domain,
+      data.brand_name,
+      data.industry,
+      data.about ?? "",
+    ],
   );
   const config = await getSiteConfigById(data.id);
   return config!;
@@ -45,20 +58,23 @@ export async function listSitesConfigs(filters: {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
-//   if (filters.site_id) {
-//     conditions.push("site_id = ?");
-//     params.push(filters.site_id);
-//   }
+  //   if (filters.site_id) {
+  //     conditions.push("site_id = ?");
+  //     params.push(filters.site_id);
+  //   }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const limit = Math.min(filters.limit ?? 10, 100);
   const offset = filters.offset ?? 0;
 
   const [[countRow], [rows]] = await Promise.all([
-    pool.query<RowDataPacket[]>(`SELECT COUNT(*) AS count FROM sites_config ${where}`, params),
+    pool.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS count FROM sites_config ${where}`,
+      params,
+    ),
     pool.query<SiteConfig[]>(
       `SELECT * FROM sites_config ${where} ORDER BY site_id ASC LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+      [...params, limit, offset],
     ),
   ]);
 
@@ -68,15 +84,22 @@ export async function listSitesConfigs(filters: {
 }
 
 // ── GET BY ID ─────────────────────────────────────────────────────────
-export async function getSiteConfigById(id: string): Promise<SiteConfigJSON | null> {
-  const [rows] = await pool.query<SiteConfig[]>("SELECT * FROM sites_config WHERE id = ?", [id]);
+export async function getSiteConfigById(
+  id: string,
+): Promise<SiteConfigJSON | null> {
+  const [rows] = await pool.query<SiteConfig[]>(
+    "SELECT * FROM sites_config WHERE id = ?",
+    [id],
+  );
   return rows.length ? toJSON(rows[0]) : null;
 }
 
 // ── UPDATE ────────────────────────────────────────────────────────────
 export async function updateSiteConfig(
   id: string,
-  data: Partial<Pick<SiteConfig, "domain" | "brand_name" | "industry" | "about">>
+  data: Partial<
+    Pick<SiteConfig, "domain" | "brand_name" | "industry" | "about">
+  >,
 ): Promise<SiteConfigJSON | null> {
   const fields: string[] = [];
   const params: unknown[] = [];
@@ -102,7 +125,7 @@ export async function updateSiteConfig(
 
   const [result] = await pool.query<ResultSetHeader>(
     `UPDATE sites_config SET ${fields.join(", ")} WHERE id = ?`,
-    [...params, id]
+    [...params, id],
   );
 
   if (result.affectedRows === 0) return null;
@@ -113,14 +136,30 @@ export async function updateSiteConfig(
 export async function deleteSiteConfig(id: string): Promise<boolean> {
   const [result] = await pool.query<ResultSetHeader>(
     "DELETE FROM sites_config WHERE id = ?",
-    [id]
+    [id],
   );
   return result.affectedRows > 0;
+}
+
+export async function getSiteAndCitiesBySiteID(siteId: number) {
+  const [siteRows] = await pool.query<SiteConfig[]>(
+    `
+    SELECT s.*, GROUP_CONCAT(c.city) AS cities FROM sites_config s
+    LEFT JOIN cities_config c ON c.site_id = s.site_id
+    WHERE s.site_id = ? GROUP BY s.site_id
+    `,
+    [siteId],
+  );
+
+  return siteRows.length ? (toJSON(siteRows[0]) as any) : null;
 }
 
 // ── CONTROLLERS FOR ORCHESTRATORS ─────────────────────────────────────
 
 export async function getSiteBySiteID(siteId: number) {
-  const [rows] = await pool.query<SiteConfig[]>("SELECT * FROM sites_config WHERE site_id = ?", [siteId]);
+  const [rows] = await pool.query<SiteConfig[]>(
+    "SELECT * FROM sites_config WHERE site_id = ?",
+    [siteId],
+  );
   return rows.length ? toJSON(rows[0]) : null;
 }
