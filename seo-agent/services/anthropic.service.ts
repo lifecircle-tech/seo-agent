@@ -13,7 +13,7 @@ dotenv.config();
 export async function getAIResponse(
   label: string,
   params: MessageCreateParamsNonStreaming,
-) {
+): Promise<Message> {
   logger.debug(`Running prompt for ${label}`);
   
   const client: Anthropic = new Anthropic({

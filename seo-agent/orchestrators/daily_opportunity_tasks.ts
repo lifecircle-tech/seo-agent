@@ -14,9 +14,13 @@ import {
   updateStatusToCompleted,
 } from "../controllers/opportunities.controller.js";
 import { getSiteBySiteID } from "../controllers/sites.controller.js";
-import { createApproval } from "../controllers/approvals.controller.js";
+import {
+  createApproval,
+  getMetaRewriteApprovedApprovalByUrl,
+} from "../controllers/approvals.controller.js";
 import {
   createPageContent,
+  getAcknowledgedPageByUrl,
   updatePageContentBody,
 } from "../controllers/page-content.controller.js";
 
@@ -171,6 +175,10 @@ No extra text.`;
     return;
   }
 
+  const last_updated_at = await getMetaRewriteApprovedApprovalByUrl(
+    wpPage.url as string,
+  );
+
   await createApproval({
     id: randomUUID(),
     site_id: opp.site_id,
@@ -184,7 +192,7 @@ No extra text.`;
       focus_keywords: targetKeywords,
       current_title: wpPage.title,
       current_description: wpPage.meta_description,
-      last_updated_at: wpPage.last_modified,
+      last_updated_at: last_updated_at?.actioned_at || wpPage.last_modified,
     },
     updated_content: {
       url: wpPage.url,
@@ -311,6 +319,8 @@ No extra text.`;
 
   const keywords_analytics = keywordPerformance;
 
+  const page = await getAcknowledgedPageByUrl(url);
+
   const record = await createPageContent({
     id: randomUUID(),
     site_id: opp.site_id,
@@ -323,7 +333,7 @@ No extra text.`;
     },
     keywords_analytics,
     update_details: {
-      previous_updated_at: wpPage.last_modified,
+      previous_updated_at: page?.acknowledged_at || wpPage.last_modified,
       reasoning: opp.reasoning,
     },
   });

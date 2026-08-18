@@ -305,7 +305,12 @@ export async function runPageContentAgent(id: string) {
     // get approval record by ID
     const approval = await getApprovalById(id);
     if (!approval) throw new Error("Approval not found");
-    const { site_id, original_content } = approval as any;
+    const { site_id, original_content, update_page } = approval as any;
+
+    if (!update_page) {
+      return;
+    }
+
     const url = original_content.url as string;
 
     // get keywords overview

@@ -60,9 +60,9 @@ export async function createPageContent(
       (id, site_id, page_meta_details, url, status, keywords_analytics, update_details) 
     VALUES (?, ?, ?, ?, 1, ?, ?)
     ON DUPLICATE KEY UPDATE
-      page_meta_details   = COALESCE(VALUE(page_meta_details), page_meta_details),
-      keywords_analytics  = COALESCE(VALUE(keywords_analytics), keywords_analytics),
-      update_details      = COALESCE(VALUE(update_details), update_details),
+      page_meta_details   = COALESCE(VALUES(page_meta_details), page_meta_details),
+      keywords_analytics  = COALESCE(VALUES(keywords_analytics), keywords_analytics),
+      update_details      = COALESCE(VALUES(update_details), update_details),
       created_at          = NOW(3)
     `,
     [
@@ -334,7 +334,7 @@ export async function getAcknowledgedPageByUrl(
 ): Promise<PageContentJSON | null> {
   const [rows] = await pool.query<PageContent[]>(
     `SELECT * FROM page_content
-     WHERE url = ? AND status = 'acknowledged'
+     WHERE url = ? AND status = 21 OR status = 22
      ORDER BY acknowledged_at DESC
      LIMIT 1`,
     [url],
@@ -362,11 +362,11 @@ export async function createNewPageContent(
       (id, site_id, page_meta_details, content, images, links, url, status, keywords_analytics, is_new) 
     VALUES (?, ?, ?, ?, ?, ?, ?, 11, ?, true)
     ON DUPLICATE KEY UPDATE
-      page_meta_details   = COALESCE(VALUE(page_meta_details), page_meta_details),
-      content             = COALESCE(VALUE(content), content),
-      images              = COALESCE(VALUE(images), images),
-      links               = COALESCE(VALUE(links), links),
-      keywords_analytics  = COALESCE(VALUE(keywords_analytics), keywords_analytics),
+      page_meta_details   = COALESCE(VALUES(page_meta_details), page_meta_details),
+      content             = COALESCE(VALUES(content), content),
+      images              = COALESCE(VALUES(images), images),
+      links               = COALESCE(VALUES(links), links),
+      keywords_analytics  = COALESCE(VALUES(keywords_analytics), keywords_analytics),
       created_at          = NOW(3)
     `,
     [
