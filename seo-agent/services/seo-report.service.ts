@@ -1,9 +1,10 @@
-import crypto from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { createSeoReport } from "../controllers/seo-report.controller.js";
 import type {
   BacklinksPayload,
   SitemapAdsPayload,
   MissingPagesPayload,
+  LocationInsightPayload,
 } from "../models/seo-report.model.js";
 
 // ── Save backlink report ──────────────────────────────────────────────
@@ -46,7 +47,7 @@ export async function saveBacklinkReport(
   const summary = `Backlinks: +${new_count} new, -${lost_count} lost, ${toxic_count} toxic. Trend: ${payload.trend}. ${prospectsData?.count ?? 0} prospects found.`;
 
   return createSeoReport({
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     site_id: siteId,
     report_type: "backlinks",
     summary,
@@ -115,7 +116,7 @@ export async function saveSitemapAdsReport(
   const summary = `Sitemap coverage ${coverage_pct}%. ${new_pages_count} new pages pinged (${ping_success_count} ok). Ads: ${total_conversions} conversions, ₹${total_wasted_inr} wasted, ${critical_qs_count} critical QS.`;
 
   return createSeoReport({
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     site_id: siteId,
     report_type: "sitemap_ads",
     summary,
@@ -149,10 +150,77 @@ export async function saveMissingPagesReport(
   const summary = `Missing pages: ${missingData.missing_count} of ${missingData.total_cities} cities have no landing page.`;
 
   return createSeoReport({
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     site_id: siteId,
     report_type: "missing_pages",
     summary,
     payload,
+  });
+}
+
+// ── Save location insight report ─────────────────────────────────────────
+export async function saveLocationInsightReport(
+  siteId: number,
+  locationsInsight: {
+    name: string;
+    address: string;
+    city: string;
+    views: number;
+    searches: number;
+    actions: number;
+  }[],
+) {
+  let most_searched_locations = locationsInsight.sort(
+    (a: any, b: any) => b.searches - a.searches,
+  )[0];
+
+  let most_viewed_locations = locationsInsight.sort(
+    (a: any, b: any) => b.views - a.views,
+  )[0];
+
+  let most_actioned_locations = locationsInsight.sort(
+    (a: any, b: any) => b.actions - a.actions,
+  )[0];
+
+  let total_searches = 0;
+  let total_views = 0;
+  let total_actions = 0;
+
+  locationsInsight.forEach((location) => {
+    total_searches += location.searches;
+    total_views += location.views;
+    total_actions += location.actions;
+  });
+
+  const summary = `Location Insight: Total Search = ${total_searches}, Total Views = ${total_views}, Total Actions = ${total_actions}`;
+
+  const payload: LocationInsightPayload = {
+    top_searched: most_searched_locations,
+    top_viewed: most_viewed_locations,
+    top_actioned: most_actioned_locations,
+    locations: locationsInsight,
+  };
+
+  return createSeoReport({
+    id: randomUUID(),
+    site_id: siteId,
+    report_type: "location_insight",
+    summary,
+    payload,
+  });
+}
+
+export async function saveDailyIndexingReport(
+  siteId: number,
+  indexedUrl: string[],
+) {
+  const summary = `Indexing: ${indexedUrl.length} URL(s) are indexed.`;
+
+  return createSeoReport({
+    id: randomUUID(),
+    site_id: siteId,
+    report_type: "indexing",
+    summary: summary,
+    payload: { indexedUrl },
   });
 }

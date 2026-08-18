@@ -17,7 +17,7 @@ export async function getDashboardStats(site_id?: number): Promise<DashboardStat
       params
     ),
     pool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) AS count FROM page_content WHERE status = 'created' OR status = 'new_page' ${siteFilter}`,
+      `SELECT COUNT(*) AS count FROM page_content WHERE status = 11 ${siteFilter}`,
       params
     ),
     pool.query<RowDataPacket[]>(

@@ -11,6 +11,8 @@ export interface Approval extends RowDataPacket {
   title: string; // VARCHAR(255)
   original_content: Record<string, any>; // JSON (parsed by mysql2)
   updated_content: Record<string, any> | null; // JSON (parsed by mysql2) | NULL
+  reason: string | null; // TEXT | NULL
+  update_page: boolean; // TINYINT(1) DEFAULT 0
   preview_url: string | null; // VARCHAR(512) | NULL
   status: "pending" | "approved" | "rejected" | "deferred"; // VARCHAR(16)
   created_at: Date; // DATETIME(3)
@@ -29,6 +31,8 @@ export interface ApprovalJSON {
   title: string;
   original_content: Record<string, any>;
   updated_content: Record<string, any> | null;
+  reason: string | null;
+  update_page: boolean;
   preview_url: string | null;
   status: "pending" | "approved" | "rejected" | "deferred";
   created_at: string;
@@ -51,6 +55,8 @@ export async function createApprovalsTable(): Promise<void> {
       title         VARCHAR(255)  NOT NULL,
       original_content JSON         NOT NULL,
       updated_content JSON          NULL,
+      reason        TEXT          NULL,
+      update_page   TINYINT(1)    NOT NULL DEFAULT 0,
       preview_url   VARCHAR(512)  NULL,
       status        VARCHAR(16)   NOT NULL DEFAULT 'pending',
       created_at    DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),

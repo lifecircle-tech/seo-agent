@@ -25,6 +25,7 @@ import {
 } from "../mcp-servers/technical-seo/server.js";
 import { getFeatureOpportunities } from "../mcp-servers/serp-features/server.js";
 import { postSlackMessage } from "../mcp-servers/reporting/server.js";
+import { saveDailyIndexingReport } from "../services/seo-report.service.js";
 
 // ── Types ─────────────────────────────────────────────────────────────
 type SiteIssue = {
@@ -288,6 +289,11 @@ async function checkIndexedPagesUpdate(
   logger.info(
     `[check_indexing_status] Finished indexing check. Indexed count : ${inspected_results.indexed_count}`,
   );
+
+  if (inspected_results.indexed_count) {
+    saveDailyIndexingReport(site_id, inspected_results.indexed_urls);
+  }
+
   return {
     type: "Indexed",
     indexed_count: inspected_results.indexed_count,
@@ -440,7 +446,7 @@ export async function dailyTechnicalAudit() {
         `[daily] DRY_RUN — would post ${issues.length} issue(s) to Slack for ${site.domain}`,
       );
     } else {
-      await postDailyAlert(site.domain, issues, requested, indexed);
+      // await postDailyAlert(site.domain, issues, requested, indexed);
       logger.info(
         `[daily] Slack alert posted for ${site.domain} (${issues.length} issues)`,
       );

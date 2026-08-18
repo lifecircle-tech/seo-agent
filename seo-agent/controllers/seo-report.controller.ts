@@ -76,8 +76,7 @@ export async function getAllLatestSeoReport(): Promise<SeoReportJSON[] | null> {
   const [rows] = await pool.query<SeoReport[]>(
     `SELECT * FROM seo_reports
      WHERE created_at >= CURRENT_DATE - INTERVAL 7 DAY
-     ORDER BY created_at DESC
-     LIMIT 5`,
+     ORDER BY created_at DESC`,
   );
   return rows.length ? rows.map(toJSON) : null;
 }

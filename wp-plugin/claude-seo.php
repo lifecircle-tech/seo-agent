@@ -20,6 +20,7 @@ if (! defined('ABSPATH')) {
 define('CLAUDE_SEO_RM_DESCRIPTION', 'rank_math_description');
 define('CLAUDE_SEO_RM_TITLE',       'rank_math_title');
 define('CLAUDE_SEO_RM_KEYWORD',     'rank_math_focus_keyword');
+define('CLAUDE_SEO_CANONICAL_URL',  'rank_math_canonical_url');
 
 // ── Register REST routes & Fields ───────────────────────────────────────
 add_action('rest_api_init', 'claude_seo_register_rest_functionality');
@@ -38,28 +39,53 @@ function claude_seo_register_rest_functionality() {
 	);
 
 	// 2. Expose Rank Math Meta fields on default WP REST 'post' endpoint
-	register_rest_field('post', 'rank_math_meta', array(
+	register_rest_field('post', 'rank_math_meta', [
 		'get_callback' => function ($post_arr) {
-			return array(
+			return [
 				'description' => get_post_meta($post_arr['id'], CLAUDE_SEO_RM_DESCRIPTION, true),
 				'title'       => get_post_meta($post_arr['id'], CLAUDE_SEO_RM_TITLE, true),
 				'focus_keyword' => get_post_meta($post_arr['id'], CLAUDE_SEO_RM_KEYWORD, true),
-			);
+			];
 		},
 		'schema' => null,
-	));
+	]);
 
 	// 3. Expose Rank Math Meta fields on default WP REST 'page' endpoint
-	register_rest_field('page', 'rank_math_meta', array(
+	register_rest_field('page', 'rank_math_meta', [
 		'get_callback' => function ($post_arr) {
-			return array(
+			return [
 				'description' => get_post_meta($post_arr['id'], CLAUDE_SEO_RM_DESCRIPTION, true),
 				'title'       => get_post_meta($post_arr['id'], CLAUDE_SEO_RM_TITLE, true),
 				'focus_keyword' => get_post_meta($post_arr['id'], CLAUDE_SEO_RM_KEYWORD, true),
-			);
+			];
 		},
 		'schema' => null,
-	));
+	]);
+
+	// Register Routes to update page canonical url
+	register_rest_route('claude-seo/v1', '/canonical/(?P<id>\d+)', [
+		[
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => 'update_canonical',
+			'permission_callback' => 'claude_seo_check_permission',
+			'args'                => [
+				'canonical_url' => [
+					'required' => true,
+				],
+			],
+		],
+		[
+			'methods'             => WP_REST_Server::DELETABLE,
+			'callback'            => 'delete_canonical',
+			'permission_callback' => 'claude_seo_check_permission',
+		],
+	]);
+
+	register_rest_route('claude-seo/v1', '/canonical/bulk', [
+		'methods'             => WP_REST_Server::CREATABLE,
+		'callback'            => 'bulk_update_canonical',
+		'permission_callback' => 'claude_seo_check_permission',
+	]);
 }
 
 // ── Permission check ───────────────────────────────────────────────────
@@ -185,4 +211,114 @@ function claude_seo_bulk_meta_update(WP_REST_Request $request) {
 			'errors'  => $errors,
 		)
 	);
+}
+
+function update_canonical(WP_REST_Request $request) {
+	$post_id = (int) $request['id'];
+	$post    = get_post($post_id);
+
+	if (!$post) {
+		return new WP_Error('not_found', 'Post not found', ['status' => 404]);
+	}
+
+	$canonical_url = trim((string) $request->get_param('canonical_url'));
+
+	if (!empty($canonical_url) && !filter_var($canonical_url, FILTER_VALIDATE_URL)) {
+		return new WP_Error('invalid_url', 'canonical_url is not a valid URL', ['status' => 400]);
+	}
+
+	$sanitized = $canonical_url ? esc_url_raw($canonical_url) : '';
+
+	if (empty($sanitized)) {
+		delete_post_meta($post_id, CLAUDE_SEO_CANONICAL_URL);
+	} else {
+		update_post_meta($post_id, CLAUDE_SEO_CANONICAL_URL, $sanitized);
+	}
+
+	clean_post_cache($post_id);
+
+	return new WP_REST_Response([
+		'success'       => true,
+		'post_id'       => $post_id,
+		'canonical_url' => $sanitized ?: null,
+		'message'       => $sanitized
+			? 'Canonical URL updated'
+			: 'Canonical URL cleared, page will self-canonicalize',
+	], 200);
+}
+
+function delete_canonical(WP_REST_Request $request) {
+	$post_id = (int) $request['id'];
+	$post    = get_post($post_id);
+
+	if (!$post) {
+		return new WP_Error('not_found', 'Post not found', ['status' => 404]);
+	}
+
+	delete_post_meta($post_id, CLAUDE_SEO_CANONICAL_URL);
+	clean_post_cache($post_id);
+
+	return new WP_REST_Response([
+		'success' => true,
+		'post_id' => $post_id,
+		'message' => 'Canonical URL removed',
+	], 200);
+}
+
+/**
+ * Batch update, since a monitoring script will usually want to
+ * push several changes at once rather than one HTTP call per page.
+ */
+function bulk_update_canonical(WP_REST_Request $request) {
+	$items = $request->get_param('items');
+
+	if (!is_array($items) || empty($items)) {
+		return new WP_Error(
+			'invalid_payload',
+			'items must be a non-empty array of {id, canonical_url}',
+			['status' => 400]
+		);
+	}
+
+	$results = [];
+
+	foreach ($items as $item) {
+		if (!isset($item['id'])) {
+			$results[] = ['id' => null, 'success' => false, 'error' => 'missing id'];
+			continue;
+		}
+
+		$post_id = (int) $item['id'];
+		$post    = get_post($post_id);
+
+		if (!$post) {
+			$results[] = ['id' => $post_id, 'success' => false, 'error' => 'post not found'];
+			continue;
+		}
+
+		$canonical_url = isset($item['canonical_url']) ? trim((string) $item['canonical_url']) : '';
+
+		if (!empty($canonical_url) && !filter_var($canonical_url, FILTER_VALIDATE_URL)) {
+			$results[] = ['id' => $post_id, 'success' => false, 'error' => 'invalid url'];
+			continue;
+		}
+
+		$sanitized = $canonical_url ? esc_url_raw($canonical_url) : '';
+
+		if (empty($sanitized)) {
+			delete_post_meta($post_id, CLAUDE_SEO_CANONICAL_URL);
+		} else {
+			update_post_meta($post_id, CLAUDE_SEO_CANONICAL_URL, $sanitized);
+		}
+
+		clean_post_cache($post_id);
+
+		$results[] = [
+			'id'            => $post_id,
+			'success'       => true,
+			'canonical_url' => $sanitized ?: null,
+		];
+	}
+
+	return new WP_REST_Response(['results' => $results], 200);
 }

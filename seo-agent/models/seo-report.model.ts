@@ -3,7 +3,12 @@ import { pool } from "../../db.js";
 
 // ── Report types ──────────────────────────────────────────────────────
 
-export type ReportType = "backlinks" | "sitemap_ads" | "missing_pages";
+export type ReportType =
+  | "backlinks"
+  | "sitemap_ads"
+  | "missing_pages"
+  | "location_insight"
+  | "indexing";
 
 // ── Backlinks payload ─────────────────────────────────────────────────
 
@@ -95,6 +100,15 @@ export interface QualityIssue {
   impressions: number;
 }
 
+export interface LocationInsight {
+  name: string;
+  address: string;
+  city: string;
+  views: number;
+  searches: number;
+  actions: number;
+}
+
 export interface SitemapAdsPayload {
   // sitemap
   coverage_pct: number;
@@ -139,12 +153,25 @@ export interface MissingPagesPayload {
   missing_cities: MissingCityEntry[];
 }
 
+export interface LocationInsightPayload {
+  top_searched: LocationInsight;
+  top_viewed: LocationInsight;
+  top_actioned: LocationInsight;
+  locations: LocationInsight[];
+}
+
+export interface IndexingPayload {
+  indexedUrl: string[];
+}
+
 // ── Discriminated union ───────────────────────────────────────────────
 
 export type ReportPayload =
   | BacklinksPayload
   | SitemapAdsPayload
-  | MissingPagesPayload;
+  | MissingPagesPayload
+  | LocationInsightPayload
+  | IndexingPayload;
 
 // ── DB Row types ──────────────────────────────────────────────────────
 

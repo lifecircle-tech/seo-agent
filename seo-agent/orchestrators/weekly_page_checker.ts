@@ -4,6 +4,8 @@ import { logger } from "../utils/logger.js";
 // Import controllers for database operations
 import { listSitesConfigs } from "../controllers/sites.controller.js";
 
+import { saveMissingPagesReport } from "../services/seo-report.service.js";
+
 // MCP Server Imports
 import {
   getMissingCityPages,
@@ -11,7 +13,6 @@ import {
   createCmsDraft,
 } from "../mcp-servers/page-generator/server.js";
 import { postSlackMessage } from "../mcp-servers/reporting/server.js";
-import { saveMissingPagesReport } from "../services/seo-report.service.js";
 
 // ── Config ────────────────────────────────────────────────────────────
 dotenv.config();

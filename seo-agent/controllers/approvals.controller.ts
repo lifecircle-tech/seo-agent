@@ -6,10 +6,15 @@
 import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { Approval, ApprovalJSON } from "../models/approval.model.js";
 import { lc_pool, pool } from "../../db.js";
-import { updatePageMeta } from "../services/wordpress.service.js";
+import {
+  bulkUpdateCanonicalURL,
+  updatePageMeta,
+} from "../services/wordpress.service.js";
 
 import { runPageContentAgent } from "../services/page-content.service.js";
 import { logger } from "../utils/logger.js";
+import { isUrlRedirected } from "../../libs/functions.js";
+import { getPage } from "../mcp-servers/cms-connector/server.js";
 
 // ── Row serialiser ────────────────────────────────────────────────────
 function toJSON(row: Approval): ApprovalJSON {
@@ -23,6 +28,8 @@ function toJSON(row: Approval): ApprovalJSON {
       row.updated_content === null || typeof row.updated_content === "object"
         ? row.updated_content
         : (JSON.parse(row.updated_content) as Record<string, unknown>),
+    reason: row.reason ?? null,
+    update_page: Boolean(row.update_page),
     created_at:
       row.created_at instanceof Date
         ? row.created_at.toISOString()
@@ -47,13 +54,15 @@ export async function createApproval(
     | "title"
     | "original_content"
     | "updated_content"
+    | "reason"
+    | "update_page"
     | "preview_url"
   >,
 ): Promise<ApprovalJSON> {
   await pool.query<ResultSetHeader>(
     `INSERT INTO approvals
-      (id, site_id, module, type, priority, title, original_content, updated_content, preview_url, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW(3))`,
+      (id, site_id, module, type, priority, title, original_content, updated_content, reason, update_page, preview_url, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW(3))`,
     [
       data.id,
       data.site_id,
@@ -63,6 +72,8 @@ export async function createApproval(
       data.title,
       JSON.stringify(data.original_content),
       JSON.stringify(data.updated_content),
+      data.reason ?? null,
+      data.update_page ? 1 : 0,
       data.preview_url ?? null,
     ],
   );
@@ -182,9 +193,6 @@ export async function approveApproval(
 
   // If the approved item is a meta_rewrite, push the change to WordPress.
   if (approval.type === "meta_rewrite") {
-    // if (approval.original_content.type === "post")
-    runPageContentAgent(id);
-
     const c = (approval.updated_content ?? approval.original_content) as {
       // Use updated_content if present, else original
       url?: string;
@@ -192,7 +200,16 @@ export async function approveApproval(
       suggested_description?: string;
     };
 
+    if (approval.original_content.url) {
+      const isRedirected = await isUrlRedirected(approval.original_content.url);
+      if (!isRedirected) {
+        runPageContentAgent(id);
+      }
+    }
+
+    logger.debug("Updating WordPress Meta...", c); // url could be missing, checking...
     if (c.url && c.suggested_title && c.suggested_description) {
+      logger.debug("Check condition Passed");
       const wpResult = await updatePageMeta(
         approval.site_id,
         c.url,
@@ -210,7 +227,20 @@ export async function approveApproval(
           `[approveApproval] WordPress meta updated for ${c.url} (approval ${id})`,
         );
       }
+    } else {
+      logger.debug("Check condition failed", c);
     }
+  } else if (approval.type === "canonical") {
+    type CanonicalUpdate = { id: number; canonical_url: string };
+    let items = [] as CanonicalUpdate[];
+    let canonical_url = approval.updated_content?.recommended_primary_url;
+
+    for (let url of approval.updated_content?.competing_urls) {
+      const page = await getPage(approval.site_id, url);
+      items.push({ id: page?.id, canonical_url } as CanonicalUpdate);
+    }
+
+    await bulkUpdateCanonicalURL(approval.site_id, items);
   }
 
   return approval;
@@ -225,7 +255,7 @@ export async function rejectApproval(
 ): Promise<ApprovalJSON | null> {
   const approval = await getApprovalById(id);
   if (!approval) return null;
-  
+
   if (approval.actioned_by) return approval;
 
   const [result] = await pool.query<ResultSetHeader>(

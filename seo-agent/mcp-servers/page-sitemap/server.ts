@@ -247,7 +247,7 @@ export async function detectNewPages(
   const pingedCache = loadPingedCache(siteId);
   const pingedUrls = new Set(pingedCache.map((e) => e.url));
 
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const newPages: NewPage[] = [];
 
   // Fetch WP pages published in last 24h

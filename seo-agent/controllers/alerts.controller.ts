@@ -113,19 +113,19 @@ export async function listAlerts(filters: {
   const params: unknown[] = [];
 
   if (filters.status) {
-    conditions.push("status = ?");
+    conditions.push("a.status = ?");
     params.push(filters.status);
   }
   if (filters.severity) {
-    conditions.push("severity = ?");
+    conditions.push("a.severity = ?");
     params.push(filters.severity);
   }
   if (filters.module) {
-    conditions.push("module = ?");
+    conditions.push("a.module = ?");
     params.push(filters.module);
   }
   if (filters.site_id) {
-    conditions.push("site_id = ?");
+    conditions.push("a.site_id = ?");
     params.push(filters.site_id);
   }
 
@@ -135,11 +135,14 @@ export async function listAlerts(filters: {
 
   const [[countRow], [rows]] = await Promise.all([
     pool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) AS count FROM alerts ${where}`,
+      `SELECT COUNT(*) AS count FROM alerts a ${where}`,
       params,
     ),
     pool.query<Alert[]>(
-      `SELECT * FROM alerts ${where}
+      `SELECT a.*, s.brand_name as site_name, s.domain
+      FROM alerts a
+      LEFT JOIN sites_config s ON a.site_id = s.site_id
+      ${where}
       ORDER BY closed_at DESC, resolved_at DESC, created_at ASC
       LIMIT ? OFFSET ?`,
       [...params, limit, offset],

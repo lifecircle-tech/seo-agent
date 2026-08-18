@@ -10,6 +10,8 @@ import {
   updatePageContentError,
   updateRemark,
   rejectPageContent,
+  createdPageContent,
+  updatedPageContent,
 } from "../controllers/page-content.controller.js";
 import { AuthRequest, requireAuth } from "../../middleware/auth.middleware.js";
 import { logger } from "../utils/logger.js";
@@ -41,12 +43,36 @@ export function pageContentRouter(io: SocketIOServer): Router {
   // GET /content
   router.get("/", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { site_id, limit, offset, status } = req.query;
+      const { site_id, limit, offset, status, sort_by, sort_dir } = req.query;
+      let is_new = undefined;
+
+      let temp_status;
+
+      if (status == "new_page") {
+        temp_status = 11;
+        is_new = true;
+      } else if (status == "existing") {
+        temp_status = 11;
+        is_new = false;
+      } else if (status == "created") {
+        temp_status = 21;
+      } else if (status == "updated") {
+        temp_status = 22;
+      } else if (status == "rejected") {
+        temp_status = 31;
+      } else {
+        temp_status = status;
+      }
+
       const result = await listPageContents({
         site_id: site_id ? Number(site_id) : undefined,
-        status: status as string | undefined,
+        status: temp_status as string | number | undefined,
+        is_new,
         limit: limit ? Number(limit) : undefined,
         offset: offset ? Number(offset) : undefined,
+        sort_by: sort_by as string | undefined,
+        sort_dir:
+          sort_dir === "asc" ? "asc" : sort_dir === "desc" ? "desc" : undefined,
       });
       res.json({ success: true, ...result });
     } catch (err) {
@@ -86,6 +112,9 @@ export function pageContentRouter(io: SocketIOServer): Router {
     },
   );
 
+  /**
+   * @deprecated
+   */
   // POST /content/:id/acknowledge
   router.post(
     "/:id/acknowledge",
@@ -109,6 +138,62 @@ export function pageContentRouter(io: SocketIOServer): Router {
         res.json({ success: true, record });
       } catch (err) {
         logger.error("[page-content] acknowledge error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
+      }
+    },
+  );
+
+  // POST /content/:id/created
+  router.post(
+    "/:id/created",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const { userId } = (req as AuthRequest).user!;
+        const { remark } = req.body;
+
+        const record = await createdPageContent(
+          req.params.id,
+          String(userId),
+          remark,
+        );
+        if (!record)
+          return res
+            .status(404)
+            .json({ success: false, error: "Record not found" });
+
+        io.emit("content:updated", record);
+        res.json({ success: true, record });
+      } catch (err) {
+        logger.error("[page-content] created error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
+      }
+    },
+  );
+
+  // POST /content/:id/updated
+  router.post(
+    "/:id/updated",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const { userId } = (req as AuthRequest).user!;
+        const { remark } = req.body;
+
+        const record = await updatedPageContent(
+          req.params.id,
+          String(userId),
+          remark,
+        );
+        if (!record)
+          return res
+            .status(404)
+            .json({ success: false, error: "Record not found" });
+
+        io.emit("content:updated", record);
+        res.json({ success: true, record });
+      } catch (err) {
+        logger.error("[page-content] updated error:", err);
         res.status(500).json({ success: false, error: "Database error" });
       }
     },

@@ -1,8 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
-  BetaMessage,
+  Message,
   MessageCreateParamsNonStreaming,
-} from "@anthropic-ai/sdk/resources/beta.js";
+} from "@anthropic-ai/sdk/resources";
 import { logger } from "../utils/logger.js";
 
 const MAX_RETRIES = 3;
@@ -32,12 +32,12 @@ async function callWithRetry(
   client: Anthropic,
   label: string,
   params: MessageCreateParamsNonStreaming,
-): Promise<BetaMessage> {
+): Promise<Message> {
   let lastExc: Error = new Error("No attempts made");
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      return await client.beta.messages.create(params);
+      return await client.messages.create(params);
     } catch (exc: any) {
       lastExc = exc as Error;
       if (attempt < MAX_RETRIES - 1) {
@@ -98,7 +98,6 @@ export async function analyseWithAI(
           content: prompt,
         },
       ],
-      betas: ["mcp-client-2025-04-04"],
     });
 
     logger.debug(`[page-content] Stop reason: ${response.stop_reason}`);
@@ -164,7 +163,6 @@ export async function analyseFAQwithAI(
           content: prompt,
         },
       ],
-      betas: ["mcp-client-2025-04-04"],
     });
 
     logger.debug(`[page-content] Stop reason: ${response.stop_reason}`);

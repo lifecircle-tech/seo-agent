@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import {
-  BetaMessage,
+  Message,
   MessageCreateParamsNonStreaming,
-} from "@anthropic-ai/sdk/resources/beta.js";
+} from "@anthropic-ai/sdk/resources";
 import * as dotenv from "dotenv";
 import { logger } from "../utils/logger.js";
 
@@ -55,6 +55,7 @@ import {
   getReviewMetrics,
 } from "../mcp-servers/reputation-manager/server.js";
 import { KeywordJSON } from "../models/keywords.model.js";
+import { saveLocationInsightReport } from "../services/seo-report.service.js";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -117,12 +118,12 @@ async function callWithRetry(
   client: Anthropic,
   label: string,
   params: MessageCreateParamsNonStreaming,
-): Promise<BetaMessage> {
+): Promise<Message> {
   let lastExc: Error = new Error("No attempts made");
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      return await client.beta.messages.create(params);
+      return await client.messages.create(params);
     } catch (exc: any) {
       lastExc = exc as Error;
       if (attempt < MAX_RETRIES - 1) {
@@ -407,7 +408,7 @@ async function step4GbpManager(siteId: number) {
   }
 
   const insights = [] as any[];
-  for await (let loc of locations.slice(0, 2)) {
+  for await (let loc of locations) {
     try {
       const data = await getInsights(siteId, loc.location_id, 7);
       insights.push({ ...loc, ...data, site_id: siteId });
@@ -428,7 +429,9 @@ async function step4GbpManager(siteId: number) {
   logger.info(
     `[step4] Done — ${locations.length} locations, Insights for ${insights.length}`,
   );
-  // TODO : Post insight data to google sheet.
+
+  saveLocationInsightReport(siteId, insights);
+
   return { locations, insights };
 }
 
@@ -563,7 +566,6 @@ async function step5Reporting(
         content: prompt,
       },
     ],
-    betas: ["mcp-client-2025-04-04"],
   });
 
   logger.debug(`[step5] Stop reason: ${response.stop_reason}`);

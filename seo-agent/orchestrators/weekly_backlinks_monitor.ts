@@ -1,9 +1,11 @@
 import * as dotenv from "dotenv";
+import { randomUUID } from "node:crypto";
 import { logger } from "../utils/logger.js";
 
 // Import controllers for database operations
 import { listSitesConfigs } from "../controllers/sites.controller.js";
 import { listCompetitorConfigs } from "../controllers/competitor.controller.js";
+import { upsertBacklinks } from "../controllers/backlinks.controller.js";
 
 import { saveBacklinkReport } from "../services/seo-report.service.js";
 
@@ -16,8 +18,6 @@ import {
 } from "../mcp-servers/backlink-monitor/server.js";
 import { findLinkProspects } from "../mcp-servers/backlink-engine/server.js";
 import { postBacklinkDigestToSlack } from "../mcp-servers/reporting/server.js";
-import { upsertBacklinks } from "../controllers/backlinks.controller.js";
-import { randomUUID } from "node:crypto";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -26,7 +26,7 @@ interface SitesConfig {
   domain: string;
   brand_name: string;
   industry: string;
-  cities: string[];
+  about: string
 }
 
 interface CompetitorsConfig {

@@ -24,6 +24,8 @@ export function opportunitiesRouter(io: SocketIOServer): Router {
         site_id,
         opportunity_type,
         priority,
+        topic,
+        description,
         reasoning,
         opportunity_details,
       } = req.body;
@@ -40,6 +42,8 @@ export function opportunitiesRouter(io: SocketIOServer): Router {
         site_id: Number(site_id),
         opportunity_type: String(opportunity_type),
         priority: priority ?? null,
+        topic: topic ?? null,
+        description: description ?? null,
         reasoning: reasoning ?? null,
         opportunity_details: opportunity_details ?? null,
       });

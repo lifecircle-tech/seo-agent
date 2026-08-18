@@ -4,7 +4,10 @@ import {
   getSiteAndCitiesBySiteID,
   listSitesConfigs,
 } from "../controllers/sites.controller.js";
-import { getResolvedIndexedAlert } from "../controllers/alerts.controller.js";
+import {
+  getResolvedIndexedAlert,
+  updateAlertsStatusToClosed,
+} from "../controllers/alerts.controller.js";
 import { checkIndexedStatus } from "../mcp-servers/technical-seo/server.js";
 import { discoverSiteKeywords } from "../mcp-servers/keyword-researcher/server.js";
 import { upsertKeywords } from "../controllers/keywords.controller.js";
@@ -18,8 +21,9 @@ export async function checkIndexingRequestUpdate() {
   };
 
   for (const site of sites) {
+    const requested_index = await getResolvedIndexedAlert(site.site_id);
+
     try {
-      const requested_index = await getResolvedIndexedAlert(site.site_id);
       const requested_urls = requested_index.map((item) => item.details.url);
       const inspected_results = await checkIndexedStatus(
         site.domain,
@@ -30,9 +34,19 @@ export async function checkIndexingRequestUpdate() {
       inspectedResults.urls.push(...inspected_results.indexed_urls);
     } catch (error) {
       logger.error(
-        `Error requesting indexing for site ID ${site.site_id}:`,
+        `Error checking indexing for site ID ${site.site_id}:`,
         error,
       );
+    }
+
+    try {
+      const alert_ids = requested_index
+        .filter((alert) => inspectedResults.urls.includes(alert.details.url))
+        .map((a) => a.id);
+
+      await updateAlertsStatusToClosed(alert_ids);
+    } catch (err: any) {
+      logger.error(`Error updating indexed urls ${err.message}`, err);
     }
   }
 

@@ -195,10 +195,11 @@ export function alertsRouter(io: SocketIOServer): Router {
       logger.info("[dashboard] Checking indexing status. Requested by ", user);
 
       try {
+        res.send();
         const results = await checkIndexingRequestUpdate();
-        res.json({
+        io.emit("indexing:check", {
           success: true,
-          report: `${results.count} URL(s) are indexed`,
+          message: `${results.count} URL(s) are indexed`,
         });
       } catch (err) {
         logger.error("[dashboard] check-indexing error:", err);

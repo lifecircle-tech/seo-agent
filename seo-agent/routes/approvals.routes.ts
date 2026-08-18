@@ -26,6 +26,8 @@ interface CreateApprovalBody {
   title?: string;
   original_content?: Record<string, unknown>;
   suggested_content?: Record<string, unknown>;
+  reason?: string;
+  update_page?: boolean;
   preview_url?: string;
 }
 
@@ -42,6 +44,8 @@ export function approvalsRouter(io: SocketIOServer): Router {
       title,
       original_content,
       suggested_content,
+      reason,
+      update_page,
       preview_url,
     } = req.body as CreateApprovalBody;
 
@@ -63,6 +67,8 @@ export function approvalsRouter(io: SocketIOServer): Router {
         title: String(title),
         original_content: original_content as Record<string, unknown>,
         updated_content: suggested_content as Record<string, unknown>,
+        reason: reason ? String(reason) : null,
+        update_page: Boolean(update_page),
         preview_url: preview_url ? String(preview_url) : null,
       });
       io.emit("approval:created", approval);

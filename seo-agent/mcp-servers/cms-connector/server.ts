@@ -265,6 +265,7 @@ export interface ApprovalQueueItem {
   original_content: Record<string, unknown>;
   suggested_content?: Record<string, unknown>;
   preview_url?: string;
+  reason?: string;
 }
 
 export async function createApprovalQueue(items: ApprovalQueueItem[]): Promise<{
@@ -293,6 +294,7 @@ export async function createApprovalQueue(items: ApprovalQueueItem[]): Promise<{
           original_content: item.original_content,
           suggested_content: item.suggested_content,
           preview_url: item.preview_url ?? null,
+          reason: item.reason,
         }),
       });
 

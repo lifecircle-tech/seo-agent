@@ -159,29 +159,27 @@ router.get("/cities", async (req: Request, res: Response) => {
 // POST /config/cities (create or update)
 router.post("/cities", async (req: Request, res: Response) => {
   try {
-    const { id, site_id, city, state, country, target_keywords, services } =
-      req.body as {
-        id?: string;
-        site_id: number;
-        city: string;
-        state: string;
-        country: string;
-        target_keywords: string[];
-        services?: string[] | null;
-      };
+    const { id, site_id, city, state, country, services } = req.body as {
+      id?: string;
+      site_id: number;
+      city: string;
+      state: string;
+      country: string;
+      services?: string[] | null;
+    };
 
-    if (!site_id || !city || !state || !country || !target_keywords) {
+    if (!site_id || !city || !state || !country) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    if (typeof target_keywords !== "object") {
+    if (
+      services !== undefined &&
+      services !== null &&
+      typeof services !== "object"
+    ) {
       return res
         .status(400)
-        .json({ error: "Target keywords must be an array" });
-    }
-
-    if (services !== undefined && services !== null && typeof services !== "object") {
-      return res.status(400).json({ error: "Services must be an array or null" });
+        .json({ error: "Services must be an array or null" });
     }
 
     let config;
@@ -191,7 +189,6 @@ router.post("/cities", async (req: Request, res: Response) => {
         city,
         state,
         country,
-        target_keywords,
         ...(services !== undefined ? { services } : {}),
       });
       if (!config) {
@@ -209,7 +206,7 @@ router.post("/cities", async (req: Request, res: Response) => {
         city,
         state,
         country,
-        target_keywords,
+        target_keywords: [],
         services: services ?? null,
       });
       res.status(201).json({ ok: true, created: config });

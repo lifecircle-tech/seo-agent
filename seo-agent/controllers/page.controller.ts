@@ -423,3 +423,34 @@ export async function bulkLinkKeywords(
   
   return result.affectedRows;
 }
+
+// ── CONTROLLERS FOR ORCHESTRATORS ─────────────────────────────────────
+
+export async function getPagesAndKeywords(siteId: number) {
+  await pool.query("SET SESSION group_concat_max_len = 10000");
+  const [rows] = await pool.query<any>(`
+    SELECT p.id, p.url, pk.clicks, pk.impressions, pk.position, pk.ctr,
+    CONCAT(
+        '[',
+        GROUP_CONCAT(
+          JSON_OBJECT(
+              'keyword', k.keyword,
+              'impressions', k.impressions,
+              'clicks', k.clicks,
+              'search_volume', k.search_volume,
+              'difficulty', k.difficulty,
+              'competition', k.competition_level,
+              'position', k.position
+          )
+        ),
+        ']'
+      ) as keywords FROM pages p 
+      JOIN page_keywords pk ON pk.page_id = p.id 
+      JOIN keywords k ON pk.keyword_id = k.id 
+      WHERE p.site_id = ? GROUP BY p.id 
+      ORDER BY pk.position DESC
+      LIMIT 50;
+    `, [siteId]);
+
+  return rows
+}

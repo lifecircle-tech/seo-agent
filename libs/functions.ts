@@ -75,6 +75,21 @@ export function createBatches(arr: any[], size: number) {
     // Extract a chunk from the current index up to the batch size
     batches.push(arr.slice(i, i + size));
   }
-  
+
   return batches;
+}
+
+export async function isUrlRedirected(url: string) {
+  try {
+    const response = await fetch(url);
+    const finalUrl = response.url;
+
+    if (finalUrl == url) {
+      return false;
+    } else {
+      return true;
+    }
+  } catch (error: any) {
+    throw Error(error.message);
+  }
 }

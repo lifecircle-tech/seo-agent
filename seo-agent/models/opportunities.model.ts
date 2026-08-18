@@ -8,7 +8,9 @@ export interface Opportunity extends RowDataPacket {
   id: string; // VARCHAR(36) UUID
   site_id: number; // INT
   opportunity_type: string; // VARCHAR(64)
-  priority: string | null; // VARCHAR(16)
+  priority: number; // VARCHAR(16)
+  topic: string | null; // VARCHAR(120)
+  description: string | null; // TEXT
   reasoning: string | null; // TEXT
   opportunity_details: Record<string, any> | null; // JSON
   status: STATUS; // VARCHAR(16)
@@ -22,7 +24,9 @@ export interface OpportunityJSON {
   id: string;
   site_id: number;
   opportunity_type: string;
-  priority: string | null;
+  priority: string;
+  topic: string | null;
+  description: string | null;
   reasoning: string | null;
   opportunity_details: Record<string, any> | null;
   status: STATUS;
@@ -40,7 +44,9 @@ export async function createOpportunitiesTable(): Promise<void> {
       id                  VARCHAR(36)   NOT NULL PRIMARY KEY,
       site_id             INT           NOT NULL,
       opportunity_type    VARCHAR(64)   NOT NULL,
-      priority            VARCHAR(16)   NULL,
+      priority            TINYINT       NOT NULL DEFAULT 3,
+      topic               VARCHAR(120)  NULL,
+      description         TEXT          NULL,
       reasoning           TEXT          NULL,
       opportunity_details JSON          NULL,
       status              VARCHAR(16)   NOT NULL DEFAULT 'planned',

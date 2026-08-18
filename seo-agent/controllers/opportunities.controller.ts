@@ -2,10 +2,19 @@ import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { Opportunity, OpportunityJSON } from "../models/opportunities.model.js";
 import { lc_pool, pool } from "../../db.js";
 
+const PRIORITY: Record<number, string> = {
+  1: "High",
+  2: "Medium",
+  3: "Low",
+};
+
 // ── Row serialiser ────────────────────────────────────────────────────
 function toJSON(row: Opportunity): OpportunityJSON {
   return {
     ...row,
+    priority: PRIORITY[row.priority],
+    topic: row.topic ?? null,
+    description: row.description ?? null,
     opportunity_details:
       typeof row.opportunity_details === "string"
         ? JSON.parse(row.opportunity_details)
@@ -34,19 +43,23 @@ export async function createOpportunity(
     | "site_id"
     | "opportunity_type"
     | "priority"
+    | "topic"
+    | "description"
     | "reasoning"
     | "opportunity_details"
   >,
 ): Promise<OpportunityJSON> {
   await pool.query<ResultSetHeader>(
     `INSERT INTO opportunities
-      (id, site_id, opportunity_type, priority, reasoning, opportunity_details)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+      (id, site_id, opportunity_type, priority, topic, description, reasoning, opportunity_details)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.id,
       data.site_id,
       data.opportunity_type,
       data.priority ?? null,
+      data.topic ?? null,
+      data.description ?? null,
       data.reasoning ?? null,
       data.opportunity_details != null
         ? JSON.stringify(data.opportunity_details)
@@ -154,7 +167,12 @@ export async function updateOpportunity(
   data: Partial<
     Pick<
       Opportunity,
-      "opportunity_type" | "priority" | "reasoning" | "opportunity_details"
+      | "opportunity_type"
+      | "priority"
+      | "topic"
+      | "description"
+      | "reasoning"
+      | "opportunity_details"
     >
   >,
 ): Promise<OpportunityJSON | null> {
@@ -168,6 +186,14 @@ export async function updateOpportunity(
   if (data.priority !== undefined) {
     fields.push("priority = ?");
     params.push(data.priority);
+  }
+  if (data.topic !== undefined) {
+    fields.push("topic = ?");
+    params.push(data.topic ?? null);
+  }
+  if (data.description !== undefined) {
+    fields.push("description = ?");
+    params.push(data.description ?? null);
   }
   if (data.reasoning !== undefined) {
     fields.push("reasoning = ?");
@@ -321,6 +347,38 @@ export async function updateStatusToGenerated(id: string) {
   );
   if (result.affectedRows === 0) return null;
   return getOpportunityById(id);
+}
+
+// ── MARK COMPLETED ────────────────────────────────────────────────────
+export async function updateStatusToCompleted(
+  id: string,
+  actionedBy?: string,
+): Promise<OpportunityJSON | null> {
+  const opportunity = await getOpportunityById(id);
+  if (!opportunity) return null;
+
+  if (opportunity.actioned_by) return opportunity;
+
+  const [result] = await pool.query<ResultSetHeader>(
+    `UPDATE opportunities SET status = 'completed', actioned_by = ?, actioned_at = NOW(3) WHERE id = ?`,
+    [actionedBy ?? null, id],
+  );
+  if (result.affectedRows === 0) return null;
+  return getOpportunityById(id);
+}
+
+export async function getPlannedOpportunitiesByType(
+  opportunity_type: string,
+  limit: number = 5,
+): Promise<OpportunityJSON[]> {
+  const [rows] = await pool.query<Opportunity[]>(
+    `SELECT * FROM opportunities
+     WHERE opportunity_type = ? AND status = 'planned'
+     ORDER BY priority ASC, created_at ASC
+     LIMIT ?`,
+    [opportunity_type, limit],
+  );
+  return rows.map(toJSON);
 }
 
 export async function markStatusToCompleted(id: string) {

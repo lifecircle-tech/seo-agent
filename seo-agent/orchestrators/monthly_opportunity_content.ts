@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
+import { randomUUID } from "node:crypto";
 import * as dotenv from "dotenv";
 import { logger } from "../utils/logger.js";
 
@@ -128,7 +128,12 @@ these rules:
     - url_slug,
     - content : Full article with proper H1/H2/H3 formatting in Markdown,
     - suggestions : object of internal and external links suggestion,
-    - images : array of object with image context and alt text
+    - images : [{
+        context: ideas about image to generate,
+        alt_text: Alternate text for image,
+        title: title of the image,
+        description: brief detail about image,
+      }],
     - page_type : "page" or "post" (for WordPress)
 
 8. CONSTRAINTS
@@ -139,7 +144,7 @@ these rules:
    - Match the specified audience throughout.
 `;
 
-  const response = await client.beta.messages.create({
+  const response = await client.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 15000,
     messages: [
@@ -148,7 +153,6 @@ these rules:
         content: prompt,
       },
     ],
-    betas: ["mcp-client-2025-04-04"],
   });
 
   logger.debug(`[step5] Stop reason: ${response.stop_reason}`);
@@ -172,7 +176,7 @@ export async function opportunityContentGeneration() {
 
   const { opportunities } = await getNewOpportunities({
     site_id: 1,
-    opportunity_type: "content",
+    opportunity_type: "new_content",
   });
 
   // const opp = opportunities[0];

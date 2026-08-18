@@ -2,13 +2,7 @@ import { RowDataPacket } from "mysql2/promise";
 import { pool } from "../../db.js";
 
 // ── TYPES ─────────────────────────────────────────────────────────────
-type STATUS =
-  | "pending"
-  | "acknowledged"
-  | "new_page"
-  | "created"
-  | "error"
-  | "rejected";
+type STATUS = 1 | 11 | 21 | 22 | 31 | 41;
 
 export interface PageContent extends RowDataPacket {
   id: string;
@@ -36,7 +30,7 @@ export interface PageContentJSON {
   content: string;
   images: Array<Record<string, any>> | null;
   links: Record<string, any> | null;
-  status: STATUS;
+  status: string;
   url: string;
   acknowledged_by: number | null;
   acknowledged_at: string | null;
@@ -59,7 +53,7 @@ export async function createPageContentTable(): Promise<void> {
       content           LONGTEXT      NOT NULL,
       images            JSON          NOT NULL,
       links             JSON          NOT NULL,
-      status            VARCHAR(16)   NOT NULL DEFAULT 'pending',
+      status            INT           NOT NULL DEFAULT 1,
       url               VARCHAR(512)  NOT NULL,
       acknowledged_by   INT           NULL,
       acknowledged_at   DATETIME(3)   NULL,
@@ -69,6 +63,7 @@ export async function createPageContentTable(): Promise<void> {
       update_details    JSON          NULL,
       keywords_analytics    JSON      NULL,
       created_at        DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+      UNIQUE KEY uq_url_status (url, status, is_new),
       INDEX idx_page_content_status (status),
       INDEX idx_page_content_site_id (site_id),
       INDEX idx_page_acknowledged_by (acknowledged_by)

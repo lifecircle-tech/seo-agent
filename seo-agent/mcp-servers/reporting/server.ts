@@ -145,18 +145,20 @@ export function createWeeklyDigest(
     locations = locationsInsight.sort(
       (a: any, b: any) => b.searches - a.searches,
     )[0];
-    locationsBlock.push(sectionBlock("*Most Searched Locations*\n"));
-    locationsBlock.push(
-      sectionBlock(
-        `    ${locations.name}, ${locations.city} (Search - ${locations.searches})`,
-      ),
-    );
+    if (locations.searches > 0) {
+      locationsBlock.push(sectionBlock("*Most Searched Locations*\n"));
+      locationsBlock.push(
+        sectionBlock(
+          `    ${locations.name}, ${locations.city} (Search - ${locations.searches})`,
+        ),
+      );
+    }
 
     // Most Actioned locations
     locations = locationsInsight.sort(
       (a: any, b: any) => b.actions - a.actions,
     )[0];
-    locationsBlock.push(sectionBlock("*Most Searched Locations*\n"));
+    locationsBlock.push(sectionBlock("*Most Interacted Locations*\n"));
     locationsBlock.push(
       sectionBlock(
         `    ${locations.name}, ${locations.city} (Actions - ${locations.actions})`,
@@ -458,20 +460,8 @@ export function createSitemapAdsDigest(
   const today = new Date().toISOString().split("T")[0];
 
   // ── Sitemap section ───────────────────────────────────────────────────
-  const status = sitemapData?.status;
   const detected = sitemapData?.detected;
   const pingResult = sitemapData?.pingResult;
-
-  const coverageLine = status
-    ? `Coverage: *${status.coverage_pct ?? "?"}%* | GSC sitemaps: ${status.gsc_sitemaps?.length ?? 0}`
-    : "Sitemap data unavailable.";
-
-  const issueLines = status?.issues?.length
-    ? status.issues
-        .slice(0, 5)
-        .map((i: string) => `• ${i}`)
-        .join("\n")
-    : "No sitemap issues.";
 
   const newPageCount: number = detected?.count ?? 0;
   const alreadyPinged: number = detected?.already_pinged ?? 0;
@@ -480,7 +470,7 @@ export function createSitemapAdsDigest(
 
   const pingSummary =
     newPageCount === 0
-      ? "No new pages detected in the last 24 h."
+      ? "No new pages detected in the last 7 days."
       : `${newPageCount} new page(s) detected (${alreadyPinged} already pinged). Pinged: ${pingedOk}/${pingedTotal} to GSC + Bing.`;
 
   // ── Ads section ───────────────────────────────────────────────────────
@@ -536,7 +526,6 @@ export function createSitemapAdsDigest(
       elements: [{ type: "mrkdwn", text: `*Report date:* ${today}` }],
     },
     { type: "divider" },
-    sectionBlock(`*Sitemap Status*\n${coverageLine}\n${issueLines}`),
     sectionBlock(`*Page Indexing*\n${pingSummary}`),
     { type: "divider" },
     sectionBlock(`*Top Converting Keywords (Last 30 Days)*\n${topKwLines}`),

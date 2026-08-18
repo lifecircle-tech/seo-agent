@@ -171,22 +171,29 @@ export async function getPageContent(
       .replace(/^\/|\/$/g, "")
       .split("/")
       .pop() ?? "";
-  const pageType = type == "post" ? "posts" : "pages";
+  // const pageType = type == "post" ? "posts" : "pages";
 
-  const result = (await wpFetch(
-    siteId,
-    "GET",
-    `/${pageType}?slug=${encodeURIComponent(slug)}&_fields=id,content`,
-  )) as any[];
+  let wpPage = null;
+  for (const pageType of ["pages", "posts"]) {
+    const result = (await wpFetch(
+      siteId,
+      "GET",
+      `/${pageType}?slug=${encodeURIComponent(slug)}&_fields=id,content`,
+    )) as any[];
+    if (result.length > 0) {
+      wpPage = result[0];
+      break;
+    }
+  }
 
-  if (!result.length) throw new Error(`Post not found for slug: ${slug}`);
+  if (!wpPage) throw new Error(`Post not found for slug: ${slug}`);
 
   let rawContent = "";
 
   if (type === "post") {
-    rawContent = extractWordPressContent(result[0].content.rendered);
+    rawContent = extractWordPressContent(wpPage.content.rendered);
   } else {
-    rawContent = extractFAQSection(result[0].content.rendered);
+    rawContent = extractFAQSection(wpPage.content.rendered);
   }
   logger.info(`[page-content.service] Extracted Content for ${url}`);
 

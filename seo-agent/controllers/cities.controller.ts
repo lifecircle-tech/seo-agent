@@ -119,7 +119,7 @@ export async function updateCityConfig(
   data: Partial<
     Pick<
       CityConfig,
-      "city" | "state" | "country" | "target_keywords" | "services"
+      "city" | "state" | "country" | "services"
     >
   >,
 ): Promise<CityConfigJSON | null> {
@@ -137,10 +137,6 @@ export async function updateCityConfig(
   if (data.country !== undefined) {
     fields.push("country = ?");
     params.push(data.country);
-  }
-  if (data.target_keywords !== undefined) {
-    fields.push("target_keywords = ?");
-    params.push(JSON.stringify(data.target_keywords));
   }
   if ("services" in data) {
     fields.push("services = ?");

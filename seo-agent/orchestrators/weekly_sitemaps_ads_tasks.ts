@@ -49,14 +49,15 @@ async function step1SitemapPing(siteId: number) {
     `[step1] Sitemap status + new-page ping for site_id=${siteId}...`,
   );
 
-  const status = await getSitemapStatus(siteId);
-  logger.info(
-    `[step1] GSC sitemaps=${status.gsc_sitemaps.length} coverage=${status.coverage_pct}% issues=${status.issues.length}`,
-  );
+  const status = null;
+  // await getSitemapStatus(siteId);
+  // logger.info(
+  //   `[step1] GSC sitemaps=${status.gsc_sitemaps.length} coverage=${status.coverage_pct}% issues=${status.issues.length}`,
+  // );
 
   const detected = await detectNewPages(siteId);
   logger.info(
-    `[step1] New pages in last 24h: ${detected.count} (${detected.already_pinged} already pinged)`,
+    `[step1] New pages in last 7 days: ${detected.count} (${detected.already_pinged} already pinged)`,
   );
 
   let pingResult = null;
@@ -116,7 +117,9 @@ async function runWeeklySitemapAdsTasks(siteId: number) {
   const errors = {} as StepError;
 
   logger.info(`[weekly_site_ads] ══════════════════════════════════════════`);
-  logger.info(`[weekly_site_ads] Starting weekly Sitemaps-Ads pipeline — site_id=${siteId}`);
+  logger.info(
+    `[weekly_site_ads] Starting weekly Sitemaps-Ads pipeline — site_id=${siteId}`,
+  );
   logger.info(`[weekly_site_ads] ══════════════════════════════════════════`);
 
   // ── Step 1: Sitemap ping ──────────────────────────────────────────
@@ -147,7 +150,9 @@ async function runWeeklySitemapAdsTasks(siteId: number) {
 
   // ── Step 4: Sitemap & ads digest → Slack ──────────────────────────
   if (!DRY_RUN) {
-    logger.info(`[step4] Posting sitemap & ads digest for site_id=${siteId}...`);
+    logger.info(
+      `[step4] Posting sitemap & ads digest for site_id=${siteId}...`,
+    );
     try {
       const site = sitesConfig.find((s) => s.site_id === siteId);
       await postSitemapAdsDigestToSlack(
@@ -173,9 +178,7 @@ export async function weeklySitemapAdsTasks() {
 
   // Fetch all configuration data from MySQL via controllers
   // Using a large limit to ensure all configs are loaded for the pipeline
-  const [sitesRes] = await Promise.all([
-    listSitesConfigs({ limit: 1000 }),
-  ]);
+  const [sitesRes] = await Promise.all([listSitesConfigs({ limit: 1000 })]);
 
   // 1. Populate Sites Configuration
   sitesConfig = sitesRes.sites;
