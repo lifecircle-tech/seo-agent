@@ -241,49 +241,6 @@ export function createMonthlyDiscoveryDigest(data: Record<string, any>) {
   };
 }
 
-export async function writeToSheet(
-  siteId: number,
-  tabName: string,
-  rows: unknown[][],
-) {
-  logger.info(
-    `============= Sheets GSC Auth *************** site_id: ${siteId}`,
-  );
-  const sheets = getSheetsClient();
-  const spreadsheetId = getSpreadsheetId();
-
-  logger.info(`========== Appending to Sheet ********** ${rows.length}`);
-  const result = await sheets.spreadsheets.values.append({
-    spreadsheetId,
-    range: `${tabName}!A3`,
-    valueInputOption: "USER_ENTERED",
-    insertDataOption: "INSERT_ROWS",
-    requestBody: { values: rows },
-  });
-
-  logger.info("========== Sheet Updated **********");
-  return {
-    ok: true,
-    tab: tabName,
-    updated_rows: result.data.updates?.updatedRows ?? 0,
-  };
-}
-
-export async function logRecommendation(
-  siteId: number,
-  module: string,
-  recommendation: string,
-  outcome: string,
-) {
-  const VALID_OUTCOMES = ["pending", "accepted", "rejected", "successful"];
-  if (!VALID_OUTCOMES.includes(outcome)) {
-    throw new Error(`outcome must be one of: ${VALID_OUTCOMES.join(", ")}`);
-  }
-  const date = new Date().toISOString();
-  const rows = [[date, siteId, module, recommendation, outcome]];
-  return writeToSheet(siteId, "Recommendation Outcomes", rows);
-}
-
 const postWeeklyMessageToSlack = async (
   site_id: number,
   site_url: string,
@@ -303,43 +260,6 @@ const postMonthlyDiscoveryToSlack = async (data: Record<string, any>) => {
   const { message = "", blocks = [] } = messageData;
 
   return await postSlackMessage(message, blocks);
-};
-
-const writeKeywordRankingsToSheet = async (
-  site_id: number,
-  rankings: Array<Record<string, any>>,
-) => {
-  const rows = [
-    ["", "", "", "", "", ""],
-    ...rankings.map((item) => [
-      new Date(),
-      item.keyword,
-      item.position,
-      item.clicks,
-      item.impressions,
-      item.ctr,
-    ]),
-  ];
-
-  return await writeToSheet(site_id, "Rankings", rows);
-};
-
-const writeRecommendationsToSheet = async (
-  site_id: number,
-  recommendations: Array<Record<string, any>>,
-) => {
-  const rows = [
-    ["", "", "", "", ""],
-    ...recommendations.map((item) => [
-      new Date(),
-      site_id,
-      item.module,
-      item.recommendation_text,
-      "pending",
-    ]),
-  ];
-
-  return await writeToSheet(site_id, "Recommendation Outcomes", rows);
 };
 
 export function createBacklinkDigest(
@@ -567,6 +487,4 @@ export {
   postMonthlyDiscoveryToSlack,
   postBacklinkDigestToSlack,
   postSitemapAdsDigestToSlack,
-  writeKeywordRankingsToSheet,
-  writeRecommendationsToSheet,
 };

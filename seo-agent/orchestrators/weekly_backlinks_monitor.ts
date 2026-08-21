@@ -26,7 +26,7 @@ interface SitesConfig {
   domain: string;
   brand_name: string;
   industry: string;
-  about: string
+  about: string;
 }
 
 interface CompetitorsConfig {
@@ -61,7 +61,10 @@ async function backlinkMonitor(siteId: number) {
   ]);
 
   if (newLinks) {
-    logger.info("NEW LINKS ", newLinks.backlinks.map((item) => item.url_from+" "+item.url_to));
+    logger.info(
+      "NEW LINKS ",
+      newLinks.backlinks.map((item) => item.url_from + " " + item.url_to),
+    );
     await upsertBacklinks(
       newLinks.backlinks.map((backlink) => ({
         id: randomUUID(),
@@ -81,7 +84,10 @@ async function backlinkMonitor(siteId: number) {
     );
   }
   if (lostLinks) {
-    logger.info("NEW LINKS ", lostLinks.backlinks.map((item) => item.url_from+" "+item.url_to));
+    logger.info(
+      "NEW LINKS ",
+      lostLinks.backlinks.map((item) => item.url_from + " " + item.url_to),
+    );
     await upsertBacklinks(
       lostLinks.backlinks.map((backlink) => ({
         id: randomUUID(),
@@ -101,7 +107,10 @@ async function backlinkMonitor(siteId: number) {
     );
   }
   if (toxicLinks) {
-    logger.info("NEW LINKS ", toxicLinks.toxic_links.map((item) => item.url_from+" "+item.url_to));
+    logger.info(
+      "NEW LINKS ",
+      toxicLinks.toxic_links.map((item) => item.url_from + " " + item.url_to),
+    );
     await upsertBacklinks(
       toxicLinks.toxic_links.map((backlink) => ({
         id: randomUUID(),
@@ -146,23 +155,23 @@ async function linkProspects(siteId: number) {
   logger.info(`[step2] Done`);
 
   await upsertBacklinks(
-      prospects.prospects.map((backlink) => ({
-        id: randomUUID(),
-        site_id: siteId,
-        owner_type: "",
-        url_from: backlink,
-        url_to: "",
-        domain_from_rank: null,
-        anchor_details: null,
-        is_new: false,
-        is_lost: false,
-        is_broken: false,
-        is_prospect: true,
-        first_seen: null,
-        last_seen: null,
-        spam_score: null,
-      })),
-    );
+    prospects.prospects.map((backlink) => ({
+      id: randomUUID(),
+      site_id: siteId,
+      owner_type: "",
+      url_from: backlink.url_from,
+      url_to: "",
+      domain_from_rank: null,
+      anchor_details: null,
+      is_new: false,
+      is_lost: false,
+      is_broken: false,
+      is_prospect: true,
+      first_seen: null,
+      last_seen: null,
+      spam_score: backlink.spam_score,
+    })),
+  );
   return prospects;
 }
 

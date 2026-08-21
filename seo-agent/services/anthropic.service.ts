@@ -15,13 +15,30 @@ export async function getAIResponse(
   params: MessageCreateParamsNonStreaming,
 ): Promise<Message> {
   logger.debug(`Running prompt for ${label}`);
-  
+
   const client: Anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
 
   try {
     return await client.messages.create(params);
+  } catch (exc: any) {
+    throw new Error(`[${label}] ${exc.message}`);
+  }
+}
+
+export async function getStreamedAIResponse(
+  label: string,
+  params: MessageCreateParamsNonStreaming,
+): Promise<Message> {
+  logger.debug(`Running prompt for ${label}`);
+
+  const client: Anthropic = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+  });
+
+  try {
+    return await client.messages.stream(params).finalMessage();
   } catch (exc: any) {
     throw new Error(`[${label}] ${exc.message}`);
   }

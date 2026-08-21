@@ -15,7 +15,7 @@ export interface FindLinkProspectsResult {
   site_id: number;
   our_domain: string;
   competitors_checked: string[];
-  prospects: string[];
+  prospects: {url_from: string; spam_score: number } [];
   count: number;
 }
 
@@ -68,12 +68,17 @@ export async function findLinkProspects(
     { rank: number; competitors: Set<string> }
   >();
 
-  const prospects = new Set();
+  const prospects = new Map();
   rawItems.forEach((item) => {
     const intersections = item.domain_intersection
       ? (Object.values(item.domain_intersection) as Record<string, any>[])
       : [];
-    prospects.add(getDomain(intersections[0].target));
+
+    !prospects.has(getDomain(intersections[0].target)) &&
+      prospects.set(getDomain(intersections[0].target), {
+        url_from: getDomain(intersections[0].target),
+        spam_score: intersections[0].backlinks_spam_score,
+      });
   });
   logger.debug("backlinks prospect ", prospects.size);
 
@@ -109,11 +114,13 @@ export async function findLinkProspects(
   //     )
   //     .slice(0, 30);
 
+  const temp_prospect = Array.from(prospects.values());
+
   return {
     site_id: siteId,
     our_domain: ourDomain,
     competitors_checked: competitorDomains,
-    prospects: [...prospects] as string[],
+    prospects: temp_prospect,
     count: prospects.size,
   };
 }

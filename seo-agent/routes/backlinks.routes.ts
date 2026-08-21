@@ -9,8 +9,9 @@ import {
   updateBacklink,
   deleteBacklink,
   upsertBacklinks,
+  updateBacklinkStatus,
 } from "../controllers/backlinks.controller.js";
-import { requireAuth } from "../../middleware/auth.middleware.js";
+import { AuthRequest, requireAuth } from "../../middleware/auth.middleware.js";
 import { logger } from "../utils/logger.js";
 
 export function backlinksRouter(io: SocketIOServer): Router {
@@ -157,6 +158,63 @@ export function backlinksRouter(io: SocketIOServer): Router {
       res.status(500).json({ success: false, error: "Database error" });
     }
   });
+
+  // POST /backlinks/:id/added  → status = 1 (added)
+  router.post(
+    "/:id/added",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const { userId } = (req as AuthRequest).user!;
+        const record = await updateBacklinkStatus(req.params.id, 1, Number(userId));
+        if (!record)
+          return res.status(404).json({ success: false, error: "Backlink not found" });
+        io.emit("backlink:updated", record);
+        res.json({ success: true, record });
+      } catch (err) {
+        logger.error("[backlinks] add status error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
+      }
+    },
+  );
+
+  // POST /backlinks/:id/ignored  → status = 5 (ignored)
+  router.post(
+    "/:id/ignored",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const { userId } = (req as AuthRequest).user!;
+        const record = await updateBacklinkStatus(req.params.id, 5, Number(userId));
+        if (!record)
+          return res.status(404).json({ success: false, error: "Backlink not found" });
+        io.emit("backlink:updated", record);
+        res.json({ success: true, record });
+      } catch (err) {
+        logger.error("[backlinks] ignore status error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
+      }
+    },
+  );
+
+  // POST /backlinks/:id/removed  → status = 6 (removed)
+  router.post(
+    "/:id/removed",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const { userId } = (req as AuthRequest).user!;
+        const record = await updateBacklinkStatus(req.params.id, 6, Number(userId));
+        if (!record)
+          return res.status(404).json({ success: false, error: "Backlink not found" });
+        io.emit("backlink:updated", record);
+        res.json({ success: true, record });
+      } catch (err) {
+        logger.error("[backlinks] remove status error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
+      }
+    },
+  );
 
   // DELETE /backlinks/:id
   router.delete("/:id", requireAuth, async (req: Request, res: Response) => {

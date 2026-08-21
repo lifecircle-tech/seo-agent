@@ -1,6 +1,13 @@
 import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { Backlink, BacklinkJSON } from "../models/backlinks.model.js";
-import { pool } from "../../db.js";
+import { lc_pool, pool } from "../../db.js";
+
+// ── Status labels ─────────────────────────────────────────────────────
+const BACKLINK_STATUS: Record<number, string> = {
+  1: "added",
+  5: "ignored",
+  6: "removed",
+};
 
 // ── Row serialiser ────────────────────────────────────────────────────
 function toJSON(row: Backlink): BacklinkJSON {
@@ -9,10 +16,16 @@ function toJSON(row: Backlink): BacklinkJSON {
     is_new: Boolean(row.is_new),
     is_lost: Boolean(row.is_lost),
     is_broken: Boolean(row.is_broken),
+    status: row.status != null ? (BACKLINK_STATUS[row.status] ?? String(row.status)) : null,
     anchor_details:
       typeof row.anchor_details === "string"
         ? JSON.parse(row.anchor_details)
         : row.anchor_details,
+    actioned_at: row.actioned_at
+      ? row.actioned_at instanceof Date
+        ? row.actioned_at.toISOString()
+        : String(row.actioned_at)
+      : null,
     created_at:
       row.created_at instanceof Date
         ? row.created_at.toISOString()
@@ -129,8 +142,25 @@ export async function listBacklinks(filters: {
     ),
   ]);
 
+  const userIds = new Set<number>();
+  rows.forEach((row) => {
+    if (row.actioned_by) userIds.add(row.actioned_by);
+  });
+
+  const userMap: Record<number, string> = {};
+  if (userIds.size > 0) {
+    const [users] = await lc_pool.query<any[]>(
+      `SELECT emp_name, det_id FROM life_emp_details WHERE det_id IN (?)`,
+      [[...userIds]],
+    );
+    users.forEach((u) => (userMap[u.det_id] = u.emp_name));
+  }
+
   const total = Number((countRow as RowDataPacket[])[0].count);
-  const backlinks = (rows as Backlink[]).map(toJSON);
+  const backlinks = (rows as Backlink[]).map(toJSON).map((b) => ({
+    ...b,
+    actioned_user_name: b.actioned_by ? userMap[b.actioned_by] ?? null : null,
+  }));
   return { backlinks, total, limit, offset };
 }
 
@@ -289,4 +319,20 @@ export async function upsertBacklinks(
   );
 
   return result.affectedRows;
+}
+
+// ── STATUS ACTIONS ────────────────────────────────────────────────────
+// status 1 = added, 6 = removed
+
+export async function updateBacklinkStatus(
+  id: string,
+  status: 1 | 5 | 6,
+  actionedBy: number,
+): Promise<BacklinkJSON | null> {
+  const [result] = await pool.query<ResultSetHeader>(
+    `UPDATE backlinks SET status = ?, actioned_by = ?, actioned_at = NOW(3) WHERE id = ?`,
+    [status, actionedBy, id],
+  );
+  if (result.affectedRows === 0) return null;
+  return getBacklinkById(id);
 }
