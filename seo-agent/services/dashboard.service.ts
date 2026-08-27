@@ -59,10 +59,22 @@ export async function discoverNewKeywordsForSite(siteId: number) {
   }
 
   let site = await getSiteAndCitiesBySiteID(siteId);
-  site = { ...site, cities: site.cities.split(",") };
+  const temp_cities = JSON.parse(site.cities);
+  site = {
+    ...site,
+    cities: temp_cities.map((city: any) => ({
+      city: city.city,
+      state: city.state,
+      country: city.country,
+      services: city.services,
+      get fullLocation() {
+        return `${this.city},${this.state},${this.country}`;
+      },
+    })),
+  };
 
   console.log("SITES ", site);
-  const rawKeywords = await discoverSiteKeywords(site.domain);
+  const rawKeywords = await discoverSiteKeywords(site.domain, site.cities);
 
   const pages = new Map();
 

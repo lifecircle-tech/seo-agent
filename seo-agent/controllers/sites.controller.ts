@@ -142,9 +142,21 @@ export async function deleteSiteConfig(id: string): Promise<boolean> {
 }
 
 export async function getSiteAndCitiesBySiteID(siteId: number) {
+  await pool.query("SET SESSION group_concat_max_len = 10000");
   const [siteRows] = await pool.query<SiteConfig[]>(
     `
-    SELECT s.*, GROUP_CONCAT(c.city) AS cities FROM sites_config s
+    SELECT s.*, CONCAT(
+      '[',
+      GROUP_CONCAT(
+        JSON_OBJECT(
+          'city', c.city,
+          'state', c.state,
+          'country', c.country,
+          'services', c.services
+        )
+      ),
+      ']'
+    ) AS cities FROM sites_config s
     LEFT JOIN cities_config c ON c.site_id = s.site_id
     WHERE s.site_id = ? GROUP BY s.site_id
     `,

@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import Anthropic from "@anthropic-ai/sdk";
 import {
   Message,
   MessageCreateParamsNonStreaming,
@@ -148,9 +147,6 @@ async function analyzeWithAI(
   pages: any[],
   competitors_keyword_gap: any[],
 ) {
-  const client: Anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
   logger.info("Analyzing opportunities by AI...");
 
   let prompt_keywords = keywords.map((k) => {
