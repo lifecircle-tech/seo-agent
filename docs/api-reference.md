@@ -974,7 +974,7 @@ Ranks the top 10 citation issues by impact score.
 Scans pages for internal linking opportunities, detects orphan pages, and generates a hub-and-spoke structure using Claude.
 Credentials: `ANTHROPIC_API_KEY`.
 Requires database access to `keywords_config` table and WordPress REST API.
-Model: `claude-sonnet-4-6` with 3-attempt exponential backoff (2 s, 5 s, 10 s).
+Model: `claude-sonnet-5` with 3-attempt exponential backoff (2 s, 5 s, 10 s).
 
 ---
 
@@ -1090,7 +1090,7 @@ Generates an AI-powered hub-and-spoke internal linking plan for the site.
 AI-generates SEO-optimised local service landing pages and creates WordPress drafts.
 Credentials: `ANTHROPIC_API_KEY`.
 Requires database access to `cities_config` table and WordPress REST API.
-Model: `claude-sonnet-4-6`.
+Model: `claude-sonnet-5`.
 **All pages are created as drafts and never auto-published.**
 
 ---

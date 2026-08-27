@@ -31,7 +31,11 @@ function fmt(d: Date): string {
 // GET /sites/:site_id/overview
 router.get("/:site_id/overview", async (req: Request, res: Response) => {
   const { site_id } = req.params;
-  const { site_url } = req.query as { site_url?: string };
+  const { site_url, start_date, end_date } = req.query as {
+    site_url?: string;
+    start_date?: string;
+    end_date?: string;
+  };
 
   // Open alerts count — direct DB query instead of internal fetch
   let open_alerts = 0;
@@ -56,9 +60,14 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
 
     const sc = google.searchconsole({ version: "v1", auth: getGscAuth() });
 
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - 28);
+    const end = end_date ? new Date(end_date) : new Date();
+    const start = start_date ? new Date(start_date) : new Date(end);
+    if (!start_date) start.setDate(end.getDate() - 28);
+
+    const dayCount = Math.max(
+      1,
+      Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1,
+    );
 
     const [avgPos, posRes, clickRes] = await Promise.all([
       sc.searchanalytics.query({
@@ -67,6 +76,16 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
           startDate: fmt(start),
           endDate: fmt(end),
           dimensions: [],
+          dimensionFilterGroups: [
+            {
+              filters: [
+                {
+                  dimension: "country",
+                  expression: "ind",
+                },
+              ],
+            },
+          ],
           rowLimit: 1,
         },
       }),
@@ -76,7 +95,17 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
           startDate: fmt(start),
           endDate: fmt(end),
           dimensions: ["date"],
-          rowLimit: 28,
+          dimensionFilterGroups: [
+            {
+              filters: [
+                {
+                  dimension: "country",
+                  expression: "ind",
+                },
+              ],
+            },
+          ],
+          rowLimit: dayCount,
         },
       }),
       sc.searchanalytics.query({
@@ -85,8 +114,18 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
           startDate: fmt(start),
           endDate: fmt(end),
           dimensions: ["date"],
+          dimensionFilterGroups: [
+            {
+              filters: [
+                {
+                  dimension: "country",
+                  expression: "ind",
+                },
+              ],
+            },
+          ],
           dataState: "all",
-          rowLimit: 28,
+          rowLimit: dayCount,
         },
       }),
     ]);

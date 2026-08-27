@@ -351,6 +351,7 @@ export async function createNewPageContent(
     | "site_id"
     | "page_meta_details"
     | "content"
+    | "reasoning"
     | "url"
     | "images"
     | "links"
@@ -359,11 +360,12 @@ export async function createNewPageContent(
 ) {
   await pool.query<ResultSetHeader>(
     `INSERT INTO page_content 
-      (id, site_id, page_meta_details, content, images, links, url, status, keywords_analytics, is_new) 
+      (id, site_id, page_meta_details, content, reasoning, images, links, url, status, keywords_analytics, is_new) 
     VALUES (?, ?, ?, ?, ?, ?, ?, 11, ?, true)
     ON DUPLICATE KEY UPDATE
       page_meta_details   = COALESCE(VALUES(page_meta_details), page_meta_details),
       content             = COALESCE(VALUES(content), content),
+      reasoning           = COALESCE(VALUES(reasoning), reasoning),
       images              = COALESCE(VALUES(images), images),
       links               = COALESCE(VALUES(links), links),
       keywords_analytics  = COALESCE(VALUES(keywords_analytics), keywords_analytics),
@@ -374,6 +376,7 @@ export async function createNewPageContent(
       data.site_id,
       JSON.stringify(data.page_meta_details),
       data.content,
+      data.reasoning,
       JSON.stringify(data.images),
       JSON.stringify(data.links),
       data.url,

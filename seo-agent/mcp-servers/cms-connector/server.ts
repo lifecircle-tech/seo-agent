@@ -15,71 +15,6 @@ function dateRange(days: number): { startDate: string; endDate: string } {
   return { startDate: fmtDate(start), endDate: fmtDate(end) };
 }
 
-// ── Tool: get_page ────────────────────────────────────────────────────
-export async function getPage(siteId: number, pageUrl: string) {
-  // Extract slug from URL path
-  const parsed = new URL(pageUrl);
-  const slug =
-    parsed.pathname
-      .replace(/^\/|\/$/g, "")
-      .split("/")
-      .pop() ?? "";
-
-  // Try pages first, then posts
-  let wpPage = null;
-  logger.info("============= CMS Getting Page ***************", {
-    pageUrl,
-    slug,
-  });
-  for (const postType of ["pages", "posts"]) {
-    const results = (await wpFetch(
-      siteId,
-      "GET",
-      `/${postType}?slug=${encodeURIComponent(slug)}&_fields=id,title,type,modified,link,rank_math_meta,meta,content&context=edit`,
-    )) as Record<string, unknown>[];
-    if (results.length > 0) {
-      wpPage = results[0];
-      break;
-    }
-  }
-  if (!wpPage) {
-    logger.warn(`[getPage] Page not found for URL: ${pageUrl}`);
-    return null;
-  }
-
-  logger.info("============= CMS Page Found ***************");
-
-  // Extract meta description (RankMath preferred, custom meta fallback)
-  const rank_math = wpPage.rank_math_meta as
-    | Record<string, unknown>
-    | undefined
-    | null;
-  const meta = wpPage.meta as Record<string, unknown> | undefined | null;
-  const metaDescription =
-    (rank_math?.description as string | undefined) ??
-    (meta?.meta_description as string | undefined) ??
-    null;
-  const title = rank_math?.title as string;
-  const content = wpPage.content as { raw: string };
-  const primary_keywords = ((rank_math?.focus_keyword as string) || "").split(
-    ",",
-  )[0];
-  const secondary_keywords = ((rank_math?.focus_keyword as string) || "").split(
-    ",",
-  );
-
-  return {
-    id: wpPage.id,
-    url: wpPage.link ?? pageUrl,
-    type: wpPage.type,
-    title: title,
-    meta_description: metaDescription,
-    last_modified: wpPage.modified,
-    primary_keywords,
-    secondary_keywords,
-  };
-}
-
 // ── Tool: list_pages ──────────────────────────────────────────────────
 export async function listPages(
   siteId: number,
@@ -266,6 +201,7 @@ export interface ApprovalQueueItem {
   suggested_content?: Record<string, unknown>;
   preview_url?: string;
   reason?: string;
+  update_page?: boolean;
 }
 
 export async function createApprovalQueue(items: ApprovalQueueItem[]): Promise<{
@@ -295,6 +231,7 @@ export async function createApprovalQueue(items: ApprovalQueueItem[]): Promise<{
           suggested_content: item.suggested_content,
           preview_url: item.preview_url ?? null,
           reason: item.reason,
+          update_page: item.update_page ?? false,
         }),
       });
 
@@ -380,7 +317,7 @@ const getPagesWithHighImpressionLowCtr = async (
   let pages: any = await getImpressionsVsCtr(siteId, siteUrl, days);
   pages = pages.opportunities;
 
-  const numberOfExtractionsPerDay = 30;
+  const numberOfExtractionsPerDay = 50;
   const startIndex = getStartIndex(new Date(), numberOfExtractionsPerDay) ?? 0;
 
   if (typeof startIndex === "number" && startIndex < pages.length) {

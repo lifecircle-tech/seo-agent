@@ -226,7 +226,12 @@ export async function getCompetitorBacklinksDomain(
     {
       targets,
       exclude_targets: [excludeTargets],
-      backlinks_filters: [["domain_from_rank", ">", 0]],
+      intersection_mode: "partial",
+      backlinks_filters: [
+        ["domain_from_rank", ">", 0],
+        "and",
+        ["backlink_spam_score", "<", 50],
+      ],
       limit: 20,
     },
   ]);
@@ -251,6 +256,17 @@ export async function getBacklinksTimeSeries(
       },
     ],
   );
+
+  const items = response?.tasks?.[0]?.result?.[0]?.items ?? null;
+  return items;
+}
+
+export async function getSpamScoreOfDomains(domains: string[]) {
+  const response = await dfsPost("/backlinks/bulk_spam_score/live", [
+    {
+      targets: domains,
+    },
+  ]);
 
   const items = response?.tasks?.[0]?.result?.[0]?.items ?? null;
   return items;

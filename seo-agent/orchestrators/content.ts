@@ -54,43 +54,71 @@ async function callWithRetry(
   throw lastExc;
 }
 
+// TODO: Add sitemap pages with canonical and redirection
 export async function analyseWithAI(
   content: string,
-  details: Record<string, any> = {},
+  page_details: Record<string, any> = {},
+  page_performance: any[] = [],
+  keyword_performance: any[] = [],
+  paa: any[] = [],
+  site_pages: any[],
 ) {
   try {
     const client: Anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
     });
 
-    logger.info("[page-content] Details", details);
+    logger.info("[page-content] Details", page_details);
 
-    const prompt = `You are a content writer assistant.
-  Here are some context about the content you will analyze:
-  ${JSON.stringify(details, null, 2)}
+    const prompt = `You are an SEO content strategist.
+  
+  Analyze the WordPress page below along with its search performance and keyword
+  performance data, then suggest an improved title tag and meta description to
+  increase CTR and rankings.
 
-  Rules to follow when rewriting the content:
-  - primary keyword should be present in h1 heading tag (if present in content)
-  - secondary keywords should me present in subheading (if present in content)
+  CURRENT PAGE CONTENT (Markdown):
+  ${content}
+  
+  PAGE DETAILS:
+  ${JSON.stringify(page_details)}
+
+  PAGE PERFORMANCE (last 28 days):
+  ${JSON.stringify(page_performance)}
+
+  KEYWORD PERFORMANCE (last 28 days):
+  ${JSON.stringify(keyword_performance)}
+
+  PEOPLE ALSO ASK:
+  ${JSON.stringify(paa.map((q) => q.question))}
+
+  SITE PAGES (Internal link opportunities):
+  ${JSON.stringify(site_pages)};
+
+  This is a blog post. Rewrite/refresh the FULL page content in Markdown to
+  improve ranking — keep what already works, strengthen weak or outdated sections,
+  add depth around the target keywords, and weave in the "People Also Ask"
+  questions as a dedicated FAQ section near the end.
+
+  RULES:
+  - primary keyword should be present in h1 heading tag
+  - secondary keywords should me present in subheading
   - primary and secondary keywords should be present in contents
   - primary keyword should be present in the first 10% of the content
   - minimum content should be 1500 words
   - maximum content should be 2000 words
   - relate the content with the title and description
 
-  Analyze the following content(in markdown format) and rewrite the content for better readability and SEO that matches the context above.:
-  ${content}
+  Do not fabricate statistics, studies, or metrics not present in the data above.
+  If page is city specific, omit the PAA questions that contains different city
 
-  Include 3-4 FAQs at the end of the content with answers. The FAQs should be relevant to the content and should be in markdown format.
-  Exclude Customer Reviews, Related Blogs, Recent Blogs and Testimonials from the rewritten content.
-  
-  Return the JSON object with keys:
-  - content: Markdown format, preserving the structure and any important details,
-  - reason: reason for any changes, provide detailed reason and its impact.
+  Return Only a JSON object with keys:
+  - content: Markdown format, preserving the structure and any important details
+  - reason: simple and brief about what changed and the expected SEO impact
+  - source: list source about any information added from outside like testimonial, pricing
   `;
 
     const response = await callWithRetry(client, "step2", {
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
       max_tokens: 10000,
       messages: [
         {
@@ -123,39 +151,55 @@ export async function analyseWithAI(
 
 export async function analyseFAQwithAI(
   content: string,
-  details: Record<string, any> = {},
+  page_details: Record<string, any> = {},
+  page_performance: any[] = [],
+  keyword_performance: any[] = [],
+  paa: any[] = [],
 ) {
   try {
     const client: Anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
     });
 
-    logger.info("[page-content.faq] Details", details);
+    logger.info("[page-content.faq] Details", page_details);
 
-    let prompt = `You are a content writer assistant.
-  Here are some context about the content you will analyze:
-  ${JSON.stringify(details, null, 2)}
-  `;
+    let prompt = `You are an SEO content strategist.
+  
+    Analyze the WordPress page below along with its search performance and keyword
+    performance data, then suggest an improved title tag and meta description to
+    increase CTR and rankings.
 
-    if (content.length) {
-      prompt =
-        prompt +
-        `\nBelow are the FAQs in markdown format, analyze and rewrite the FAQs for SEO optimization`;
-    } else {
-      prompt = prompt + `\nConsidering the context above, write 3-4 FAQs`;
-    }
-
-    prompt =
-      prompt +
-      `\nFAQs should be in markdown format.
+    CURRENT PAGE CONTENT (Markdown):
+    ${content}
     
-  Return the JSON object with keys:
-  - content: Markdown format, preserving the structure and any important details,
-  - reason: reason for any changes.
-  `;
+    PAGE DETAILS:
+    ${JSON.stringify(page_details)}
+
+    PAGE PERFORMANCE (last 28 days):
+    ${JSON.stringify(page_performance)}
+
+    KEYWORD PERFORMANCE (last 28 days):
+    ${JSON.stringify(keyword_performance)}
+
+    PEOPLE ALSO ASK:
+    ${JSON.stringify(paa.map((q) => q.question))}
+
+    This is a static page (not a blog post). Do NOT rewrite the full page —
+    only produce an improved/expanded FAQ section in Markdown (use "## Question"
+    headings) that answers the target keywords' intent, incorporating the "People
+    Also Ask" questions where relevant.
+
+    Do not fabricate statistics, studies, or metrics not present in the data above.
+    If page is city specific, omit the PAA questions that contains different city
+
+    Return Only a JSON object with keys:
+    - content: Markdown format, preserving the structure and any important details
+    - reason: simple and brief about what changed and the expected SEO impact
+    - source: list source about any information added from outside like testimonial, pricing
+    `;
 
     const response = await callWithRetry(client, "step2", {
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
       max_tokens: 10000,
       messages: [
         {

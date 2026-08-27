@@ -13,8 +13,12 @@ import {
 } from "../controllers/page-content.controller.js";
 import { analyseFAQwithAI, analyseWithAI } from "../orchestrators/content.js";
 import { io } from "../../server.js";
-import { getKeywordsOverview } from "./dataForSEO.service.js";
+import { getKeywordsOverview, getPaaQuestions } from "./dataForSEO.service.js";
 import { logger } from "../utils/logger.js";
+import { getDomain } from "../../libs/functions.js";
+import { getPagePerformance } from "./google.service.js";
+import { getKeywordRankings } from "../mcp-servers/keyword-tracker/server.js";
+import { getAllWPPages } from "./wordpress.service.js";
 
 const turndown = new TurndownService({
   headingStyle: "atx",
@@ -117,7 +121,7 @@ export function extractFAQSection(html: string): string {
 
   return items
     .map(({ question, answer }) => `## ${question}\n\n${answer}`)
-    .join("\n\n---\n\n");
+    .join("\n\n");
 }
 
 /**
@@ -312,13 +316,45 @@ export async function runPageContentAgent(id: string) {
     }
 
     const url = original_content.url as string;
-
-    // get keywords overview
-    const keywords_overview = await getFocusKeywordsOverview(
-      original_content.focus_keywords,
-    );
+    const site_domain = getDomain(url);
+    const target_keywords = original_content.focus_keywords;
 
     const page = await getAcknowledgedPageByUrl(url);
+
+    const pageDetails = {
+      url: original_content.url,
+      type: original_content.type,
+      current_title: original_content.current_title,
+      current_description: original_content.current_description,
+      primary_keyword: (original_content.focus_keywords as string[])[0] || null,
+      secondary_keywords: original_content.focus_keywords || [],
+    };
+
+    // Page and keyword performance
+    const pagePerformance = await getPagePerformance(site_domain, url);
+    const keywordPerformance = (
+      await getKeywordRankings(
+        approval.site_id,
+        site_domain,
+        original_content.focus_keywords,
+      )
+    ).rankings.flat();
+
+    const keywords_analytics = keywordPerformance.map((keyword) => ({
+      keyword: keyword.keyword,
+      cpc: keyword.cpc,
+      search_volume: keyword.volume,
+      position: keyword?.position ?? null,
+      clicks: keyword?.clicks ?? 0,
+      impressions: keyword?.impressions ?? 0,
+      ctr: keyword?.ctr ?? 0,
+    }));
+
+    let paaQuestions: any[] = (
+      await Promise.all(
+        target_keywords.map((keyword: string) => getPaaQuestions(keyword)),
+      )
+    ).flat();
 
     // create page-content record
     const result = await createPageContent({
@@ -331,17 +367,23 @@ export async function runPageContentAgent(id: string) {
         meta_description: original_content.current_description || "unknown",
         keywords: original_content.focus_keywords || [],
       },
-      keywords_analytics: keywords_overview,
+      keywords_analytics,
       update_details: { previous_updated_at: page?.acknowledged_at },
     });
     io.emit("content:created", result);
     recordId = result.id;
-    const pageDetails = {
-      title: original_content.current_title,
-      description: original_content.current_description,
-      primary_keyword: (original_content.focus_keywords as string[])[0] || null,
-      secondary_keywords: original_content.focus_keywords || [],
-    };
+
+    let site_pages = (await getAllWPPages(site_id)) as any[];
+    site_pages = site_pages
+      .filter((page) => !page.redirecting_to)
+      .map((page) => ({
+        url: page.url,
+        type: page.type,
+        slug: page.slug,
+        title: page.title,
+        description: page.description,
+        canonical: page.canonical,
+      }));
 
     // fetch page content from WordPress
     const content = await getPageContent(site_id, url, original_content.type);
@@ -349,9 +391,22 @@ export async function runPageContentAgent(id: string) {
     let response = {} as { content: string; reason: any };
     logger.info(`[page-content.service] Running agent for ${url}...`);
     if (original_content.type === "post") {
-      response = await analyseWithAI(content, pageDetails);
+      response = await analyseWithAI(
+        content,
+        pageDetails,
+        pagePerformance,
+        keywordPerformance,
+        paaQuestions.map((q) => q.question),
+        site_pages
+      );
     } else {
-      response = await analyseFAQwithAI(content, pageDetails);
+      response = await analyseFAQwithAI(
+        content,
+        pageDetails,
+        pagePerformance,
+        keywordPerformance,
+        paaQuestions.map((q) => q.question),
+      );
     }
 
     // Then update the content record with any changes or insights

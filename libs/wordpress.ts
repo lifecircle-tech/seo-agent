@@ -35,6 +35,7 @@ export async function wpFetch(
   logger.info("============= WP Getting Page ***************");
   logger.info(url);
   const res = await fetch(url, options);
+  
   const contentType = res.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
     const text = await res.text();

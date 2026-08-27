@@ -9,13 +9,12 @@ import { logger } from "../utils/logger.js";
 
 import { getAIResponse } from "../services/anthropic.service.js";
 
-import {
-  createApprovalQueue,
-  getPage,
-} from "../mcp-servers/cms-connector/server.js";
+import { createApprovalQueue } from "../mcp-servers/cms-connector/server.js";
 
 import { getPagesAndKeywords } from "../controllers/page.controller.js";
 import { createOpportunity } from "../controllers/opportunities.controller.js";
+import { redirectingToURL, isUrlRedirected } from "../../libs/functions.js";
+import { getWPPageDetails } from "../services/wordpress.service.js";
 
 // ── Config ────────────────────────────────────────────────────────────
 dotenv.config();
@@ -77,16 +76,17 @@ async function getPagesWithKeywords(siteId: number) {
   const keywordsMap = new Map();
 
   for await (let page of pages) {
-    console.log("___________________ KEYWORDS ", page.keywords);
     const page_keywords =
       typeof page.keywords == "string"
         ? JSON.parse(page.keywords)
         : page.keywords;
-    const wp_page = await getPage(siteId, page.url);
+    const wp_page = await getWPPageDetails(siteId, page.url);
 
     if (!wp_page) {
       continue;
     }
+
+    const is_redirecting = await isUrlRedirected(wp_page.url);
 
     new_pages.push({
       type: page.type,
@@ -98,6 +98,13 @@ async function getPagesWithKeywords(siteId: number) {
       impressions: page.impressions,
       avg_position: page.position,
       ctr: (page.clicks / page.impressions) * 100,
+      canonical_to: wp_page.canonical_url,
+      is_redirecting_url: is_redirecting,
+      ...(is_redirecting
+        ? {
+            redirected_to: await redirectingToURL(wp_page.url),
+          }
+        : null),
     });
 
     for (let keyword of page_keywords.slice(0, 5)) {
@@ -132,7 +139,7 @@ async function getPagesWithKeywords(siteId: number) {
 
 async function analyzeWithAI(pages: any[], keywords: any[]) {
   const prompt = `
-    You are an SEO analyst agent. Your job is to analyze page-level and keyword-level 
+  You are an SEO analyst agent. Your job is to analyze page-level and keyword-level 
 performance data and output a prioritized, structured list of specific actions to 
 improve rankings, traffic, and CTR.
  
@@ -143,10 +150,10 @@ content changes. Therefore:
 - Output must strictly follow the schema provided — no extra commentary outside it.
 
 PAGE METRICS:
-${JSON.stringify(pages, null, 2)};
+${JSON.stringify(pages)};
 
 KEYWORD METRICS:
-${JSON.stringify(keywords, null, 2)};
+${JSON.stringify(keywords)};
 
 Analyze the provided PAGE METRICS and KEYWORD METRICS together. For each page, 
 identify opportunities and problems using the diagnostic rules below, then 
@@ -155,31 +162,31 @@ generate a prioritized action list.
 DIAGNOSTIC RULES — check each page/keyword against these patterns:
 
 1. STRIKING DISTANCE KEYWORDS
-   - Keyword ranks position 8-20 with decent search volume (>100/mo).
-   - Action type: "optimize_content" — recommend specific on-page changes
-     (add keyword to H2, expand section, add FAQ) to push into top 10.
+  - Keyword ranks position 8-20 with decent search volume (>100/mo).
+  - Action type: "optimize_content" — recommend specific on-page changes
+    (add keyword to H2, expand section, add FAQ) to push into top 10.
 
 2. LOW CTR DESPITE GOOD POSITION
-   - Position ≤10 but CTR is below expected benchmark for that position 
-     (roughly: pos 1-3 expect >10% CTR, pos 4-10 expect 2-5%).
-   - Action type: "meta_rewrite" — recommend new title tag / meta description 
-     with stronger hook, numbers, or clarity.
+  - Position ≤10 but CTR is below expected benchmark for that position 
+    (roughly: pos 1-3 expect >10% CTR, pos 4-10 expect 2-5%).
+  - Action type: "meta_rewrite" — recommend new title tag / meta description 
+    with stronger hook, numbers, or clarity.
 
 3. HIGH IMPRESSIONS, LOW CLICKS/RANKING
-   - Impressions high but position >20 or clicks near zero.
-   - Action type: "content_gap" — page may be thin, off-intent, or missing the 
-     keyword; recommend rewriting or expanding relevant section.
+  - Impressions high but position >20 or clicks near zero.
+  - Action type: "content_gap" — page may be thin, off-intent, or missing the 
+    keyword; recommend rewriting or expanding relevant section.
 
 4. KEYWORD CANNIBALIZATION
-   - Same/similar keyword appears across multiple page_urls with split rankings.
-   - Action type: "consolidate_or_differentiate" — recommend merging pages or 
-     clearly differentiating target keyword per page.
+  - Same/similar keyword appears across multiple page_urls with split rankings.
+  - Action type: "consolidate_or_differentiate" — recommend merging pages or 
+    clearly differentiating target keyword per page.
 
 5. CONTENT DECAY
-   - Page traffic/position declining and last_updated is old (>6-9 months) 
-     relative to publish norms in the data.
-   - Action type: "refresh_content" — recommend updating stats, examples, 
-     sections; specify what to check/update.
+  - Page traffic/position declining and last_updated is old (>6-9 months) 
+    relative to publish norms in the data.
+  - Action type: "refresh_content" — recommend updating stats, examples, 
+    sections; specify what to check/update.
 
 PRIORITIZATION
 - Assign each action a priority: 1(HIGH), 2(MEDIUM), 3(LOW) based on:
@@ -198,7 +205,7 @@ no markdown code fences:
     "opportunity_type": "optimize_content | meta_rewrite | content_gap | 
       consolidate_or_differentiate | refresh_content",
     "priority": "1 | 2 | 3 | null",
-    "reasoning": "1-2 sentences on WHY this was flagged, citing the specific 
+    "reasoning": "2-3 sentences on WHY this was flagged, citing the specific 
       metric(s) that triggered it, e.g. 'Ranks position 12 for a 
       keyword with 2,400 monthly searches; content covers the 
       topic but lacks depth compared to top-10 pages.' Use null 
@@ -286,7 +293,7 @@ CONSTRAINTS
   // "recheck_after_days": {value}
 
   const response = await callWithRetry("[weekly_performance]", {
-    model: "claude-sonnet-4-6",
+    model: "claude-sonnet-5",
     max_tokens: 20000,
     messages: [{ role: "user", content: prompt }],
   });
@@ -321,9 +328,6 @@ async function runWeeklyPerformanceCheckTasks(siteId: number) {
 
   try {
     const { keywords, pages } = await getPagesWithKeywords(siteId);
-
-    console.log("PAGES ", pages.length, JSON.stringify(pages).length);
-    console.log("KEYWORDS ", keywords.length, JSON.stringify(keywords).length);
 
     logger.info(
       "[weekly_performance] Analyzing information and preparing actions",

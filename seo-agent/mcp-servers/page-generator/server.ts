@@ -129,7 +129,7 @@ No extra text outside the JSON.`;
   );
 
   const response = await callWithRetry(client, "generate_city_page", {
-    model: "claude-sonnet-4-6",
+    model: "claude-sonnet-5",
     max_tokens: 12000,
     messages: [{ role: "user", content: prompt }],
   });

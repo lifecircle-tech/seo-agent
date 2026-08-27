@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import {
   Message,
   MessageCreateParamsNonStreaming,
@@ -8,14 +7,20 @@ import { logger } from "../utils/logger.js";
 
 // Import controllers for database operations
 import { listSitesConfigs } from "../controllers/sites.controller.js";
+import {
+  getKeywordsForPage,
+  getPageByUrl,
+} from "../controllers/page.controller.js";
 
 // MCP Server Imports
 import {
   createApprovalQueue,
-  getPage,
   getPagesWithHighImpressionLowCtr,
 } from "../mcp-servers/cms-connector/server.js";
 import { getMetaRewriteApprovedApprovalByUrl } from "../controllers/approvals.controller.js";
+import { getStreamedAIResponse } from "../services/anthropic.service.js";
+import { isUrlRedirected, redirectingToURL } from "../../libs/functions.js";
+import { getWPPageDetails } from "../services/wordpress.service.js";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -54,7 +59,6 @@ function extractJson(text: string) {
 
 // ── Retry helper ──────────────────────────────────────────────────────
 async function callWithRetry(
-  client: Anthropic,
   label: string,
   params: MessageCreateParamsNonStreaming,
 ): Promise<Message> {
@@ -62,7 +66,7 @@ async function callWithRetry(
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      return await client.messages.create(params);
+      return await getStreamedAIResponse(label, params);
     } catch (exc: any) {
       lastExc = exc as Error;
       if (attempt < MAX_RETRIES - 1) {
@@ -80,7 +84,7 @@ async function callWithRetry(
 }
 
 // ── Step 1: CMS Connector ─────────────────────────────────────────────
-async function step1CmsConnector(client: Anthropic, siteId: number) {
+async function step1CmsConnector(siteId: number) {
   logger.info(`[step1] Analyzing low-CTR pages for site_id=${siteId}...`);
   const site = sitesConfig.find((site) => site.site_id === siteId);
 
@@ -90,10 +94,47 @@ async function step1CmsConnector(client: Anthropic, siteId: number) {
     28,
   );
   const pages: any[] = [];
+  const keyword_performance_map = new Map();
+
   for await (const row of impressionsVsCtr) {
-    const page = await getPage(siteId, row.url);
+    const page = await getWPPageDetails(siteId, row.url);
     if (page) {
-      pages.push({ ...page, ...row });
+      const { content: _content, ...pageWithoutContent } = page;
+      const is_redirected = await isUrlRedirected(page.url);
+      const redirected_to = await redirectingToURL(page.url);
+
+      pages.push({ ...pageWithoutContent, ...row, is_redirected, redirected_to });
+
+      const record_page = await getPageByUrl(page.url);
+      let keywordPerformance: any;
+
+      if (record_page) {
+        keywordPerformance = (await getKeywordsForPage(record_page.id)).map(
+          (key) => ({
+            keyword: key.keyword,
+            clicks: key.clicks,
+            impressions: key.impressions,
+            search_volume: key.search_volume,
+            difficulty: key.difficulty,
+            position: key.position,
+            cpc: key.cpc,
+            ctr: key.ctr,
+            competition: key.competition_level,
+          }),
+        );
+
+        keywordPerformance = keywordPerformance.length
+          ? keywordPerformance
+          : null;
+      }
+
+      if (keywordPerformance) {
+        keywordPerformance.map((k: any) => {
+          if (!keyword_performance_map.has(k.keyword)) {
+            keyword_performance_map.set(k.keyword, k);
+          }
+        });
+      }
     }
   }
 
@@ -103,34 +144,114 @@ async function step1CmsConnector(client: Anthropic, siteId: number) {
   }
 
   const promptPages = pages.map((page) => ({
-    id: page.id,
-    primary_keyword: page.primary_keyword,
-    secondary_keywords: page.secondary_keywords,
+    page_id: page.id,
+    url: page.url,
+    target_keywords: [page.primary_keyword, ...page.secondary_keywords],
     title: page.title,
     meta_description: page.meta_description,
+
+    impressions: page.impressions ?? 0,
+    clicks: page.clicks ?? 0,
+    ctr: page.ctr ?? 0,
+    position: page.position ?? null,
+
+    is_redirected: page.is_redirected,
+    redirected_to: page.redirected_to,
+    canonical_url: page.canonical_url
   }));
 
-  const prompt = `You are an SEO content analyst for site '${site?.brand_name}'.
-  Here are the rules for SEO content:
-  - primary keywords must be present in title
-  - primary keywords must be present in meta description
+  const prompt = `You are an SEO meta-tag specialist. You will be given a list of pages, each 
+  with their current title tag, meta description, target keyword(s), and 
+  performance data. Your job is to analyze each one and, where there is a clear 
+  opportunity, write an improved title and meta description designed to improve 
+  ranking relevance and click-through rate.
 
-  ${JSON.stringify(promptPages, null, 2)}
+  Only suggest a change when you have a specific, defensible reason to. Do not 
+  rewrite meta tags that are already well-optimized just to produce output.
 
-  For each page from data above, follow the rules
-  - write an improved title (max 60 chars) and meta description (max 155 chars)
+  PAGES DETAILS AND PERFORMANCE:
+  ${JSON.stringify(promptPages)}
 
-  Return ONLY a JSON object with keys:
-  - opportunities: array of objects with id, suggested_title, suggested_description, reasoning (detailed reason with impact), priority (1-3 based on potential impact)
-  - summary: string with 2-3 overall action items
+  KEYWORD PERFORMANCE (last 28 days):
+  ${JSON.stringify([...keyword_performance_map.values()])}
 
-  Do NOT omit any pages.
-  Do NOT include about rules in reasoning, mention impacting reason.
-  No extra text.`;
+  For each page in the input, evaluate the current title and meta description 
+  against the rules below, then decide whether to suggest a rewrite.
 
-  const response = await callWithRetry(client, "step1", {
-    model: "claude-sonnet-4-6",
-    max_tokens: 15000,
+  WHEN TO FLAG FOR IMPROVEMENT
+  - Target primary keyword is missing or buried late in the title.
+  - Title exceeds ~70 characters (will get truncated in search results) or is 
+    under ~30 characters (wasting available space).
+  - Meta description is missing, empty, duplicate of another page, or outside 
+    ~150-170 characters.
+  - Meta description doesn't include the primary keyword or a clear value 
+    proposition/reason to click.
+  - CTR is meaningfully below the expected benchmark for the current position 
+    (roughly: position 1-3 expect >10%, position 4-10 expect 2-5%, position 
+    11-20 expect <2%) — when position/ctr data is available.
+  - Title/description is generic, vague, or doesn't differentiate from 
+    competitor_titles when that data is provided.
+  - Search intent mismatch — e.g. transactional intent but the title reads as 
+    purely informational, or vice versa.
+
+  WHEN TO SKIP (no suggestion needed)
+  - Title and description already include the primary keyword naturally, are 
+    within length guidelines, have a clear value proposition, and CTR (if 
+    available) is at or above the position benchmark.
+  - Do not include these pages in the output array at all — do not pad the 
+    response with unchanged suggestions.
+
+  WRITING NEW TITLES & DESCRIPTIONS
+  - Title: include the primary keyword as early as possible without sounding 
+    forced; keep to 60-90 characters; make it specific and distinct, not generic.
+  - Description: include the primary keyword naturally, state the clear value 
+    or answer to the searcher's intent, and end with a soft prompt to click 
+    where appropriate (avoid clickbait or unverifiable claims); keep to 
+    150-170 characters.
+  - Match tone to search_intent: transactional/commercial pages can be more 
+    direct and benefit-driven; informational pages should emphasize clarity 
+    and what the reader will learn.
+  - Never fabricate claims, numbers, discounts, or credentials not supported by 
+    the input data.
+  - If competitor_titles are provided, differentiate rather than mimic — 
+    identify what's missing or generic across competitors and fill that gap.
+
+  PRIORITY
+  Assign priority based on potential impact:
+  - HIGH: high impressions with a clear, fixable CTR gap, or missing primary 
+    keyword on a page with meaningful search volume/position.
+  - MEDIUM: moderate impressions, or best-practice issues (length, missing 
+    value prop) without strong CTR-gap evidence.
+  - LOW: minor polish with limited traffic impact.
+
+  OUTPUT FORMAT
+  Return ONLY a valid JSON object:
+  - opportunities: [
+      {
+        "id": {page id},
+        "suggested_title": "{new title, 50-60 characters}",
+        "suggested_description": "{new meta description, 150-160 characters}",
+        "reasoning": "3-4 simple sentences explaining what was wrong with the current 
+          meta and why the new version fixes it — cite the specific 
+          issue (e.g. missing keyword, CTR gap vs. benchmark, length, 
+          weak value proposition).",
+        "priority": "1 | 2 | 3" (1=high, 2=medium, 3=low)
+      }
+    ]
+
+  Include only pages that received a suggestion (per the skip rule above):
+
+  CONSTRAINTS
+  - Do not invent or assume metrics not present in the input.
+  - Do not exceed the character guidelines given above.
+  - Do not include pages that don't need changes.
+  - Sort the array by priority: HIGH first, then MEDIUM, then LOW.
+  - If the input array is empty or no pages need changes, return an empty array: []
+  `;
+
+  const response = await callWithRetry("step1", {
+    model: "claude-sonnet-5",
+    max_tokens: 50000,
     messages: [
       {
         role: "user",
@@ -176,7 +297,7 @@ async function step1CmsConnector(client: Anthropic, siteId: number) {
           priority: opp.priority,
           title: page.title,
           original_content: {
-            focus_keywords: page.secondary_keywords,
+            focus_keywords: [page.primary_keyword, ...page.secondary_keywords],
             url: page.url,
             type: page.type,
             current_title: page.title,
@@ -190,6 +311,7 @@ async function step1CmsConnector(client: Anthropic, siteId: number) {
           },
           reason: opp.reasoning,
           preview_url: page.url,
+          update_page: false,
         };
       }),
     ),
@@ -213,9 +335,6 @@ function printSummary(errors: StepError, elapsed: number) {
 
 // ── Main pipeline ─────────────────────────────────────────────────────
 async function runDailyWPPagesTasks(siteId: number) {
-  const client: Anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
   const startTime = Date.now();
   const errors = {} as StepError;
 
@@ -228,7 +347,7 @@ async function runDailyWPPagesTasks(siteId: number) {
   // ── Step 1: CMS connector — low-CTR page analysis ────────────────
   let cmsData = {};
   try {
-    cmsData = await step1CmsConnector(client, siteId);
+    cmsData = await step1CmsConnector(siteId);
   } catch (exc: any) {
     errors.step1 = exc.message;
     logger.error(`[step1] ERROR: `, exc);

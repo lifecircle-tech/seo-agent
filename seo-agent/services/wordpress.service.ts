@@ -2,9 +2,25 @@
  * WordPress service — HTTP calls to the WordPress REST API.
  */
 
+import { isUrlRedirected, redirectingToURL } from "../../libs/functions.js";
 import { getWpAuth, wpFetch } from "../../libs/wordpress.js";
 
 // ── Result types ──────────────────────────────────────────────────────
+type WpPage = {
+  id: number;
+  slug: string;
+  link: string;
+  type: string;
+  title: { rendered: string };
+  rank_math_meta: {
+    title: string;
+    description: string;
+    focus_keywords: string;
+    canonical: string;
+  };
+  redirecting_to: string | null;
+};
+
 export interface UpdatePageMetaResult {
   ok: true;
   url: string;
@@ -18,6 +34,78 @@ export interface UpdatePageMetaError {
   error: string;
 }
 
+export async function getAllWPPages(siteId: number) {
+  const wp_pages: WpPage[] = [];
+  let offset = 0;
+  const pageSize = 100;
+
+  const queries = 'publish&_fields=id,slug,type,link,title,rank_math_meta&context=view'
+
+  while (true) {
+    const batch = (await wpFetch(
+      siteId,
+      "GET",
+      `/pages?per_page=${pageSize}&offset=${offset}&status=${queries}`,
+    )) as WpPage[];
+
+    let temp = await Promise.all(
+      batch.map(async (page) => {
+        const is_redirected = await isUrlRedirected(page.link);
+        return {
+          ...page,
+          redirecting_to: is_redirected
+            ? await redirectingToURL(page.link)
+            : null,
+        };
+      }),
+    );
+
+    wp_pages.push(...temp);
+
+    if (batch.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  offset = 0;
+
+  while (true) {
+    const batch = (await wpFetch(
+      siteId,
+      "GET",
+      `/posts?per_page=${pageSize}&offset=${offset}&status=${queries}`,
+    )) as WpPage[];
+
+    let temp = await Promise.all(
+      batch.map(async (page) => {
+        const is_redirected = await isUrlRedirected(page.link);
+        return {
+          ...page,
+          redirecting_to: is_redirected
+            ? await redirectingToURL(page.link)
+            : null,
+        };
+      }),
+    );
+
+    wp_pages.push(...temp);
+
+    if (batch.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  return wp_pages.map((page) => ({
+    page_id: page.id,
+    slug: page.slug,
+    url: page.link,
+    type: page.type,
+    title: page.rank_math_meta.title,
+    description: page.rank_math_meta.description,
+    targeting_keywords: page.rank_math_meta.focus_keywords,
+    canonical: page.rank_math_meta.canonical,
+    redirecting_to: page.redirecting_to,
+  }));
+}
+
 export async function getWPPageDetails(siteId: number, pageUrl: string) {
   // Extract slug from URL path
   const parsed = new URL(pageUrl);
@@ -29,6 +117,8 @@ export async function getWPPageDetails(siteId: number, pageUrl: string) {
 
   // Try pages first, then posts
   let wpPage = null;
+
+  if (!slug) return null;
 
   for (const postType of ["pages", "posts"]) {
     const results = (await wpFetch(
@@ -60,13 +150,14 @@ export async function getWPPageDetails(siteId: number, pageUrl: string) {
   const primary_keywords = ((rank_math?.focus_keyword as string) || "").split(
     ",",
   )[0];
-  const secondary_keywords = ((rank_math?.focus_keyword as string) || "").split(
-    ",",
-  );
+  const secondary_keywords = ((rank_math?.focus_keyword as string) || "")
+    .split(",")
+    .slice(1);
+  const canonical_url = (rank_math?.canonical as string) || null;
 
   return {
     id: wpPage.id,
-    url: wpPage.link ?? pageUrl,
+    url: (wpPage.link as string) ?? pageUrl,
     type: wpPage.type,
     title: title,
     content: content,
@@ -74,6 +165,7 @@ export async function getWPPageDetails(siteId: number, pageUrl: string) {
     last_modified: wpPage.modified,
     primary_keywords,
     secondary_keywords,
+    canonical_url,
   };
 }
 

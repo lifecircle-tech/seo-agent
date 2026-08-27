@@ -46,6 +46,7 @@ export async function createPaaQuestionsTable(): Promise<void> {
         created_at       DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
         updated_at       DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
         UNIQUE KEY uq_paa_keyword_question (keyword_id, question(500)),
+        UNIQUE KEY uq_paa_site_question (site_id, question(500)),
         INDEX idx_paa_site_id        (site_id),
         INDEX idx_paa_keyword_id     (keyword_id),
         INDEX idx_paa_used_in_content (used_in_content)

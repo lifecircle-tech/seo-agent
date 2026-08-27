@@ -90,6 +90,22 @@ export async function isUrlRedirected(url: string) {
       return true;
     }
   } catch (error: any) {
-    throw Error(error.message);
+    console.log("is_redirected", error.message);
+    throw new Error(error.message);
+  }
+}
+
+export async function redirectingToURL(url: string) {
+  try {
+    const response = await fetch(url);
+    const finalUrl = response.url;
+
+    if (finalUrl == url) {
+      return null;
+    } else {
+      return finalUrl;
+    }
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 }

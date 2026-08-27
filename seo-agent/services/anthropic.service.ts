@@ -27,6 +27,7 @@ export async function getAIResponse(
   }
 }
 
+// Streamed response for max_token > 20000
 export async function getStreamedAIResponse(
   label: string,
   params: MessageCreateParamsNonStreaming,

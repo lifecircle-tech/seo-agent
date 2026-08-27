@@ -1,5 +1,8 @@
-import { createBatches, getDomain } from "../../../libs/functions.js";
-import { getCompetitorBacklinksDomain } from "../../services/dataForSEO.service.js";
+import { getDomain } from "../../../libs/functions.js";
+import {
+  getCompetitorBacklinksDomain,
+  getSpamScoreOfDomains,
+} from "../../services/dataForSEO.service.js";
 import { logger } from "../../utils/logger.js";
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -15,7 +18,7 @@ export interface FindLinkProspectsResult {
   site_id: number;
   our_domain: string;
   competitors_checked: string[];
-  prospects: {url_from: string; spam_score: number } [];
+  prospects: { domain_from: string; url_from: string; spam_score: number }[];
   count: number;
 }
 
@@ -54,11 +57,13 @@ export async function findLinkProspects(
   );
 
   let rawItems = [] as any[];
-  const batches = createBatches(competitorDomains, 3);
-
-  for (let competitor of batches.slice(0, 2)) {
-    const result = await getCompetitorBacklinksDomain(ourDomain, competitor);
-    rawItems = [...rawItems, ...result];
+  const result = await getCompetitorBacklinksDomain(
+    ourDomain,
+    competitorDomains,
+  );
+  
+  if (result) {
+    rawItems = result;
   }
 
   logger.debug(`[prospects] Backlinks Count ${rawItems.length}`);
@@ -69,18 +74,22 @@ export async function findLinkProspects(
   >();
 
   const prospects = new Map();
+  const referring_domain: string[] = [];
+
   rawItems.forEach((item) => {
     const intersections = item.domain_intersection
       ? (Object.values(item.domain_intersection) as Record<string, any>[])
       : [];
 
-    !prospects.has(getDomain(intersections[0].target)) &&
+    if (!prospects.has(getDomain(intersections[0].target))) {
       prospects.set(getDomain(intersections[0].target), {
+        domain_from: getDomain(intersections[0].target),
         url_from: getDomain(intersections[0].target),
-        spam_score: intersections[0].backlinks_spam_score,
       });
+
+      referring_domain.push(intersections[0].target);
+    }
   });
-  logger.debug("backlinks prospect ", prospects.size);
 
   //   for (const item of rawItems) {
   //     const refDomain: string = getDomain(
@@ -114,7 +123,15 @@ export async function findLinkProspects(
   //     )
   //     .slice(0, 30);
 
-  const temp_prospect = Array.from(prospects.values());
+  const spam_scores = await getSpamScoreOfDomains(referring_domain);
+  const temp_prospect = Array.from(prospects.keys()).map((key) => {
+    const score = spam_scores.find((ss: any) => ss.target == key);
+
+    return {
+      ...prospects.get(key),
+      spam_score: score.spam_score,
+    };
+  });
 
   return {
     site_id: siteId,

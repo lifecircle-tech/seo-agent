@@ -275,6 +275,65 @@ export async function getKeywordsSuggestionForDomain(
   }
 }
 
+export async function getKeywordsSuggestionForKeywords(
+  keywords: string[],
+  timePeriod?: TimePeriod,
+) {
+  logger.info(
+    `============= GBP Fetching Keywords for Keywords ***************`,
+  );
+  const oauth2Client = getGbpOAuth();
+  const customerId = process.env.ADS_ACCOUNT_SITE;
+  const developer_token = process.env.GOOGLE_ADS_TOKEN as string;
+
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setMonth(endDate.getMonth() - 6);
+
+  const body = {
+    keywordSeed: { keywords: keywords.slice(0, 5) },
+    historicalMetricsOptions: {
+      include_average_cpc: true,
+      yearMonthRange: {
+        start: {
+          month: MONTHS_NAME[startDate.getMonth()],
+          year: startDate.getFullYear(),
+        },
+        end: {
+          month: MONTHS_NAME[endDate.getMonth()],
+          year: endDate.getFullYear(),
+        },
+      },
+    },
+  } as Record<string, any>;
+
+  timePeriod && (body.historicalMetricsOptions.yearMonthRange = timePeriod);
+
+  try {
+    const response = (await oauth2Client.request({
+      url: `https://googleads.googleapis.com/v24/customers/${customerId}:generateKeywordIdeas`,
+      method: "POST",
+      headers: {
+        "developer-token": developer_token,
+      },
+      body: JSON.stringify(body),
+    })) as { data: { results: Array<any> } };
+
+    const results = response?.data?.results;
+
+    return results.map((item) => ({
+      keyword: item.text,
+      avgSearchVolume: item.keywordIdeaMetrics?.avgMonthlySearches,
+      competition: item.keywordIdeaMetrics?.competition,
+      competitionIndex: item.keywordIdeaMetrics?.competitionIndex,
+      avgCpcMicros: item.keywordIdeaMetrics?.averageCpcMicros,
+      monthlySearches: item.keywordIdeaMetrics?.monthlySearchVolumes,
+    }));
+  } catch (err: any) {
+    logger.error("KEYWORDS ERROR ", err.message);
+  }
+}
+
 export async function getConsoleAnalytics() {
   const sc = google.searchconsole({ version: "v1", auth: getGscAuth() });
 

@@ -449,7 +449,7 @@ export async function getPagesAndKeywords(siteId: number) {
       JOIN keywords k ON pk.keyword_id = k.id 
       WHERE p.site_id = ? GROUP BY p.id 
       ORDER BY pk.position DESC
-      LIMIT 50;
+      LIMIT 100;
     `, [siteId]);
 
   return rows

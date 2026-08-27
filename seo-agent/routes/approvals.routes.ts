@@ -81,7 +81,7 @@ export function approvalsRouter(io: SocketIOServer): Router {
 
   // GET /approvals
   router.get("/", requireAuth, async (req: Request, res: Response) => {
-    const { status, sort, site_id, limit, offset } = req.query as Record<
+    const { status, site_id, limit, offset, sort_by, sort_dir } = req.query as Record<
       string,
       string
     >;
@@ -89,9 +89,10 @@ export function approvalsRouter(io: SocketIOServer): Router {
       const result = await listApprovals({
         status,
         site_id: site_id ? Number(site_id) : undefined,
-        sort,
         limit: limit ? Number(limit) : undefined,
         offset: offset ? Number(offset) : undefined,
+        sort_by: (sort_by ?? 'created_at') as any,
+        sort_order: sort_dir === "asc" ? "asc" : sort_dir === "desc" ? "desc" : "desc",
       });
       res.json({ success: true, ...result });
     } catch (err) {

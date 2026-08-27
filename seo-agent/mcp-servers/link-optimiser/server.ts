@@ -8,6 +8,7 @@ import { RowDataPacket } from "mysql2/promise";
 import { pool } from "../../../db.js";
 import { wpFetch } from "../../../libs/wordpress.js";
 import { logger } from "../../utils/logger.js";
+import { isUrlRedirected, redirectingToURL } from "../../../libs/functions.js";
 
 // ── Retry helpers ─────────────────────────────────────────────────────
 const MAX_RETRIES = 3;
@@ -63,6 +64,7 @@ type WpPage = {
   title: { rendered: string };
   content: { rendered: string };
   rank_math_meta: { title: string };
+  redirecting_to: string | null;
 };
 
 export type LinkOpportunity = {
@@ -112,7 +114,47 @@ export async function fetchAllPages(siteId: number): Promise<WpPage[]> {
       `/pages?per_page=${pageSize}&offset=${offset}&status=publish&_fields=id,slug,link,title,content,rank_math_meta&context=view`,
     )) as WpPage[];
 
-    all.push(...batch);
+    let temp = await Promise.all(
+      batch.map(async (page) => {
+        const is_redirected = await isUrlRedirected(page.link);
+        return {
+          ...page,
+          redirecting_to: is_redirected
+            ? await redirectingToURL(page.link)
+            : null,
+        };
+      }),
+    );
+
+    all.push(...temp);
+
+    if (batch.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  offset = 0;
+
+  while (true) {
+    const batch = (await wpFetch(
+      siteId,
+      "GET",
+      `/posts?per_page=${pageSize}&offset=${offset}&status=publish&_fields=id,slug,link,title,content,rank_math_meta&context=view`,
+    )) as WpPage[];
+
+    let temp = await Promise.all(
+      batch.map(async (page) => {
+        const is_redirected = await isUrlRedirected(page.link);
+        return {
+          ...page,
+          redirecting_to: is_redirected
+            ? await redirectingToURL(page.link)
+            : null,
+        };
+      }),
+    );
+
+    all.push(...temp);
+
     if (batch.length < pageSize) break;
     offset += pageSize;
   }
@@ -134,28 +176,21 @@ async function buildKeywordTargetMap(
 
   // Pull target keywords from DB for this site
   const [kwRows] = await pool.query<RowDataPacket[]>(
-    "SELECT target_keywords FROM keywords_config WHERE site_id = ?",
+    "SELECT keyword FROM keywords WHERE site_id = ?",
     [siteId],
   );
 
   for (const row of kwRows) {
-    const keywords: string[] =
-      typeof row.target_keywords === "string"
-        ? JSON.parse(row.target_keywords)
-        : (row.target_keywords ?? []);
-
-    for (const kw of keywords) {
-      // Find the page most likely to target this keyword (slug match)
-      const kwSlug = kw.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-      const match = pages.find(
-        (p) => p.slug.includes(kwSlug) || p.link.toLowerCase().includes(kwSlug),
-      );
-      if (match) {
-        map.set(kw.toLowerCase(), {
-          url: match.link,
-          title: match.rank_math_meta.title ?? match.title.rendered,
-        });
-      }
+    // Find the page most likely to target this keyword (slug match)
+    const kwSlug = row.keyword.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const match = pages.find(
+      (p) => p.slug.includes(kwSlug) || p.link.toLowerCase().includes(kwSlug),
+    );
+    if (match) {
+      map.set(row.keyword.toLowerCase(), {
+        url: match.link,
+        title: match.rank_math_meta.title ?? match.title.rendered,
+      });
     }
   }
 
@@ -188,9 +223,13 @@ export async function findInternalLinkOpportunities(
   );
 
   const keywordTargetMap = await buildKeywordTargetMap(siteId, pages);
-  const opportunities: LinkOpportunity[] = [];
+  const processPage = async (
+    page: WpPage,
+    index: number,
+  ): Promise<(LinkOpportunity | null)[]> => {
+    console.log(`Processing ${index + 1}/${pages.length}`);
 
-  for (const page of pages) {
+    if (page.redirecting_to) return [];
     const rawHtml = page.content.rendered;
     const $ = cheerio.load(rawHtml);
 
@@ -199,6 +238,8 @@ export async function findInternalLinkOpportunities(
     $("a").each((_i, el) => {
       linkedTexts.add($(el).text().toLowerCase().trim());
     });
+
+    const pageOpportunities: (LinkOpportunity | null)[] = [];
 
     // For each keyword target, search for unlinked mentions in plain text nodes
     for (const [keyword, target] of keywordTargetMap.entries()) {
@@ -209,24 +250,33 @@ export async function findInternalLinkOpportunities(
       $("p, li, h2, h3, h4").each((_i, el) => {
         const $el = $(el);
         // Skip if this element is inside an anchor
-        if ($el.closest("a").length > 0) return;
+        if ($el.closest("a").length > 0) {
+          pageOpportunities.push(null);
+          return;
+        }
 
         const text = $el.text();
         const lowerText = text.toLowerCase();
         const keywordIndex = lowerText.indexOf(keyword);
 
-        if (keywordIndex === -1) return;
+        if (keywordIndex === -1) {
+          pageOpportunities.push(null);
+          return;
+        }
 
         // Check if the matched text is already linked
         const alreadyLinked = linkedTexts.has(keyword);
-        if (alreadyLinked) return;
+        if (alreadyLinked) {
+          pageOpportunities.push(null);
+          return;
+        }
 
         // Build context snippet (± 60 chars around the mention)
         const start = Math.max(0, keywordIndex - 60);
         const end = Math.min(text.length, keywordIndex + keyword.length + 60);
         const snippet = `...${text.slice(start, end)}...`;
 
-        opportunities.push({
+        pageOpportunities.push({
           source_url: page.link,
           source_title: page.title.rendered,
           mention_text: keyword,
@@ -236,7 +286,14 @@ export async function findInternalLinkOpportunities(
         });
       });
     }
-  }
+
+    return pageOpportunities;
+  };
+
+  const results = await Promise.all(pages.slice(0, 500).map(processPage));
+  const opportunities = results
+    .flat()
+    .filter((o): o is LinkOpportunity => o !== null);
 
   // De-duplicate: one opportunity per source_url + mention_text + target_url combo
   const seen = new Set<string>();
@@ -307,6 +364,7 @@ export async function getOrphanPages(
       title: p.rank_math_meta.title ?? p.title.rendered,
       slug: p.slug,
       inbound_link_count: 0,
+      redirecting_to: p.redirecting_to,
     }));
 
   logger.info(
@@ -375,7 +433,7 @@ Return ONLY a JSON object with keys:
 No extra text outside the JSON.`;
 
   const response = await callWithRetry(client, "suggest_link_structure", {
-    model: "claude-sonnet-4-6",
+    model: "claude-sonnet-5",
     max_tokens: 8000,
     messages: [{ role: "user", content: prompt }],
   });

@@ -6,6 +6,7 @@ import {
   createBacklink,
   listBacklinks,
   getBacklinkById,
+  getBacklinksGroupedDomain,
   updateBacklink,
   deleteBacklink,
   upsertBacklinks,
@@ -25,6 +26,7 @@ export function backlinksRouter(io: SocketIOServer): Router {
         url_from,
         url_to,
         owner_type,
+        domain_from,
         domain_from_rank,
         anchor_details,
         is_new,
@@ -48,6 +50,7 @@ export function backlinksRouter(io: SocketIOServer): Router {
         url_from: String(url_from),
         url_to: String(url_to),
         owner_type: owner_type ?? null,
+        domain_from: domain_from ?? null,
         domain_from_rank: domain_from_rank ?? null,
         anchor_details: anchor_details ?? null,
         is_new: is_new ?? false,
@@ -84,6 +87,7 @@ export function backlinksRouter(io: SocketIOServer): Router {
           url_from: String(r.url_from),
           url_to: String(r.url_to),
           owner_type: r.owner_type ?? null,
+          domain_from: r.domain_from ?? null,
           domain_from_rank: r.domain_from_rank ?? null,
           anchor_details: r.anchor_details ?? null,
           is_new: r.is_new ?? false,
@@ -105,18 +109,32 @@ export function backlinksRouter(io: SocketIOServer): Router {
   // GET /backlinks
   router.get("/", requireAuth, async (req: Request, res: Response) => {
     try {
-      const { site_id, is_new, is_lost, is_broken, is_prospect, owner_type, limit, offset } =
-        req.query as Record<string, string>;
+      const {
+        site_id,
+        is_new,
+        is_lost,
+        is_broken,
+        is_prospect,
+        owner_type,
+        limit,
+        offset,
+        sort_by,
+        sort_dir,
+      } = req.query as Record<string, string>;
 
       const result = await listBacklinks({
         site_id: site_id ? Number(site_id) : undefined,
         is_new: is_new !== undefined ? is_new === "true" : undefined,
         is_lost: is_lost !== undefined ? is_lost === "true" : undefined,
         is_broken: is_broken !== undefined ? is_broken === "true" : undefined,
-        is_prospect: is_prospect !== undefined ? is_prospect === "true" : undefined,
+        is_prospect:
+          is_prospect !== undefined ? is_prospect === "true" : undefined,
         owner_type: owner_type ?? undefined,
         limit: limit ? Number(limit) : undefined,
         offset: offset ? Number(offset) : undefined,
+        sort_by: sort_by as any,
+        sort_order:
+          sort_dir === "asc" ? "asc" : sort_dir === "desc" ? "desc" : undefined,
       });
 
       res.json({ success: true, ...result });
@@ -125,6 +143,27 @@ export function backlinksRouter(io: SocketIOServer): Router {
       res.status(500).json({ success: false, error: "Database error" });
     }
   });
+
+  // GET /backlinks/grouped-domain
+  router.get(
+    "/all-grouped",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const { limit, offset } = req.query as Record<string, string>;
+
+        const result = await getBacklinksGroupedDomain({
+          limit: limit ? Number(limit) : undefined,
+          offset: offset ? Number(offset) : undefined,
+        });
+
+        res.json({ success: true, ...result });
+      } catch (err: any) {
+        logger.error(`[backlinks] grouped-domain error: ${err.message} `, err);
+        res.status(500).json({ success: false, error: "Database error" });
+      }
+    },
+  );
 
   // GET /backlinks/:id
   router.get("/:id", requireAuth, async (req: Request, res: Response) => {
@@ -166,9 +205,15 @@ export function backlinksRouter(io: SocketIOServer): Router {
     async (req: Request, res: Response) => {
       try {
         const { userId } = (req as AuthRequest).user!;
-        const record = await updateBacklinkStatus(req.params.id, 1, Number(userId));
+        const record = await updateBacklinkStatus(
+          req.params.id,
+          1,
+          Number(userId),
+        );
         if (!record)
-          return res.status(404).json({ success: false, error: "Backlink not found" });
+          return res
+            .status(404)
+            .json({ success: false, error: "Backlink not found" });
         io.emit("backlink:updated", record);
         res.json({ success: true, record });
       } catch (err) {
@@ -185,9 +230,15 @@ export function backlinksRouter(io: SocketIOServer): Router {
     async (req: Request, res: Response) => {
       try {
         const { userId } = (req as AuthRequest).user!;
-        const record = await updateBacklinkStatus(req.params.id, 5, Number(userId));
+        const record = await updateBacklinkStatus(
+          req.params.id,
+          5,
+          Number(userId),
+        );
         if (!record)
-          return res.status(404).json({ success: false, error: "Backlink not found" });
+          return res
+            .status(404)
+            .json({ success: false, error: "Backlink not found" });
         io.emit("backlink:updated", record);
         res.json({ success: true, record });
       } catch (err) {
@@ -204,9 +255,15 @@ export function backlinksRouter(io: SocketIOServer): Router {
     async (req: Request, res: Response) => {
       try {
         const { userId } = (req as AuthRequest).user!;
-        const record = await updateBacklinkStatus(req.params.id, 6, Number(userId));
+        const record = await updateBacklinkStatus(
+          req.params.id,
+          6,
+          Number(userId),
+        );
         if (!record)
-          return res.status(404).json({ success: false, error: "Backlink not found" });
+          return res
+            .status(404)
+            .json({ success: false, error: "Backlink not found" });
         io.emit("backlink:updated", record);
         res.json({ success: true, record });
       } catch (err) {

@@ -1,6 +1,7 @@
 import { getDomain } from "../../../libs/functions.js";
 import {
   getKeywordsSuggestionForDomain,
+  getKeywordsSuggestionForKeywords,
   getSearchConsoleClient,
   getSheetsClient,
   getSpreadsheetId,
@@ -48,7 +49,7 @@ function extractTopic(keyword: string): string {
   return words[0] || "general";
 }
 
-export async function discoverSiteKeywords(siteUrl: string) {
+export async function discoverSiteKeywords(siteUrl: string, cities: any[]) {
   logger.info(
     `[keyword-researcher] Discovering keywords for: ${getDomain(siteUrl)}`,
   );
@@ -57,7 +58,13 @@ export async function discoverSiteKeywords(siteUrl: string) {
     getDomain(siteUrl),
   )) as [];
 
-  const discovered = suggestions
+  const suggestions_2 = (await getKeywordsSuggestionForKeywords(
+    cities.map((c) => c.services.map((s: string) => s + " " + c.city)).flat(),
+  )) as [];
+
+  const total_suggestions = [...suggestions, ...suggestions_2];
+
+  const discovered = total_suggestions
     .map((item: any) => ({
       keyword: item.keyword,
       volume: item.avgSearchVolume,
@@ -65,11 +72,12 @@ export async function discoverSiteKeywords(siteUrl: string) {
       cpc: item?.avgCpcMicros / 1_000_000 || null,
       competition: 0,
       competition_level: item.competition,
-      monthly_searches: item.monthlySearches.map((search: any) => ({
-        year: Number(search.year),
-        month: MONTHS_TO_NUMBER[search.month],
-        search_volume: Number(search.monthlySearches),
-      })),
+      monthly_searches:
+        item.monthlySearches?.map((search: any) => ({
+          year: Number(search.year),
+          month: MONTHS_TO_NUMBER[search.month],
+          search_volume: Number(search.monthlySearches),
+        })) || null,
     }))
     .sort((a, b) =>
       b.volume - a.volume != 0
@@ -119,7 +127,7 @@ export async function discoverSiteKeywords(siteUrl: string) {
 
   return opportunities
     .sort((a, b) => (a.current_position || 100) - (b.current_position || 100))
-    .slice(0, 100);
+    .slice(0, 200);
 }
 
 /**

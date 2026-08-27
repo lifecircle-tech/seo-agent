@@ -27,10 +27,7 @@ import {
   getPageRankings,
   getRankingOfNewKeywords,
 } from "../mcp-servers/keyword-tracker/server.js";
-import {
-  getPage,
-  getPagesWithHighImpressionLowCtr,
-} from "../mcp-servers/cms-connector/server.js";
+import { getPagesWithHighImpressionLowCtr } from "../mcp-servers/cms-connector/server.js";
 import {
   suggestSchemaImprovementsForPages,
   getPaaQuestionsForKeywords,
@@ -40,11 +37,7 @@ import {
   getContentsGapForCompetitorDomain,
   getBacklinksForCompetitorDomain,
 } from "../mcp-servers/competitor-intel/server.js";
-import {
-  postWeeklyMessageToSlack,
-  writeKeywordRankingsToSheet,
-  writeRecommendationsToSheet,
-} from "../mcp-servers/reporting/server.js";
+import { postWeeklyMessageToSlack } from "../mcp-servers/reporting/server.js";
 import {
   listLocations,
   getInsights,
@@ -56,6 +49,7 @@ import {
 } from "../mcp-servers/reputation-manager/server.js";
 import { KeywordJSON } from "../models/keywords.model.js";
 import { saveLocationInsightReport } from "../services/seo-report.service.js";
+import { getWPPageDetails } from "../services/wordpress.service.js";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -330,7 +324,7 @@ async function step2SchemaManager(siteId: number) {
 
   let topPages = [];
   for await (const row of impressionsVsCtr) {
-    const page = await getPage(siteId, row.url);
+    const page = await getWPPageDetails(siteId, row.url);
     if (page) {
       topPages.push(page.url as string);
     }
@@ -495,6 +489,7 @@ async function step5Reporting(
     competitorData = [],
     locationsData,
   } = data || {};
+  const site = sitesConfig.find((site) => site.site_id === siteId);
 
   if (DRY_RUN) {
     logger.info("[step5] DRY_RUN=true — skipping Slack post and Sheets writes");
@@ -530,7 +525,9 @@ async function step5Reporting(
     }),
   );
 
-  const prompt = `You are an SEO reporting agent for site_id=${siteId}.
+  const prompt = `You are a Website analyst and reporting agent for '${site?.brand_name}'.
+
+  Analyze the following data about a website in various
 
   Here is all data collected this week:
 
@@ -551,14 +548,12 @@ async function step5Reporting(
 
   Please do all of the following in order:
   1. From above data, create a concise summary of key insights and recommendations for next week (bullet points).
-  2. For every module, write a recommendation with site_id=${siteId}, module=<module_name>, a concise recommendation from the module data
 
   Return ONLY a JSON object with keys:
-  - summary: string with concise insights and recommendations
-  - recommendations: array of objects with module, recommendation_text`;
+  - summary: string with concise insights and recommendations`;
 
   const response = await callWithRetry(client, "step5", {
-    model: "claude-sonnet-4-6",
+    model: "claude-sonnet-5",
     max_tokens: 8192,
     messages: [
       {
@@ -578,12 +573,6 @@ async function step5Reporting(
     .trim();
 
   const parsed = extractJson(text);
-
-  await writeKeywordRankingsToSheet(siteId, keywords.rankings);
-
-  await writeRecommendationsToSheet(siteId, parsed.recommendations);
-
-  const site = sitesConfig.find((site) => site.site_id === siteId);
 
   await postWeeklyMessageToSlack(siteId, site?.domain as string, {
     schemaGaps: (schemaData || {}).pages || [],

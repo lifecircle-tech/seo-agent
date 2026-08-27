@@ -10,7 +10,7 @@ export async function checkPageContents(): Promise<void> {
     const [rows] = await pool.query<PageContent[]>(
       `SELECT * FROM page_content
      WHERE acknowledged_at >= NOW() - INTERVAL 24 HOUR
-     AND status = 21 OR status = 22
+     AND (status = 21 OR status = 22)
      `,
     );
 

@@ -16,7 +16,10 @@ function toJSON(row: Backlink): BacklinkJSON {
     is_new: Boolean(row.is_new),
     is_lost: Boolean(row.is_lost),
     is_broken: Boolean(row.is_broken),
-    status: row.status != null ? (BACKLINK_STATUS[row.status] ?? String(row.status)) : null,
+    status:
+      row.status != null
+        ? (BACKLINK_STATUS[row.status] ?? String(row.status))
+        : null,
     anchor_details:
       typeof row.anchor_details === "string"
         ? JSON.parse(row.anchor_details)
@@ -46,6 +49,7 @@ export async function createBacklink(
     | "url_from"
     | "url_to"
     | "owner_type"
+    | "domain_from"
     | "domain_from_rank"
     | "anchor_details"
     | "is_new"
@@ -58,15 +62,16 @@ export async function createBacklink(
 ): Promise<BacklinkJSON> {
   await pool.query<ResultSetHeader>(
     `INSERT INTO backlinks
-      (id, site_id, owner_type, url_from, url_to, domain_from_rank,
+      (id, site_id, owner_type, url_from, url_to, domain_from, domain_from_rank,
        anchor_details, is_new, is_lost, is_broken, first_seen, last_seen, spam_score)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.id,
       data.site_id,
       data.owner_type ?? null,
       data.url_from,
       data.url_to,
+      data.domain_from ?? null,
       data.domain_from_rank ?? null,
       data.anchor_details != null ? JSON.stringify(data.anchor_details) : null,
       data.is_new ?? false,
@@ -80,6 +85,21 @@ export async function createBacklink(
   return (await getBacklinkById(data.id))!;
 }
 
+// ── SORT ──────────────────────────────────────────────────────────────
+const BACKLINK_SORTABLE_COLUMNS = [
+  "domain_from",
+  "url_from",
+  "domain_from_rank",
+  "spam_score",
+  "first_seen",
+  "last_seen",
+  "status",
+  "created_at",
+  "updated_at",
+] as const;
+
+type BacklinkSortColumn = (typeof BACKLINK_SORTABLE_COLUMNS)[number];
+
 // ── LIST ──────────────────────────────────────────────────────────────
 export async function listBacklinks(filters: {
   site_id?: number;
@@ -90,14 +110,16 @@ export async function listBacklinks(filters: {
   owner_type?: string;
   limit?: number;
   offset?: number;
+  sort_by?: BacklinkSortColumn;
+  sort_order?: "asc" | "desc";
 }): Promise<{
   backlinks: BacklinkJSON[];
   total: number;
   limit: number;
   offset: number;
 }> {
-  const params: unknown[] = [];
-  const conditions: string[] = [];
+  const params: unknown[] = [50];
+  const conditions: string[] = ["spam_score <= ?"];
 
   if (filters.site_id !== undefined) {
     conditions.push("site_id = ?");
@@ -131,13 +153,20 @@ export async function listBacklinks(filters: {
   const limit = Math.min(filters.limit ?? 20, 100);
   const offset = filters.offset ?? 0;
 
+  const sortBy = BACKLINK_SORTABLE_COLUMNS.includes(
+    filters.sort_by as BacklinkSortColumn,
+  )
+    ? (filters.sort_by as BacklinkSortColumn)
+    : "created_at";
+  const sortOrder = filters.sort_order === "asc" ? "ASC" : "DESC";
+
   const [[countRow], [rows]] = await Promise.all([
     pool.query<RowDataPacket[]>(
       `SELECT COUNT(*) AS count FROM backlinks ${where}`,
       params,
     ),
     pool.query<Backlink[]>(
-      `SELECT * FROM backlinks ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      `SELECT * FROM backlinks ${where} ORDER BY ${sortBy} ${sortOrder} LIMIT ? OFFSET ?`,
       [...params, limit, offset],
     ),
   ]);
@@ -159,9 +188,119 @@ export async function listBacklinks(filters: {
   const total = Number((countRow as RowDataPacket[])[0].count);
   const backlinks = (rows as Backlink[]).map(toJSON).map((b) => ({
     ...b,
-    actioned_user_name: b.actioned_by ? userMap[b.actioned_by] ?? null : null,
+    actioned_user_name: b.actioned_by ? (userMap[b.actioned_by] ?? null) : null,
   }));
   return { backlinks, total, limit, offset };
+}
+
+// ── GET BY Backlinks by Domain Grouping ───────────────────────────────
+export async function getBacklinksGroupedDomain(filters: {
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  backlinks: {
+    domain_from: string;
+    domain_from_rank: number;
+    spam_score: number;
+    backlinks: Backlink[];
+  }[];
+  total: number;
+  limit: number;
+  offset: number;
+}> {
+  const limit = Math.min(filters.limit ?? 10, 100);
+  const offset = filters.offset ?? 0;
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.query("SET SESSION group_concat_max_len = 20000");
+
+    const [[countRow], [rows]] = await Promise.all([
+      conn.query<RowDataPacket[]>(`
+        SELECT COUNT(*) AS count FROM (
+          SELECT domain_from
+          FROM backlinks
+          WHERE is_prospect = false
+          GROUP BY domain_from
+        ) AS grouped_domains;
+      `),
+      conn.query<RowDataPacket[]>(
+        `SELECT domain_from,
+          domain_from_rank,
+          spam_score,
+          CONCAT(
+            '[',
+            GROUP_CONCAT(
+              IF(is_prospect = false,
+                JSON_OBJECT(
+                  'id', id,
+                  'url_from', url_from,
+                  'url_to', url_to,
+                  'anchor_details', anchor_details,
+                  'is_new', is_new,
+                  'is_lost', is_lost,
+                  'is_broken', is_broken,
+                  'spam_score', spam_score,
+                  'first_seen', 'first_seen',
+                  'last_seen', last_seen,
+                  'status', status,
+                  'actioned_by', actioned_by,
+                  'actioned_at', actioned_at
+                ),
+                NULL
+              )
+            ),
+            ']'
+          ) AS backlink
+        FROM backlinks
+        GROUP BY domain_from
+        HAVING backlink IS NOT NULL
+        LIMIT ? OFFSET ?;
+      `,
+        [limit, offset],
+      ),
+    ]);
+
+    const userMap = new Map();
+    const backlinks = await Promise.all(
+      rows.map(async (bl) => {
+        const temp_bl = JSON.parse(bl.backlink);
+
+        const userIds = new Set<number>(
+          temp_bl.map((row: any) => {
+            if (row.actioned_by && !userMap.has(row.actioned_by))
+              return row.actioned_by;
+          }),
+        );
+
+        if (userIds.size > 0) {
+          const [users] = await lc_pool.query<any[]>(
+            `SELECT emp_name, det_id FROM life_emp_details WHERE det_id IN (?)`,
+            [[...userIds]],
+          );
+
+          users.forEach((u) => userMap.set(String(u.det_id), u.emp_name));
+        }
+
+        return {
+          domain_from: bl.domain_from,
+          domain_from_rank: bl.domain_from_rank,
+          spam_score: bl.spam_score,
+          backlinks: JSON.parse(bl.backlink)
+            .map(toJSON)
+            .map((b: Backlink) => ({
+              ...b,
+              actioned_user_name: userMap.get(b.actioned_by),
+            })),
+        };
+      }),
+    );
+
+    const total = Number(countRow[0].count);
+    return { backlinks, total, limit, offset };
+  } finally {
+    conn.release();
+  }
 }
 
 // ── GET BY ID ─────────────────────────────────────────────────────────
@@ -182,6 +321,7 @@ export async function updateBacklink(
     Pick<
       Backlink,
       | "owner_type"
+      | "domain_from"
       | "domain_from_rank"
       | "anchor_details"
       | "is_new"
@@ -199,6 +339,10 @@ export async function updateBacklink(
   if (data.owner_type !== undefined) {
     fields.push("owner_type = ?");
     params.push(data.owner_type);
+  }
+  if (data.domain_from !== undefined) {
+    fields.push("domain_from = ?");
+    params.push(data.domain_from);
   }
   if (data.domain_from_rank !== undefined) {
     fields.push("domain_from_rank = ?");
@@ -265,6 +409,7 @@ export async function upsertBacklinks(
       | "url_from"
       | "url_to"
       | "owner_type"
+      | "domain_from"
       | "domain_from_rank"
       | "anchor_details"
       | "is_new"
@@ -273,13 +418,13 @@ export async function upsertBacklinks(
       | "first_seen"
       | "last_seen"
       | "spam_score"
-    > & {is_prospect?: boolean}
+    > & { is_prospect?: boolean }
   >,
 ): Promise<number> {
   if (records.length === 0) return 0;
 
   const placeholders = records
-    .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
     .join(", ");
 
   const params = records.flatMap((r) => [
@@ -288,6 +433,7 @@ export async function upsertBacklinks(
     r.owner_type ?? null,
     r.url_from,
     r.url_to,
+    r.domain_from ?? null,
     r.domain_from_rank ?? null,
     r.anchor_details != null ? JSON.stringify(r.anchor_details) : null,
     r.is_new ?? false,
@@ -301,11 +447,12 @@ export async function upsertBacklinks(
 
   const [result] = await pool.query<ResultSetHeader>(
     `INSERT INTO backlinks
-      (id, site_id, owner_type, url_from, url_to, domain_from_rank,
+      (id, site_id, owner_type, url_from, url_to, domain_from, domain_from_rank,
        anchor_details, is_new, is_lost, is_broken, is_prospect, first_seen, last_seen, spam_score)
      VALUES ${placeholders}
      ON DUPLICATE KEY UPDATE
        owner_type        = COALESCE(VALUES(owner_type), owner_type ),
+       domain_from       = COALESCE(VALUES(domain_from), domain_from),
        domain_from_rank  = COALESCE(VALUES(domain_from_rank), domain_from_rank),
        anchor_details    = COALESCE(VALUES(anchor_details), anchor_details),
        is_new            = COALESCE(VALUES(is_new), is_new),
@@ -322,7 +469,7 @@ export async function upsertBacklinks(
 }
 
 // ── STATUS ACTIONS ────────────────────────────────────────────────────
-// status 1 = added, 6 = removed
+// status 1 = added, 5 = ignored, 6 = removed
 
 export async function updateBacklinkStatus(
   id: string,
@@ -335,4 +482,25 @@ export async function updateBacklinkStatus(
   );
   if (result.affectedRows === 0) return null;
   return getBacklinkById(id);
+}
+
+// ── CONTROLLERS FOR ORCHESTRATORS ────────────────────────────────────────────────────
+export async function getAllBacklinks(filter?: {
+  limit?: number;
+  offset?: number;
+}) {
+  const limit = filter?.limit || 100;
+  const offset = filter?.offset || 0;
+
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT id, domain_from, url_from, url_to
+    from backlinks
+    WHERE is_prospect = false
+    ORDER BY updated_at ASC
+    LIMIT ? OFFSET ?
+    `,
+    [limit, offset],
+  );
+
+  return rows;
 }

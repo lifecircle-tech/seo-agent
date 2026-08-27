@@ -5,7 +5,10 @@ import { logger } from "../utils/logger.js";
 // Import controllers for database operations
 import { listSitesConfigs } from "../controllers/sites.controller.js";
 import { listCompetitorConfigs } from "../controllers/competitor.controller.js";
-import { upsertBacklinks } from "../controllers/backlinks.controller.js";
+import {
+  getAllBacklinks,
+  upsertBacklinks,
+} from "../controllers/backlinks.controller.js";
 
 import { saveBacklinkReport } from "../services/seo-report.service.js";
 
@@ -15,9 +18,13 @@ import {
   getLostBacklinks,
   getToxicLinks,
   getLinkVelocity,
+  mapBacklink,
+  BacklinkItem,
 } from "../mcp-servers/backlink-monitor/server.js";
 import { findLinkProspects } from "../mcp-servers/backlink-engine/server.js";
 import { postBacklinkDigestToSlack } from "../mcp-servers/reporting/server.js";
+import { getSitesBacklinks } from "../services/dataForSEO.service.js";
+import { getDomain } from "../../libs/functions.js";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -72,6 +79,7 @@ async function backlinkMonitor(siteId: number) {
         owner_type: "",
         url_from: backlink.url_from,
         url_to: backlink.url_to,
+        domain_from: backlink.domain_from,
         domain_from_rank: backlink.domain_from_rank,
         anchor_details: backlink.anchor_details,
         is_new: backlink.is_new,
@@ -85,7 +93,7 @@ async function backlinkMonitor(siteId: number) {
   }
   if (lostLinks) {
     logger.info(
-      "NEW LINKS ",
+      "LOST LINKS ",
       lostLinks.backlinks.map((item) => item.url_from + " " + item.url_to),
     );
     await upsertBacklinks(
@@ -95,6 +103,7 @@ async function backlinkMonitor(siteId: number) {
         owner_type: "",
         url_from: backlink.url_from,
         url_to: backlink.url_to,
+        domain_from: backlink.domain_from,
         domain_from_rank: backlink.domain_from_rank,
         anchor_details: backlink.anchor_details,
         is_new: backlink.is_new,
@@ -108,7 +117,7 @@ async function backlinkMonitor(siteId: number) {
   }
   if (toxicLinks) {
     logger.info(
-      "NEW LINKS ",
+      "TOXIC LINKS ",
       toxicLinks.toxic_links.map((item) => item.url_from + " " + item.url_to),
     );
     await upsertBacklinks(
@@ -118,6 +127,7 @@ async function backlinkMonitor(siteId: number) {
         owner_type: "",
         url_from: backlink.url_from,
         url_to: backlink.url_to,
+        domain_from: backlink.domain_from,
         domain_from_rank: backlink.domain_from_rank,
         anchor_details: backlink.anchor_details,
         is_new: backlink.is_new,
@@ -161,6 +171,7 @@ async function linkProspects(siteId: number) {
       owner_type: "",
       url_from: backlink.url_from,
       url_to: "",
+      domain_from: backlink.domain_from,
       domain_from_rank: null,
       anchor_details: null,
       is_new: false,
@@ -173,6 +184,55 @@ async function linkProspects(siteId: number) {
     })),
   );
   return prospects;
+}
+
+async function checkExistingBacklinkStatus(siteId: number) {
+  let backlinks = await getAllBacklinks();
+  const site = sitesConfig.find((s) => (s.site_id = siteId));
+
+  if (!backlinks.length) {
+    return null;
+  }
+
+  const url_from = new Set();
+  const url_to = new Set();
+
+  for (let bl of backlinks) {
+    url_from.add(bl.url_from);
+    url_to.add(bl.url_to);
+  }
+
+  const updates = (
+    await getSitesBacklinks({
+      target: getDomain(site?.domain as string),
+      filters: [
+        ["url_from", "in", [...url_from]],
+        "and",
+        ["url_to", "in", [...url_to]],
+      ],
+      backlinks_status_type: "all",
+      limit: 100,
+    })
+  ).map(mapBacklink);
+
+  await upsertBacklinks(
+    updates.map((backlink: BacklinkItem) => ({
+      id: randomUUID(),
+      site_id: siteId,
+      owner_type: "",
+      url_from: backlink.url_from,
+      url_to: backlink.url_to,
+      domain_from: backlink.domain_from,
+      domain_from_rank: backlink.domain_from_rank,
+      anchor_details: backlink.anchor_details,
+      is_new: backlink.is_new,
+      is_lost: backlink.is_lost,
+      is_broken: backlink.is_broken,
+      first_seen: backlink.first_seen,
+      last_seen: backlink.last_seen,
+      spam_score: backlink.spam_score,
+    })),
+  );
 }
 
 // ── Summary Printer ───────────────────────────────────────────────────
@@ -204,13 +264,21 @@ async function runBacklinksTasks(siteId: number) {
     `[weekly_backlink_monitor] ══════════════════════════════════════════`,
   );
 
+  // ── Step 0: Check existing backlink status ─────────────────────────────────
+  try {
+    await checkExistingBacklinkStatus(siteId);
+  } catch (exc: any) {
+    errors.step1 = exc.message;
+    logger.error(`[backlink_monitor.step0] ERROR: `, exc);
+  }
+
   // ── Step 1: Backlink monitor ──────────────────────────────────────
   let backlinkData: any = null;
   try {
     backlinkData = await backlinkMonitor(siteId);
   } catch (exc: any) {
     errors.step1 = exc.message;
-    logger.error(`[step1] ERROR: `, exc);
+    logger.error(`[backlink_monitor.step1] ERROR: `, exc);
   }
 
   // ── Step 2: Link prospects ────────────────────────────────────────
@@ -219,7 +287,7 @@ async function runBacklinksTasks(siteId: number) {
     prospectsData = await linkProspects(siteId);
   } catch (exc: any) {
     errors.step2 = exc.message;
-    logger.error(`[step2] ERROR: `, exc);
+    logger.error(`[backlink_monitor.step2] ERROR: `, exc);
   }
 
   // ── Step 3: Persist report to DB ─────────────────────────────────
@@ -227,7 +295,7 @@ async function runBacklinksTasks(siteId: number) {
     await saveBacklinkReport(siteId, backlinkData, prospectsData);
     logger.info(`[step3] Report saved to DB`);
   } catch (exc: any) {
-    logger.error(`[step3] DB save ERROR: `, exc);
+    logger.error(`[backlink_monitor.step3] DB save ERROR: `, exc);
   }
 
   // ── Step 4: Backlink digest → Slack ───────────────────────────────
@@ -243,7 +311,7 @@ async function runBacklinksTasks(siteId: number) {
       );
       logger.info(`[step4] Done`);
     } catch (exc: any) {
-      logger.error(`[step4] ERROR: `, exc);
+      logger.error(`[backlink_monitor.step4] ERROR: `, exc);
     }
   }
   let elapsedSeconds = (Date.now() - startTime) / 1000;

@@ -32,7 +32,9 @@ export async function createCompetitorConfig(
     [data.site_id],
   );
   if ((existing as CompetitorConfig[]).length > 0) {
-    throw new Error(`Competitor config for Site ID=${data.site_id} already exists`);
+    throw new Error(
+      `Competitor config for Site ID=${data.site_id} already exists`,
+    );
   }
 
   await pool.query<ResultSetHeader>(
@@ -132,4 +134,16 @@ export async function deleteCompetitorConfig(id: string): Promise<boolean> {
     [id],
   );
   return result.affectedRows > 0;
+}
+
+// ── CONTROLLERS FOR ORCHESTRATORS ─────────────────────────────────────
+
+export async function getCompetitorBySiteId(siteId: number) {
+  const [rows] = await pool.query<CompetitorConfig[]>(
+    `SELECT c.*, s.domain FROM competitor_config c
+    INNER JOIN sites_config s on c.site_id = s.site_id
+    WHERE c.site_id = ?`,
+    [siteId],
+  );
+  return rows.length ? toJSON(rows[0]) : null;
 }

@@ -8,13 +8,13 @@ import { Approval, ApprovalJSON } from "../models/approval.model.js";
 import { lc_pool, pool } from "../../db.js";
 import {
   bulkUpdateCanonicalURL,
+  getWPPageDetails,
   updatePageMeta,
 } from "../services/wordpress.service.js";
 
 import { runPageContentAgent } from "../services/page-content.service.js";
 import { logger } from "../utils/logger.js";
 import { isUrlRedirected } from "../../libs/functions.js";
-import { getPage } from "../mcp-servers/cms-connector/server.js";
 
 // ── Row serialiser ────────────────────────────────────────────────────
 function toJSON(row: Approval): ApprovalJSON {
@@ -81,13 +81,17 @@ export async function createApproval(
   return approval!;
 }
 
+// ── SORT ──────────────────────────────────────────────────────────────
+const SORTABLE_COLUMNS = new Set(["title", "priority", "created_at", "actioned_at"]);
+
 // ── LIST ──────────────────────────────────────────────────────────────
 export async function listApprovals(filters: {
   status?: string;
   site_id?: number;
-  sort?: string;
   limit?: number;
   offset?: number;
+  sort_by?: string;
+  sort_order?: "asc" | "desc";
 }): Promise<{
   approvals: ApprovalJSON[];
   total: number;
@@ -98,30 +102,36 @@ export async function listApprovals(filters: {
   const params: unknown[] = [];
 
   if (filters.status) {
-    conditions.push("status = ?");
+    conditions.push("a.status = ?");
     params.push(filters.status);
   }
   if (filters.site_id) {
-    conditions.push("site_id = ?");
+    conditions.push("a.site_id = ?");
     params.push(filters.site_id);
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-  const order =
-    filters.sort === "priority"
-      ? "ORDER BY priority ASC"
-      : "ORDER BY created_at DESC";
+
+  const sortBy =
+    filters.sort_by && SORTABLE_COLUMNS.has(filters.sort_by)
+      ? "a."+filters.sort_by
+      : "a.created_at";
+  const sortDir = filters.sort_order === "asc" ? "ASC" : "DESC";
+  const order = `ORDER BY ${sortBy} ${sortDir}`;
 
   const limit = Math.min(filters.limit ?? 10, 100);
   const offset = filters.offset ?? 0;
 
   const [[countRow], [rows]] = await Promise.all([
     pool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) AS count FROM approvals ${where}`,
+      `SELECT COUNT(*) AS count FROM approvals a ${where}`,
       params,
     ),
     pool.query<Approval[]>(
-      `SELECT * FROM approvals ${where} ${order} LIMIT ? OFFSET ?`,
+      `SELECT a.*, s.brand_name as site_name, s.domain
+      FROM approvals a 
+      LEFT JOIN sites_config s ON a.site_id = s.site_id
+      ${where} ${order} LIMIT ? OFFSET ?`,
       [...params, limit, offset],
     ),
   ]);
@@ -236,7 +246,7 @@ export async function approveApproval(
     let canonical_url = approval.updated_content?.recommended_primary_url;
 
     for (let url of approval.updated_content?.competing_urls) {
-      const page = await getPage(approval.site_id, url);
+      const page = await getWPPageDetails(approval.site_id, url);
       items.push({ id: page?.id, canonical_url } as CanonicalUpdate);
     }
 

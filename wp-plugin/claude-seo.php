@@ -45,6 +45,7 @@ function claude_seo_register_rest_functionality() {
 				'description' => get_post_meta($post_arr['id'], CLAUDE_SEO_RM_DESCRIPTION, true),
 				'title'       => get_post_meta($post_arr['id'], CLAUDE_SEO_RM_TITLE, true),
 				'focus_keyword' => get_post_meta($post_arr['id'], CLAUDE_SEO_RM_KEYWORD, true),
+				'canonical'		=> get_post_meta($post_arr['id'], CLAUDE_SEO_CANONICAL_URL, true),
 			];
 		},
 		'schema' => null,
@@ -57,6 +58,7 @@ function claude_seo_register_rest_functionality() {
 				'description' => get_post_meta($post_arr['id'], CLAUDE_SEO_RM_DESCRIPTION, true),
 				'title'       => get_post_meta($post_arr['id'], CLAUDE_SEO_RM_TITLE, true),
 				'focus_keyword' => get_post_meta($post_arr['id'], CLAUDE_SEO_RM_KEYWORD, true),
+				'canonical'		=> get_post_meta($post_arr['id'], CLAUDE_SEO_CANONICAL_URL, true),
 			];
 		},
 		'schema' => null,

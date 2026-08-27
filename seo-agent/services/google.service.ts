@@ -3,7 +3,7 @@ import { logger } from "../utils/logger";
 
 const fmt = (d: Date) => d.toISOString().split("T")[0];
 
-export async function getKeywordPerformance(
+async function getKeywordPerformance(
   siteUrl: string,
   keyword: string,
   days: number = 28,
@@ -46,7 +46,7 @@ export async function getKeywordPerformance(
   return keyword_metrics;
 }
 
-export async function getPagePerformance(
+async function getPagePerformance(
   siteUrl: string,
   pageUrl: string,
   days: number = 28,
@@ -90,6 +90,4 @@ export async function getPagePerformance(
   return page_metrics;
 }
 
-export default {
-  getKeywordPerformance,
-};
+export { getKeywordPerformance, getPagePerformance };

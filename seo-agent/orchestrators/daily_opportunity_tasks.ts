@@ -24,13 +24,22 @@ import {
   updatePageContentBody,
 } from "../controllers/page-content.controller.js";
 
-import { getWPPageDetails } from "../services/wordpress.service.js";
+import {
+  getAllWPPages,
+  getWPPageDetails,
+} from "../services/wordpress.service.js";
 import {
   getKeywordPerformance,
   getPagePerformance,
 } from "../services/google.service.js";
 import { getPaaQuestions } from "../services/dataForSEO.service.js";
 import { getPageContent } from "../services/page-content.service.js";
+import {
+  getPaaQuestionsByQuestions,
+  markPaaQuestionsAsUsed,
+} from "../controllers/paa.controller.js";
+import { getKeywordRankings } from "../mcp-servers/keyword-tracker/server.js";
+import { upsertKeywords } from "../controllers/keywords.controller.js";
 
 // ── Config ────────────────────────────────────────────────────────────
 dotenv.config();
@@ -78,7 +87,7 @@ async function callWithRetry(
 
 async function getAIResponse(client: Anthropic, label: string, prompt: string) {
   const response = await callWithRetry(client, label, {
-    model: "claude-sonnet-4-6",
+    model: "claude-sonnet-5",
     max_tokens: 15000,
     messages: [{ role: "user", content: prompt }],
   });
@@ -127,24 +136,21 @@ performance data, then suggest an improved title tag and meta description to
 increase CTR and rankings.
 
 PAGE DETAILS:
-${JSON.stringify(
-  {
-    url: wpPage.url,
-    type: wpPage.type,
-    current_title: wpPage.title,
-    current_meta_description: wpPage.meta_description,
-    last_modified: wpPage.last_modified,
-    target_keywords: targetKeywords,
-  },
-  null,
-  2,
-)}
+${JSON.stringify({
+  url: wpPage.url,
+  type: wpPage.type,
+  current_title: wpPage.title,
+  current_meta_description: wpPage.meta_description,
+  last_modified: wpPage.last_modified,
+  target_keywords: targetKeywords,
+  canonical_to: wpPage.canonical_url,
+})}
 
 PAGE PERFORMANCE (last 28 days):
-${JSON.stringify(pagePerformance, null, 2)}
+${JSON.stringify(pagePerformance)}
 
 KEYWORD PERFORMANCE (last 28 days):
-${JSON.stringify(keywordPerformance, null, 2)}
+${JSON.stringify(keywordPerformance)}
 
 OPPORTUNITY CONTEXT:
 - Reason flagged: ${opp.reasoning}
@@ -160,7 +166,7 @@ Return ONLY a JSON object with keys:
 - priority: 1-3 based on potential impact, 1 = high, 2 = medium, 3 = low
 - suggested_title
 - suggested_description
-- reasoning: detailed explanation of what changed and the expected SEO impact
+- reasoning: simple explanation of what changed and the expected SEO impact
 No extra text.`;
 
   const response = await getAIResponse(
@@ -182,7 +188,7 @@ No extra text.`;
   await createApproval({
     id: randomUUID(),
     site_id: opp.site_id,
-    module: "opportunities",
+    module: "cms-connector",
     type: "meta_rewrite",
     priority: response.priority,
     title: wpPage.title,
@@ -192,7 +198,7 @@ No extra text.`;
       focus_keywords: targetKeywords,
       current_title: wpPage.title,
       current_description: wpPage.meta_description,
-      last_updated_at: last_updated_at?.actioned_at || wpPage.last_modified,
+      last_updated_at: last_updated_at?.actioned_at,
     },
     updated_content: {
       url: wpPage.url,
@@ -216,6 +222,7 @@ async function processRefreshContentOpportunity(
   client: Anthropic,
   opp: OpportunityJSON,
   site: { site_id: number; domain: string; brand_name: string },
+  sitePages: any[],
 ) {
   const details = opp.opportunity_details ?? {};
   const url: string = details.url;
@@ -232,18 +239,37 @@ async function processRefreshContentOpportunity(
 
   const pagePerformance = await getPagePerformance(site.domain, url);
   const keywordPerformance = (
-    await Promise.all(
-      targetKeywords.map((keyword) =>
-        getKeywordPerformance(site.domain, keyword),
-      ),
-    )
+    await getKeywordRankings(site.site_id, site.domain, targetKeywords)
+  ).rankings.flat();
+
+  await upsertKeywords(
+    keywordPerformance.map((r) => {
+      return {
+        id: randomUUID(),
+        site_id: site.site_id,
+        keyword: r.keyword,
+        is_new: false,
+        clicks: r.clicks,
+        impressions: r.impressions,
+        position: r.position ?? null,
+        ctr: r.ctr,
+        search_volume: r.volume ?? null,
+        difficulty: r.difficulty ?? null,
+        cpc: r.cpc ?? null,
+        competition: r.competition ?? null,
+        competition_level: r.competition_level ?? null,
+        monthly_searches: r.monthly_searches ?? null,
+      };
+    }),
+  );
+
+  let paaQuestions: any[] = (
+    await Promise.all(targetKeywords.map((keyword) => getPaaQuestions(keyword)))
   ).flat();
 
-  const paaQuestions = (
-    await Promise.all(targetKeywords.map((keyword) => getPaaQuestions(keyword)))
-  )
-    .flat()
-    .slice(0, 8);
+  const paaFromRecords = await getPaaQuestionsByQuestions(
+    paaQuestions.map((q) => q.question),
+  );
 
   const currentContent = await getPageContent(opp.site_id, url, pageType);
 
@@ -264,26 +290,26 @@ CURRENT PAGE CONTENT (Markdown):
 ${currentContent}
 
 PAGE DETAILS:
-${JSON.stringify(
-  {
-    url: wpPage.url,
-    type: pageType,
-    current_title: wpPage.title,
-    last_modified: wpPage.last_modified,
-    target_keywords: targetKeywords,
-  },
-  null,
-  2,
-)}
+${JSON.stringify({
+  url: wpPage.url,
+  type: pageType,
+  current_title: wpPage.title,
+  last_modified: wpPage.last_modified,
+  target_keywords: targetKeywords,
+  canonical_to: wpPage.canonical_url,
+})}
 
 PAGE PERFORMANCE (last 28 days):
-${JSON.stringify(pagePerformance, null, 2)}
+${JSON.stringify(pagePerformance)}
 
 KEYWORD PERFORMANCE (last 28 days):
-${JSON.stringify(keywordPerformance, null, 2)}
+${JSON.stringify(keywordPerformance)}
 
 PEOPLE ALSO ASK:
-${JSON.stringify(paaQuestions, null, 2)}
+${JSON.stringify(paaQuestions.map((q) => q.question).slice(0, 8))}
+
+SITE PAGES (Internal link opportunities):
+${JSON.stringify(sitePages)}
 
 OPPORTUNITY CONTEXT:
 - Reason flagged: ${opp.reasoning}
@@ -294,10 +320,14 @@ INSTRUCTIONS:
 ${contentInstruction}
 
 Do not fabricate statistics, studies, or metrics not present in the data above.
+Do not mention about (---) in reasoning.
+If page is city specific, omit the PAA questions that contains different city
 
 Return ONLY a JSON object with keys:
 - suggested_content: the refreshed content described above, in Markdown
-- reasoning: detailed explanation of what changed and the expected SEO impact
+- reasoning: simple and brief about what changed and the expected SEO impact
+- source: list source about any information added from outside like testimonial, pricing
+- paa: return non-modified PAA list used in suggested content
 No extra text.`;
 
   logger.debug(
@@ -308,7 +338,10 @@ No extra text.`;
     "daily_opportunity.refresh_content",
     prompt,
   );
-  logger.debug("[daily_opportunity_tasks] Content generation complete");
+  logger.debug(
+    "[daily_opportunity_tasks] Content generation complete",
+    response.source,
+  );
 
   if (!response) {
     logger.warn(
@@ -317,7 +350,23 @@ No extra text.`;
     return;
   }
 
-  const keywords_analytics = keywordPerformance;
+  const keywords_analytics = keywordPerformance.map((keyword) => ({
+    keyword: keyword.keyword,
+    cpc: keyword.cpc,
+    search_volume: keyword.volume,
+    position: keyword?.position ?? null,
+    clicks: keyword?.clicks ?? 0,
+    impressions: keyword?.impressions ?? 0,
+    ctr: keyword?.ctr ?? 0,
+  }));
+
+  // Mark PAA as used
+  const used_paa = response.paa;
+  const paaInRecords = paaFromRecords.filter((q) =>
+    used_paa.includes(q.question),
+  );
+  markPaaQuestionsAsUsed(paaInRecords.map((q) => q.id));
+  // TODO: Add New PAA in records with keywords
 
   const page = await getAcknowledgedPageByUrl(url);
 
@@ -333,8 +382,7 @@ No extra text.`;
     },
     keywords_analytics,
     update_details: {
-      previous_updated_at: page?.acknowledged_at || wpPage.last_modified,
-      reasoning: opp.reasoning,
+      previous_updated_at: page?.acknowledged_at,
     },
   });
 
@@ -360,6 +408,18 @@ export async function dailyOpportunityTasks(siteId: number = 1) {
     );
     return;
   }
+
+  let site_pages = (await getAllWPPages(site.site_id)) as any[];
+  site_pages = site_pages
+    .filter((page) => !page.redirecting_to)
+    .map((page) => ({
+      url: page.url,
+      type: page.type,
+      slug: page.slug,
+      title: page.title,
+      description: page.description,
+      canonical: page.canonical,
+    }));
 
   const metaRewriteOpportunities = await getPlannedOpportunitiesByType(
     "meta_rewrite",
@@ -388,7 +448,7 @@ export async function dailyOpportunityTasks(siteId: number = 1) {
   );
   for (const opp of refreshContentOpportunities) {
     try {
-      await processRefreshContentOpportunity(client, opp, site);
+      await processRefreshContentOpportunity(client, opp, site, site_pages);
     } catch (err: any) {
       logger.error(
         `[daily_opportunity_tasks] refresh_content failed for opp=${opp.id}: ${err.message}`,

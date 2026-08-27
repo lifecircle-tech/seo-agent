@@ -78,7 +78,7 @@ export interface LinkVelocityResult {
 
 // ── Shared backlink mapper ────────────────────────────────────────────
 
-function mapBacklink(item: any): BacklinkItem {
+export function mapBacklink(item: any): BacklinkItem {
   return {
     url_from: item.url_from ?? "",
     domain_from: item.domain_from ?? "",
@@ -122,10 +122,16 @@ export async function getNewBacklinks(
   );
 
   const data = await getSitesBacklinks({
-    target: domain,
+    target: getDomain(domain),
     limit: 50,
     order_by: ["domain_from_rank,asc"],
-    filters: [["first_seen", ">=", dateFrom], "and", ["is_lost", "=", false]],
+    filters: [
+      ["first_seen", ">=", dateFrom],
+      "and",
+      ["is_lost", "=", false],
+      "and",
+      ["backlink_spam_score", "<", 50],
+    ],
   });
 
   const items: BacklinkItem[] = (data ?? []).map(mapBacklink);
@@ -156,11 +162,17 @@ export async function getLostBacklinks(
   );
 
   const data = await getSitesBacklinks({
-    target: domain,
+    target: getDomain(domain),
     limit: 50,
     order_by: ["domain_from_rank,desc"],
     backlinks_status_type: "lost",
-    filters: [["is_lost", "=", true], "and", ["last_seen", ">=", dateFrom]],
+    filters: [
+      ["is_lost", "=", true],
+      "and",
+      ["last_seen", ">=", dateFrom],
+      "and",
+      ["backlink_spam_score", "<", 50],
+    ],
   });
 
   const items: BacklinkItem[] = (data ?? []).map(mapBacklink);
@@ -176,7 +188,7 @@ export async function getLostBacklinks(
 
 // ── get_toxic_links ───────────────────────────────────────────────────
 
-const SPAM_THRESHOLD = 60;
+const SPAM_THRESHOLD = 50;
 
 export async function getToxicLinks(
   siteId: number,
@@ -188,13 +200,15 @@ export async function getToxicLinks(
   );
 
   const data = await getSitesBacklinks({
-    target: domain,
+    target: getDomain(domain),
     limit: 100,
     order_by: ["backlink_spam_score,desc"],
     filters: [
-      ["backlink_spam_score", ">", SPAM_THRESHOLD],
-      "and",
       ["is_lost", "=", false],
+      "and",
+      ["is_broken", "=", false],
+      "and",
+      ["backlink_spam_score", ">", SPAM_THRESHOLD],
     ],
   });
 

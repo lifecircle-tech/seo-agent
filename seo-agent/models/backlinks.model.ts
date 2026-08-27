@@ -8,6 +8,7 @@ export interface Backlink extends RowDataPacket {
   owner_type: string | null;                     // VARCHAR(64)
   url_from: string;                              // VARCHAR(2048)
   url_to: string | null;                         // VARCHAR(2048)
+  domain_from: string | null;                    // VARCHAR(255)
   domain_from_rank: number | null;               // INT
   anchor_details: Record<string, unknown> | null; // JSON
   is_new: boolean;                               // BOOLEAN
@@ -30,6 +31,7 @@ export interface BacklinkJSON {
   owner_type: string | null;
   url_from: string;
   url_to: string | null;
+  domain_from: string | null;
   domain_from_rank: number | null;
   anchor_details: Record<string, unknown> | null;
   is_new: boolean;
@@ -56,6 +58,7 @@ export async function createBacklinksTable(): Promise<void> {
       owner_type        VARCHAR(64)    NULL,
       url_from          VARCHAR(2048)  NOT NULL,
       url_to            VARCHAR(2048)  NULL,
+      domain_from       VARCHAR(255)   NULL,
       domain_from_rank  INT            NULL,
       anchor_details    JSON           NULL,
       is_new            BOOLEAN        NOT NULL DEFAULT false,

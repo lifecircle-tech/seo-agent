@@ -207,6 +207,21 @@ export async function getPaaQuestionsForKeywords(
   return result;
 }
 
+export async function getPaaQuestionsByQuestions(
+  questions: string[],
+  onlyUnused = false,
+): Promise<PaaQuestionJSON[]> {
+  if (questions.length === 0) return [];
+
+  const usedFilter = onlyUnused ? " AND used_in_content = false" : "";
+  const [rows] = await pool.query<PaaQuestion[]>(
+    `SELECT * FROM paa_questions WHERE question IN (?)${usedFilter} ORDER BY created_at ASC`,
+    [questions],
+  );
+
+  return rows.map(toJSON);
+}
+
 // ── MARK AS USED ──────────────────────────────────────────────────────
 // Call this after questions are consumed by content generation.
 
