@@ -74,9 +74,10 @@ export async function getLatestSeoReport(
 
 export async function getAllLatestSeoReport(): Promise<SeoReportJSON[] | null> {
   const [rows] = await pool.query<SeoReport[]>(
-    `SELECT * FROM seo_reports
-     WHERE created_at >= CURRENT_DATE - INTERVAL 7 DAY
-     ORDER BY created_at DESC`,
+    `SELECT r.*, s.brand_name as site_name FROM seo_reports r
+    LEFT JOIN sites_config s ON r.site_id = s.site_id
+    WHERE r.created_at >= CURRENT_DATE - INTERVAL 7 DAY
+    ORDER BY r.created_at DESC`,
   );
   return rows.length ? rows.map(toJSON) : null;
 }
@@ -98,11 +99,11 @@ export async function listSeoReports(filters: {
   const params: unknown[] = [];
 
   if (filters.site_id !== undefined) {
-    conditions.push("site_id = ?");
+    conditions.push("r.site_id = ?");
     params.push(filters.site_id);
   }
   if (filters.report_type) {
-    conditions.push("report_type = ?");
+    conditions.push("r.report_type = ?");
     params.push(filters.report_type);
   }
 
@@ -112,11 +113,13 @@ export async function listSeoReports(filters: {
 
   const [[countRow], [rows]] = await Promise.all([
     pool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) AS count FROM seo_reports ${where}`,
+      `SELECT COUNT(*) AS count FROM seo_reports r ${where}`,
       params,
     ),
     pool.query<SeoReport[]>(
-      `SELECT * FROM seo_reports ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      `SELECT r.*, s.brand_name as site_name FROM seo_reports r
+      LEFT JOIN sites_config s ON r.site_id = s.site_id
+      ${where} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`,
       [...params, limit, offset],
     ),
   ]);

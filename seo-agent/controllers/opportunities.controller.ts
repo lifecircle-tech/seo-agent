@@ -87,19 +87,19 @@ export async function listOpportunities(filters: {
   const conditions: string[] = [];
 
   if (filters.site_id !== undefined) {
-    conditions.push("site_id = ?");
+    conditions.push("o.site_id = ?");
     params.push(filters.site_id);
   }
   if (filters.status) {
-    conditions.push("status = ?");
+    conditions.push("o.status = ?");
     params.push(filters.status);
   }
   if (filters.opportunity_type) {
-    conditions.push("opportunity_type = ?");
+    conditions.push("o.opportunity_type = ?");
     params.push(filters.opportunity_type);
   }
   if (filters.priority) {
-    conditions.push("priority = ?");
+    conditions.push("o.priority = ?");
     params.push(filters.priority);
   }
 
@@ -109,11 +109,13 @@ export async function listOpportunities(filters: {
 
   const [[countRow], [rows]] = await Promise.all([
     pool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) AS count FROM opportunities ${where}`,
+      `SELECT COUNT(*) AS count FROM opportunities o ${where}`,
       params,
     ),
     pool.query<Opportunity[]>(
-      `SELECT * FROM opportunities ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      `SELECT o.*, s.brand_name as site_name FROM opportunities o
+      LEFT JOIN sites_config s ON o.site_id = s.site_id
+      ${where} ORDER BY o.created_at DESC LIMIT ? OFFSET ?`,
       [...params, limit, offset],
     ),
   ]);

@@ -106,20 +106,20 @@ export async function listPageContents(filters: {
 
   if (filters.status) {
     if (filters.status == 21 || filters.status == 22) {
-      conditions.push("status in ('21','22')");
+      conditions.push("p.status in ('21','22')");
     } else {
-      conditions.push("status = ?");
+      conditions.push("p.status = ?");
       params.push(filters.status);
     }
   }
 
   if (filters.is_new !== undefined) {
-    conditions.push("is_new = ?");
+    conditions.push("p.is_new = ?");
     params.push(filters.is_new);
   }
 
   if (filters.site_id) {
-    conditions.push("site_id = ?");
+    conditions.push("p.site_id = ?");
     params.push(filters.site_id);
   }
 
@@ -133,16 +133,18 @@ export async function listPageContents(filters: {
       : null;
   const sortDir = filters.sort_dir === "asc" ? "ASC" : "DESC";
   const orderBy = sortCol
-    ? `${sortCol} ${sortDir}, created_at DESC`
-    : `created_at DESC`;
+    ? `${sortCol} ${sortDir}, p.created_at DESC`
+    : `p.created_at DESC`;
 
   const [[countRow], [rows]] = await Promise.all([
     pool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) AS count FROM page_content ${where}`,
+      `SELECT COUNT(*) AS count FROM page_content p ${where}`,
       params,
     ),
     pool.query<PageContent[]>(
-      `SELECT * FROM page_content ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
+      `SELECT p.*, s.brand_name as site_name FROM page_content p
+      LEFT JOIN sites_config s ON p.site_id = s.site_id
+      ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
       [...params, limit, offset],
     ),
   ]);
