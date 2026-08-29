@@ -39,13 +39,13 @@ export async function getAllWPPages(siteId: number) {
   let offset = 0;
   const pageSize = 100;
 
-  const queries = 'publish&_fields=id,slug,type,link,title,rank_math_meta&context=view'
+  const fields = 'id,slug,type,link,title,rank_math_meta&context=view'
 
   while (true) {
     const batch = (await wpFetch(
       siteId,
       "GET",
-      `/pages?per_page=${pageSize}&offset=${offset}&status=${queries}`,
+      `/pages?per_page=${pageSize}&offset=${offset}&status=publish&_fields=${fields}`,
     )) as WpPage[];
 
     let temp = await Promise.all(
@@ -61,6 +61,9 @@ export async function getAllWPPages(siteId: number) {
     );
 
     wp_pages.push(...temp);
+
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    await sleep(1000);
 
     if (batch.length < pageSize) break;
     offset += pageSize;
@@ -72,7 +75,7 @@ export async function getAllWPPages(siteId: number) {
     const batch = (await wpFetch(
       siteId,
       "GET",
-      `/posts?per_page=${pageSize}&offset=${offset}&status=${queries}`,
+      `/posts?per_page=${pageSize}&offset=${offset}&status=publish&_fields=${fields}`,
     )) as WpPage[];
 
     let temp = await Promise.all(
@@ -88,6 +91,9 @@ export async function getAllWPPages(siteId: number) {
     );
 
     wp_pages.push(...temp);
+
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    await sleep(1000);
 
     if (batch.length < pageSize) break;
     offset += pageSize;
@@ -101,8 +107,8 @@ export async function getAllWPPages(siteId: number) {
     title: page.rank_math_meta.title,
     description: page.rank_math_meta.description,
     targeting_keywords: page.rank_math_meta.focus_keywords,
-    canonical: page.rank_math_meta.canonical,
-    redirecting_to: page.redirecting_to,
+    canonical: page.rank_math_meta.canonical || undefined,
+    redirecting_to: page.redirecting_to || undefined,
   }));
 }
 

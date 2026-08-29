@@ -383,12 +383,3 @@ export async function getPlannedOpportunitiesByType(
   return rows.map(toJSON);
 }
 
-export async function markStatusToCompleted(id: string) {
-  const [result] = await pool.query<ResultSetHeader>(
-    `UPDATE opportunities SET status = 'completed', actioned_by = 'agent', actioned_at = NOW(3)
-    WHERE id = ?`,
-    [id],
-  );
-  if (result.affectedRows === 0) return null;
-  return getOpportunityById(id);
-}

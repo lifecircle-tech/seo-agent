@@ -379,9 +379,7 @@ export async function runPageContentAgent(id: string) {
       .map((page) => ({
         url: page.url,
         type: page.type,
-        slug: page.slug,
         title: page.title,
-        description: page.description,
         canonical: page.canonical,
       }));
 

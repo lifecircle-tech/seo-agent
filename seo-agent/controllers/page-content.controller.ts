@@ -363,7 +363,7 @@ export async function createNewPageContent(
   await pool.query<ResultSetHeader>(
     `INSERT INTO page_content 
       (id, site_id, page_meta_details, content, reasoning, images, links, url, status, keywords_analytics, is_new) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, 11, ?, true)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 11, ?, true)
     ON DUPLICATE KEY UPDATE
       page_meta_details   = COALESCE(VALUES(page_meta_details), page_meta_details),
       content             = COALESCE(VALUES(content), content),

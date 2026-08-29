@@ -32,7 +32,7 @@ import {
   upsertPages,
 } from "../controllers/page.controller.js";
 import { getPageRankings } from "../mcp-servers/keyword-tracker/server.js";
-import { getWPPageDetails } from "../services/wordpress.service.js";
+import { getAllWPPages, getWPPageDetails } from "../services/wordpress.service.js";
 import { isUrlRedirected, redirectingToURL } from "../../libs/functions.js";
 import { getPagePerformance } from "../services/google.service.js";
 import { getCompetitorBySiteId } from "../controllers/competitor.controller.js";
@@ -143,9 +143,11 @@ async function writeToContentCalendar(
  * Uses Claude to identify content strategies based on keyword data
  */
 async function analyzeWithAI(
+  site: { domain: string; brand_name: string },
   keywords: KeywordOpportunity[],
   pages: any[],
   competitors_keyword_gap: any[],
+  site_pages: any[],
 ) {
   logger.info("Analyzing opportunities by AI...");
 
@@ -175,6 +177,8 @@ async function analyzeWithAI(
 You are provide with keywords data, page data and performance data.
 Analyze this data to identify concrete opportunities to improve rankings and traffic.
 
+SITE: ${site.brand_name} (${site.domain})
+
 KEYWORD DATA:
 ${JSON.stringify(prompt_keywords.slice(0, 150))}
 
@@ -184,10 +188,13 @@ ${JSON.stringify(pages)}
 COMPETITOR'S KEYWORD GAPS:
 ${JSON.stringify(competitors_keyword_gap)}
 
+ALL EXISTING PAGES (consider only for 'new_content'):
+${JSON.stringify(site_pages)}
+
 TASK
 - Analyze the input using the diagnostic patterns below. For every genuine 
 opportunity found, produce one content brief in the output format.
-- Cluster related keywords together for content.
+- Cluster potential keywords together for content.
 
 DIAGNOSTIC PATTERNS TO CHECK
 
@@ -224,7 +231,7 @@ Return ONLY a JSON object matching following structure:
   {
     "opportunity_type": "new_content | meta_rewrite | consolidate_or_differentiate | refresh_content",
     "priority": "1 | 2 | 3 | null",
-    "reasoning": 2-3 sentences on WHY this was flagged, citing the specific 
+    "reasoning": 2-5 sentences on WHY this was flagged, citing the specific 
       metric(s) that triggered it, e.g. 'Ranks position 12 for a 
       keyword with 2,400 monthly searches; content covers the 
       topic but lacks depth compared to top-10 pages.' Use null 
@@ -242,9 +249,10 @@ Return ONLY a JSON object matching following structure:
       // ADD fields below based on opportunity_type — only include the ones 
       // relevant to that type, omit the rest:
 
-      // new_content
-      "title": "suggested page title", // overwrite for new_content
-      "type": "type of page", // 'post' or 'page' for wordpress page
+      // new_content - overwrite for new_content
+      "title": "suggested page title",
+      "url": "suggested url with domain",
+      "type": {'post'}, // for wordpress blog page
 
       // consolidate_or_differentiate:
       "competing_urls": ["url1", "url2"],
@@ -259,19 +267,19 @@ Return ONLY a JSON object matching following structure:
   ]
 }
 
-"target_keywords": mention primary keyword as first element of the array followed by secondary keywords
+"target_keywords": mention primary keyword as first element of the array followed by secondary keywords.
 
 CONSTRAINTS
 - Do not combine keywords for different city
 - Do not fabricate metrics or keywords not present in the input.
 - Do not generate speculative opportunities unsupported by the data.
-- Do not exceed 20 opportunities per run; if more exist, include only the 
-  top 20 by priority.
+- Do not exceed 10 opportunities per run; if more exist, include only the top 10 by priority.
+- For url suggestion, write slug with target keywords only. Do not prefix slug with any path.
 - Sort the array by priority (1 first, then 2, then 3).
 - If no genuine opportunities are found, return an empty array: []
 `;
 
-  const response = await callWithRetry("step1", {
+  const response = await callWithRetry("monthly-discovery", {
     model: "claude-sonnet-5",
     max_tokens: 50000,
     messages: [
@@ -471,6 +479,15 @@ async function runMonthlyDiscovery() {
   let siteKeywordsTotal = 0;
   let siteOpportunitiesTotal = 0;
 
+  let site_pages = (await getAllWPPages(site.site_id)) as any[];
+  site_pages = site_pages
+    .filter((page) => !page.redirecting_to)
+    .map((page) => ({
+      url: page.url,
+      type: page.type,
+      canonical: page.canonical,
+    }));
+
   try {
     logger.info(`[city] Researching: ${site.brand_name}...`);
 
@@ -549,9 +566,11 @@ async function runMonthlyDiscovery() {
 
       // AI Analysis
       const { opportunities } = await analyzeWithAI(
+        site,
         prioritised,
         pagesDetails,
         competitors_keywords_gap,
+        site_pages,
       );
       siteOpportunitiesTotal += opportunities.length;
 
@@ -563,7 +582,8 @@ async function runMonthlyDiscovery() {
           const allTargetKeywords = Array.from(
             new Set<string>(
               opportunities.flatMap(
-                (opp: any) => opp.target_keywords as string[],
+                (opp: any) =>
+                  opp.opportunity_details.target_keywords as string[],
               ),
             ),
           );
@@ -585,6 +605,7 @@ async function runMonthlyDiscovery() {
           await Promise.all(
             allTargetKeywords.map(async (kwText) => {
               try {
+                if (!kwText) return;
                 const results = await getPaaQuestions(kwText);
                 const keywordId = kwIdMap.get(kwText.toLowerCase());
                 if (!keywordId) return; // keyword not in DB yet — skip
@@ -612,7 +633,7 @@ async function runMonthlyDiscovery() {
             logger.info(
               `[monthly-discovery] Persisted ${paaItems.length} PAA questions to DB`,
             );
-            reportText.push(`    - Found ${paaItems.length} PAA opportunities`);
+            reportText.push(`- Found ${paaItems.length} PAA opportunities`);
           }
         } catch (err) {
           logger.error(`[monthly-discovery] PAA discovery failed:`, err);
@@ -650,12 +671,8 @@ async function runMonthlyDiscovery() {
                 priority: opp.priority ?? null,
                 reasoning: opp.reasoning ?? null,
                 topic: opp.topic,
-                description: opp.content_description,
-                opportunity_details: {
-                  title: opp.title,
-                  target_keywords: opp.target_keywords,
-                  type: opp.opportunity_type,
-                },
+                description: opp.description,
+                opportunity_details: opp.opportunity_details,
               });
             }
           } catch (err) {

@@ -5,7 +5,7 @@ import { logger } from "../utils/logger.js";
 // Import controllers for database operations
 import {
   getNewOpportunities,
-  markStatusToCompleted,
+  updateStatusToCompleted,
 } from "../controllers/opportunities.controller.js";
 import { OpportunityJSON } from "../models/opportunities.model.js";
 import { createNewPageContent } from "../controllers/page-content.controller.js";
@@ -138,7 +138,7 @@ these rules:
       title: title of the image,
       description: brief detail about image,
     }],
-  - page_type : "page" or "post" (for WordPress)
+  - page_type : "post" (for WordPress)
 
 8. CONSTRAINTS
   - Stay within ±10% of the target word count.
@@ -206,9 +206,7 @@ export async function opportunityContentGeneration() {
       .map((page) => ({
         url: page.url,
         type: page.type,
-        slug: page.slug,
         title: page.title,
-        description: page.description,
         canonical: page.canonical,
       }));
 
@@ -251,7 +249,7 @@ export async function opportunityContentGeneration() {
     });
     logger.info("[monthly.opportunity_content] Page content created");
 
-    await markStatusToCompleted(opp.id);
+    await updateStatusToCompleted(opp.id, "agent");
     logger.info("[monthly.opportunity_content] Opportunity status updated");
 
     // Mark consumed PAA questions so they aren't re-used in future content runs
