@@ -182,8 +182,20 @@ export async function opportunityContentGeneration() {
     opportunity_type: "new_content",
   });
 
+  // TODO: loop through sites for site_id
+
+  let site_pages = (await getAllWPPages(opportunities[0].site_id)) as any[];
+  site_pages = site_pages
+    .filter((page) => !page.redirecting_to)
+    .map((page) => ({
+      url: page.url,
+      type: page.type,
+      // title: page.title,
+      canonical: page.canonical,
+    }));
+
   // const opp = opportunities[0];
-  for await (let opp of opportunities.slice(0, 10)) {
+  for await (let opp of opportunities.slice(0, 5)) {
     const site = await getSiteBySiteID(opp.site_id);
 
     // Fetch PAA questions for this opportunity's target keywords
@@ -199,16 +211,6 @@ export async function opportunityContentGeneration() {
     const paaMap = [...temp_paaMap.values()].flat().slice(0, 4);
     const paaQuestions = paaMap.map((q) => q.question);
     const paaIds = paaMap.map((q) => q.id);
-
-    let site_pages = (await getAllWPPages(opp.site_id)) as any[];
-    site_pages = site_pages
-      .filter((page) => !page.redirecting_to)
-      .map((page) => ({
-        url: page.url,
-        type: page.type,
-        title: page.title,
-        canonical: page.canonical,
-      }));
 
     // TODO : pass performance details, keywords, pages
     const response = await writePageContentWithAI(

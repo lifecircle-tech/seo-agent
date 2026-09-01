@@ -87,19 +87,19 @@ export async function saveSitemapAdsReport(
 
   const payload: SitemapAdsPayload = {
     // sitemap
-    coverage_pct,
-    total_submitted: status?.total_submitted ?? 0,
-    total_indexed: status?.total_indexed ?? 0,
-    issues: status?.issues ?? [],
-    gsc_sitemaps: status?.gsc_sitemaps ?? [],
-    bing_sitemaps: status?.bing_sitemaps ?? [],
+    // coverage_pct,
+    // total_submitted: status?.total_submitted ?? 0,
+    // total_indexed: status?.total_indexed ?? 0,
+    // issues: status?.issues ?? [],
+    // gsc_sitemaps: status?.gsc_sitemaps ?? [],
+    // bing_sitemaps: status?.bing_sitemaps ?? [],
     // pings
-    new_pages_count,
-    already_pinged: detected?.already_pinged ?? 0,
-    pinged_count: pingResult?.pinged?.length ?? 0,
-    ping_success_count,
-    ping_error_count: pingResult?.error_count ?? 0,
-    ping_results: pingResult?.pinged ?? [],
+    // new_pages_count,
+    // already_pinged: detected?.already_pinged ?? 0,
+    // pinged_count: pingResult?.pinged?.length ?? 0,
+    // ping_success_count,
+    // ping_error_count: pingResult?.error_count ?? 0,
+    // ping_results: pingResult?.pinged ?? [],
     // ads
     total_conversions,
     total_cost_inr: topKeywords?.total_cost_inr ?? 0,

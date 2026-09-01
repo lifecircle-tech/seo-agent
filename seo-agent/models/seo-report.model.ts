@@ -111,19 +111,19 @@ export interface LocationInsight {
 
 export interface SitemapAdsPayload {
   // sitemap
-  coverage_pct: number;
-  total_submitted: number;
-  total_indexed: number;
-  issues: string[];
-  gsc_sitemaps: SitemapEntry[];
-  bing_sitemaps: BingSitemapEntry[];
+  coverage_pct?: number;
+  total_submitted?: number;
+  total_indexed?: number;
+  issues?: string[];
+  gsc_sitemaps?: SitemapEntry[];
+  bing_sitemaps?: BingSitemapEntry[];
   // indexing pings
-  new_pages_count: number;
-  already_pinged: number;
-  pinged_count: number;
-  ping_success_count: number;
-  ping_error_count: number;
-  ping_results: PingResultEntry[];
+  new_pages_count?: number;
+  already_pinged?: number;
+  pinged_count?: number;
+  ping_success_count?: number;
+  ping_error_count?: number;
+  ping_results?: PingResultEntry[];
   // ads
   total_conversions: number;
   total_cost_inr: number;

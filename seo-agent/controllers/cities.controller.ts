@@ -41,7 +41,9 @@ export async function createCityConfig(
     [data.site_id, data.city],
   );
   if ((existing as CityConfig[]).length > 0) {
-    throw new Error(`City for Site ID=${data.site_id} and city="${data.city}" already exists`);
+    throw new Error(
+      `City for Site ID=${data.site_id} and city="${data.city}" already exists`,
+    );
   }
 
   await pool.query<ResultSetHeader>(
@@ -116,12 +118,7 @@ export async function getCityConfigById(
 // ── UPDATE ────────────────────────────────────────────────────────────
 export async function updateCityConfig(
   id: string,
-  data: Partial<
-    Pick<
-      CityConfig,
-      "city" | "state" | "country" | "services"
-    >
-  >,
+  data: Partial<Pick<CityConfig, "city" | "state" | "country" | "services">>,
 ): Promise<CityConfigJSON | null> {
   const fields: string[] = [];
   const params: unknown[] = [];
@@ -161,4 +158,13 @@ export async function deleteCityConfig(id: string): Promise<boolean> {
     [id],
   );
   return result.affectedRows > 0;
+}
+
+export async function getCitiesBySiteId(site_id: number) {
+  const [rows] = await pool.query<CityConfig[]>(
+    `SELECT * FROM cities_config c WHERE site_id = ?`,
+    [site_id],
+  );
+
+  return rows.map(toJSON);
 }

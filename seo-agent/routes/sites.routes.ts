@@ -8,21 +8,17 @@
  */
 
 import { Router, Request, Response } from "express";
-import { google } from "googleapis";
 import { pool } from "../../db.js";
 import { RowDataPacket } from "mysql2/promise";
 import { logger } from "../utils/logger.js";
+import { getCitiesBySiteId } from "../controllers/cities.controller.js";
+import { getSiteBySiteID } from "../controllers/sites.controller.js";
+import {
+  getCityPerformanceMetrics,
+  getSitePerformanceMetrics,
+} from "../services/google.service.js";
 
 const router = Router();
-
-function getGscAuth() {
-  const raw = process.env[`GSC_OAUTH_SITE`];
-  if (!raw) throw new Error(`Missing GSC_OAUTH_SITE env var`);
-  return new google.auth.GoogleAuth({
-    credentials: JSON.parse(raw) as object,
-    scopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
-  });
-}
 
 function fmt(d: Date): string {
   return d.toISOString().split("T")[0];
@@ -51,14 +47,12 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
 
   // GSC: avg position + 28-day click sparkline
   let avg_position: number | null = null;
-  const traffic_sparkline: Array<{ date: string; clicks: number }> = [];
-  const position_sparkline: Array<{ date: string; position: number }> = [];
+  let traffic_sparkline: Array<{ date: string; clicks: number }> = [];
+  let position_sparkline: Array<{ date: string; position: number }> = [];
 
   try {
     const siteUrl = site_url;
     if (!siteUrl) throw new Error(`Unknown site_id=${site_id}`);
-
-    const sc = google.searchconsole({ version: "v1", auth: getGscAuth() });
 
     const end = end_date ? new Date(end_date) : new Date();
     const start = start_date ? new Date(start_date) : new Date(end);
@@ -69,82 +63,15 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
       Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1,
     );
 
-    const [avgPos, posRes, clickRes] = await Promise.all([
-      sc.searchanalytics.query({
-        siteUrl,
-        requestBody: {
-          startDate: fmt(start),
-          endDate: fmt(end),
-          dimensions: [],
-          dimensionFilterGroups: [
-            {
-              filters: [
-                {
-                  dimension: "country",
-                  expression: "ind",
-                },
-              ],
-            },
-          ],
-          rowLimit: 1,
-        },
-      }),
-      sc.searchanalytics.query({
-        siteUrl,
-        requestBody: {
-          startDate: fmt(start),
-          endDate: fmt(end),
-          dimensions: ["date"],
-          dimensionFilterGroups: [
-            {
-              filters: [
-                {
-                  dimension: "country",
-                  expression: "ind",
-                },
-              ],
-            },
-          ],
-          rowLimit: dayCount,
-        },
-      }),
-      sc.searchanalytics.query({
-        siteUrl,
-        requestBody: {
-          startDate: fmt(start),
-          endDate: fmt(end),
-          dimensions: ["date"],
-          dimensionFilterGroups: [
-            {
-              filters: [
-                {
-                  dimension: "country",
-                  expression: "ind",
-                },
-              ],
-            },
-          ],
-          dataState: "all",
-          rowLimit: dayCount,
-        },
-      }),
-    ]);
+    const overview = await getSitePerformanceMetrics(
+      siteUrl,
+      { start: fmt(start), end: fmt(end) },
+      dayCount,
+    );
 
-    avg_position = avgPos.data.rows?.[0]?.position ?? null;
-
-    for (const row of clickRes.data.rows ?? []) {
-      traffic_sparkline.push({
-        date: row.keys?.[0] ?? "",
-        clicks: row.clicks ?? 0,
-      });
-    }
-
-    for (const row of posRes.data.rows ?? []) {
-      position_sparkline.push({
-        date: row.keys?.[0] ?? "",
-        position: Number(row.position?.toFixed(2)) ?? 0,
-      });
-    }
+    avg_position = overview.avg_position ?? null;
+    traffic_sparkline = overview.traffic_sparkline;
+    position_sparkline = overview.position_sparkline;
   } catch (err) {
     logger.error("[overview] GSC error:", err);
   }
@@ -159,6 +86,60 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
     position_sparkline,
     last_updated: new Date().toISOString(),
   });
+});
+
+// GET /sites/:site_id/cities/overview
+router.get("/:site_id/cities/overview", async (req: Request, res: Response) => {
+  const { site_id } = req.params;
+  const { start_date, end_date } = req.query as {
+    start_date?: string;
+    end_date?: string;
+  };
+
+  const end = end_date ? new Date(end_date) : new Date();
+  const start = start_date ? new Date(start_date) : new Date(end);
+  if (!start_date) start.setDate(end.getDate() - 28);
+
+  const dayCount = Math.max(
+    1,
+    Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1,
+  );
+
+  const site = await getSiteBySiteID(Number(site_id));
+  const cities = (await getCitiesBySiteId(Number(site_id))).map(
+    (city) => city.city,
+  );
+
+  const city_overview = await Promise.all(
+    cities.map(async (city) => {
+      const {
+        avg_position,
+        avg_impressions,
+        traffic_sparkline,
+        position_sparkline,
+      } = await getCityPerformanceMetrics(
+        site?.domain as string,
+        city.toLowerCase(),
+        {
+          start: fmt(start),
+          end: fmt(end),
+        },
+        dayCount,
+      );
+
+      return {
+        site_id: site?.site_id,
+        site_name: site?.brand_name,
+        city: city,
+        avg_position,
+        avg_impressions,
+        traffic_sparkline,
+        position_sparkline,
+      };
+    }),
+  );
+
+  res.json(city_overview);
 });
 
 export { router as sitesRouter };

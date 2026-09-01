@@ -7,7 +7,9 @@ import * as dotenv from "dotenv";
 import { randomUUID } from "node:crypto";
 import { logger } from "../utils/logger.js";
 
-import { getAIResponse } from "../services/anthropic.service.js";
+import {
+  getStreamedAIResponse,
+} from "../services/anthropic.service.js";
 
 import { createApprovalQueue } from "../mcp-servers/cms-connector/server.js";
 
@@ -51,7 +53,7 @@ async function callWithRetry(
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      return await getAIResponse(label, params);
+      return await getStreamedAIResponse(label, params);
     } catch (exc: any) {
       lastExc = exc as Error;
       if (attempt < MAX_RETRIES - 1) {
@@ -76,6 +78,13 @@ async function getPagesWithKeywords(siteId: number) {
   const keywordsMap = new Map();
 
   for await (let page of pages) {
+    try {
+      JSON.parse(page.keywords);
+    } catch {
+      logger.error("[weekly_performance] page keywords \n", page.url);
+      continue;
+    }
+
     const page_keywords =
       typeof page.keywords == "string"
         ? JSON.parse(page.keywords)
@@ -258,10 +267,10 @@ CONSTRAINTS
 - Only include the opportunity_details sub-fields relevant to that opportunity_type 
   — do not include fields from other types, and do not leave irrelevant fields 
   as null clutter.
-- Do not exceed 15 opportunities per run. If more exist, include only the top 15 
+- Do not exceed 10 opportunities per run. If more exist, include only the top 10 
   by priority.
 - Sort the array by priority: HIGH first, then MEDIUM, then LOW, then null.
-  `;
+`;
 
   // expand_content | realign_intent | monitor
 
@@ -294,7 +303,7 @@ CONSTRAINTS
 
   const response = await callWithRetry("[weekly_performance]", {
     model: "claude-sonnet-5",
-    max_tokens: 20000,
+    max_tokens: 40000,
     messages: [{ role: "user", content: prompt }],
   });
 
@@ -308,8 +317,6 @@ CONSTRAINTS
     .trim();
 
   const parsed = extractJson(text);
-
-  logger.debug("Parsed ", parsed);
   return parsed;
 }
 

@@ -102,16 +102,16 @@ cron.schedule(
   },
 );
 
-cron.schedule(
-  "30 7 1 * *",
-  () => {
-    opportunityContentGeneration();
-  },
-  {
-    timezone: "IST",
-    name: "Page Generation from opportunity",
-  },
-);
+// cron.schedule(
+//   "30 7 1 * *",
+//   () => {
+//     opportunityContentGeneration();
+//   },
+//   {
+//     timezone: "IST",
+//     name: "Page Generation from opportunity",
+//   },
+// );
 
 cron.schedule(
   "0 8 1 * *",

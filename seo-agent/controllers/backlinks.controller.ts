@@ -94,6 +94,7 @@ const BACKLINK_SORTABLE_COLUMNS = [
   "first_seen",
   "last_seen",
   "status",
+  "actioned_at",
   "created_at",
   "updated_at",
 ] as const;
@@ -157,7 +158,7 @@ export async function listBacklinks(filters: {
     filters.sort_by as BacklinkSortColumn,
   )
     ? (filters.sort_by as BacklinkSortColumn)
-    : "created_at";
+    : filters.is_prospect ? "status IS NOT NULL, status DESC, created_at" : "created_at";
   const sortOrder = filters.sort_order === "asc" ? "ASC" : "DESC";
 
   const [[countRow], [rows]] = await Promise.all([

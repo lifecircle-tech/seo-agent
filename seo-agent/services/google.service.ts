@@ -90,4 +90,172 @@ async function getPagePerformance(
   return page_metrics;
 }
 
-export { getKeywordPerformance, getPagePerformance };
+async function getSitePerformanceMetrics(
+  site_url: string,
+  date: { start: string; end: string },
+  row_count: number,
+) {
+  const searchConsole = getSearchConsoleClient();
+
+  const [avgMetrics, dailyMetrics] = await Promise.all([
+    searchConsole.searchanalytics.query({
+      siteUrl: site_url,
+      requestBody: {
+        startDate: date.start,
+        endDate: date.end,
+        dimensions: [],
+        dimensionFilterGroups: [
+          {
+            filters: [
+              {
+                dimension: "country",
+                expression: "ind",
+              },
+            ],
+          },
+        ],
+        rowLimit: 1,
+      },
+    }),
+    searchConsole.searchanalytics.query({
+      siteUrl: site_url,
+      requestBody: {
+        startDate: date.start,
+        endDate: date.end,
+        dimensions: ["date"],
+        dimensionFilterGroups: [
+          {
+            filters: [
+              {
+                dimension: "country",
+                expression: "ind",
+              },
+            ],
+          },
+        ],
+        dataState: "all",
+        rowLimit: row_count,
+      },
+    }),
+  ]);
+
+  const avg_position = avgMetrics.data.rows?.[0]?.position ?? null;
+  const avg_impressions = avgMetrics.data.rows?.[0]?.impressions ?? null;
+
+  const traffic_sparkline: Array<{ date: string; clicks: number }> = [];
+  const position_sparkline: Array<{ date: string; position: number }> = [];
+
+  for (let row of dailyMetrics.data.rows ?? []) {
+    traffic_sparkline.push({
+      date: row.keys?.[0] ?? "",
+      clicks: row.clicks ?? 0,
+    });
+
+    position_sparkline.push({
+      date: row.keys?.[0] ?? "",
+      position: Number(row.position?.toFixed(2)) ?? 0,
+    });
+  }
+
+  return {
+    avg_position,
+    avg_impressions,
+    traffic_sparkline,
+    position_sparkline,
+  };
+}
+
+async function getCityPerformanceMetrics(
+  site_url: string,
+  city: string,
+  date: { start: string; end: string },
+  row_count: number,
+) {
+  const searchConsole = getSearchConsoleClient();
+
+  const [avgMetrics, dailyMetrics] = await Promise.all([
+    searchConsole.searchanalytics.query({
+      siteUrl: site_url,
+      requestBody: {
+        startDate: date.start,
+        endDate: date.end,
+        dimensions: [],
+        dimensionFilterGroups: [
+          {
+            groupType: "AND",
+            filters: [
+              {
+                dimension: "country",
+                expression: "ind",
+              },
+              {
+                dimension: "query",
+                operator: "contains",
+                expression: city,
+              },
+            ],
+          },
+        ],
+        rowLimit: 1,
+      },
+    }),
+    searchConsole.searchanalytics.query({
+      siteUrl: site_url,
+      requestBody: {
+        startDate: date.start,
+        endDate: date.end,
+        dimensions: ["date"],
+        dimensionFilterGroups: [
+          {
+            groupType: "AND",
+            filters: [
+              {
+                dimension: "country",
+                expression: "ind",
+              },
+              {
+                dimension: "query",
+                operator: "contains",
+                expression: city,
+              },
+            ],
+          },
+        ],
+        dataState: "all",
+        rowLimit: row_count,
+      },
+    }),
+  ]);
+
+  const avg_position = avgMetrics.data.rows?.[0]?.position ?? null;
+  const avg_impressions = avgMetrics.data.rows?.[0]?.impressions ?? null;
+
+  const traffic_sparkline: Array<{ date: string; clicks: number }> = [];
+  const position_sparkline: Array<{ date: string; position: number }> = [];
+
+  for (let row of dailyMetrics.data.rows ?? []) {
+    traffic_sparkline.push({
+      date: row.keys?.[0] ?? "",
+      clicks: row.clicks ?? 0,
+    });
+
+    position_sparkline.push({
+      date: row.keys?.[0] ?? "",
+      position: Number(row.position?.toFixed(2)) ?? 0,
+    });
+  }
+
+  return {
+    avg_position,
+    avg_impressions,
+    traffic_sparkline,
+    position_sparkline,
+  };
+}
+
+export {
+  getKeywordPerformance,
+  getPagePerformance,
+  getSitePerformanceMetrics,
+  getCityPerformanceMetrics,
+};

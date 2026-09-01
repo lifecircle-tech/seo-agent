@@ -1,5 +1,4 @@
 import https from "node:https";
-import { getSheetsClient } from "../../../libs/google.js";
 import { logger } from "../../utils/logger.js";
 
 type SlackResponse = {
@@ -7,6 +6,12 @@ type SlackResponse = {
   ts?: string;
   channel?: string;
   error?: string;
+};
+
+type Prospect = {
+  domain_from: string;
+  url_from: string;
+  spam_score: number;
 };
 
 export async function callSlackApi(
@@ -281,7 +286,7 @@ export function createBacklinkDigest(
   const topNew: any[] = (newLinks?.backlinks ?? []).slice(0, 5);
   const topLost: any[] = (lostLinks?.backlinks ?? []).slice(0, 5);
   const topToxic: any[] = (toxicLinks?.toxic_links ?? []).slice(0, 5);
-  const prospects: string[] = prospectsData?.prospects ?? [];
+  const prospects: Prospect[] = prospectsData?.prospects ?? [];
 
   const newLines = topNew.length
     ? topNew
@@ -308,7 +313,9 @@ export function createBacklinkDigest(
     : "None";
 
   const prospectLines = prospects.length
-    ? prospects.map((d: string) => `• ${d}`).join("\n")
+    ? prospects
+        .map((d: Prospect) => `• ${d.domain_from} (Spam = ${d.spam_score})`)
+        .join("\n")
     : "No prospects found.";
 
   const blocks = [
@@ -338,7 +345,7 @@ export function createBacklinkDigest(
     ),
     { type: "divider" },
     sectionBlock(
-      `*Toxic Links* — ${toxicCount} flagged (spam score > 60)\n${toxicLines}`,
+      `*Toxic Links* — ${toxicCount} flagged (spam score > 50)\n${toxicLines}`,
     ),
     { type: "divider" },
     sectionBlock(
@@ -409,7 +416,7 @@ export function createSitemapAdsDigest(
     : "No converting keywords found.";
 
   const wastedLine = wastedSpend
-    ? `${wastedSpend.keyword_count ?? 0} keyword(s) with zero conversions — total wasted: *₹${wastedSpend.total_wasted_inr ?? 0}*`
+    ? `${wastedSpend.keyword_count ?? 0} keyword(s) with 0 conversions — total wasted: *₹${wastedSpend.total_wasted_inr ?? 0}*`
     : "No wasted spend data.";
   const wastedKeywords = wastedSpend.keywords
     .map((k: any) => {

@@ -579,7 +579,7 @@ No extra text.`;
   markPaaQuestionsAsUsed(paaInRecords.map((q) => q.id));
   // TODO: Add New PAA in records with keywords
 
-  const record = await createNewPageContent({
+  await createNewPageContent({
     id: randomUUID(),
     site_id: opp.site_id,
     url: response.url,
@@ -604,6 +604,16 @@ No extra text.`;
 
 // ── Main pipeline ─────────────────────────────────────────────────────
 export async function dailyOpportunityTasks() {
+  logger.info(
+    `[daily_opportunity_tasks] ══════════════════════════════════════════`,
+  );
+  logger.info(
+    `[daily_opportunity_tasks] Starting daily opportunity task pipeline`,
+  );
+  logger.info(
+    `[daily_opportunity_tasks] ══════════════════════════════════════════`,
+  );
+
   let { sites } = await listSitesConfigs({ limit: 1000 });
 
   let site = sites.find((s) => s.site_id == 1) as any;
@@ -622,7 +632,7 @@ export async function dailyOpportunityTasks() {
     .map((page) => ({
       url: page.url,
       type: page.type,
-      title: page.title,
+      // title: page.title,
       canonical: page.canonical,
     }));
 
