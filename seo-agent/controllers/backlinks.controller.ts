@@ -485,6 +485,19 @@ export async function updateBacklinkStatus(
   return getBacklinkById(id);
 }
 
+// ── REMARK ────────────────────────────────────────────────────────────
+export async function updateBacklinkRemark(
+  id: string,
+  remark: string | null,
+): Promise<BacklinkJSON | null> {
+  const [result] = await pool.query<ResultSetHeader>(
+    `UPDATE backlinks SET remark = ? WHERE id = ?`,
+    [remark, id],
+  );
+  if (result.affectedRows === 0) return null;
+  return getBacklinkById(id);
+}
+
 // ── CONTROLLERS FOR ORCHESTRATORS ────────────────────────────────────────────────────
 export async function getAllBacklinks(filter?: {
   limit?: number;

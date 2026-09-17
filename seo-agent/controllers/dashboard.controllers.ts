@@ -29,7 +29,7 @@ export async function getDashboardStats(
         params,
       ),
       pool.query<RowDataPacket[]>(
-        `SELECT COUNT(*) AS count FROM backlinks WHERE status IS null AND is_prospect = true ${siteFilter}`,
+        `SELECT COUNT(*) AS count FROM backlinks WHERE status IS null AND is_prospect = true AND spam_score < 50 ${siteFilter}`,
         params,
       ),
     ]);

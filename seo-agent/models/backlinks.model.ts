@@ -21,6 +21,7 @@ export interface Backlink extends RowDataPacket {
   status: number | null;                         // TINYINT — 1=added, 6=removed
   actioned_by: number | null;                    // INT
   actioned_at: Date | null;                      // DATETIME(3)
+  remark: string | null;                         // TEXT
   created_at: Date;                              // DATETIME(3)
   updated_at: Date;                              // DATETIME(3)
 }
@@ -44,6 +45,7 @@ export interface BacklinkJSON {
   status: string | null;
   actioned_by: number | null;
   actioned_at: string | null;
+  remark: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -71,6 +73,7 @@ export async function createBacklinksTable(): Promise<void> {
       status            TINYINT        NULL,
       actioned_by       VARCHAR(64)    NULL,
       actioned_at       DATETIME(3)    NULL,
+      remark            TEXT           NULL,
       created_at        DATETIME(3)    NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
       updated_at        DATETIME(3)    NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
       UNIQUE KEY uq_backlinks_site_url (site_id, url_from(191), url_to(191)),

@@ -7,7 +7,7 @@ if (!fs.existsSync(LOG_DIR)) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
 }
 
-type LogLevel = "INFO" | "WARN" | "ERROR" | "DEBUG";
+type LogLevel = "LOG" | "INFO" | "WARN" | "ERROR" | "DEBUG";
 
 function getLogFilePath(): string {
   return path.join(LOG_DIR, `seo-agent.log`);
@@ -40,9 +40,32 @@ function write(level: LogLevel, message: string, meta?: unknown): void {
   }
 }
 
+function formatLogLines(level: string, ...arg: any[]) {
+  const ts = new Date().toLocaleString();
+  let lines = "";
+
+  arg.forEach((a) => {
+    if (typeof a == "object") {
+      lines =
+        lines +
+        `[${ts}] [${level.padEnd(5)}] \n${JSON.stringify(a, null, 2)}\n`;
+    } else {
+      lines = lines + `[${ts}] [${level.padEnd(5)}] ${a}\n`;
+    }
+  });
+
+  return lines;
+}
+
+function log(level: string, ...arg: any[]) {
+  console.log(`[${level}]`, ...arg);
+  fs.appendFileSync(getLogFilePath(), formatLogLines(level, ...arg));
+}
+
 export const logger = {
   info: (message: string, meta?: unknown) => write("INFO", message, meta),
   warn: (message: string, meta?: unknown) => write("WARN", message, meta),
   error: (message: string, meta?: unknown) => write("ERROR", message, meta),
   debug: (message: string, meta?: unknown) => write("DEBUG", message, meta),
+  log: (...args: any[]) => log("LOG", ...args),
 };

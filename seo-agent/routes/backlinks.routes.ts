@@ -11,6 +11,7 @@ import {
   deleteBacklink,
   upsertBacklinks,
   updateBacklinkStatus,
+  updateBacklinkRemark,
 } from "../controllers/backlinks.controller.js";
 import { AuthRequest, requireAuth } from "../../middleware/auth.middleware.js";
 import { logger } from "../utils/logger.js";
@@ -268,6 +269,31 @@ export function backlinksRouter(io: SocketIOServer): Router {
         res.json({ success: true, record });
       } catch (err) {
         logger.error("[backlinks] remove status error:", err);
+        res.status(500).json({ success: false, error: "Database error" });
+      }
+    },
+  );
+
+  // PATCH /backlinks/:id/remark
+  router.patch(
+    "/:id/remark",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const { remark } = req.body as { remark?: string | null };
+
+        const record = await updateBacklinkRemark(
+          req.params.id,
+          remark ?? null,
+        );
+        if (!record)
+          return res
+            .status(404)
+            .json({ success: false, error: "Backlink not found" });
+        io.emit("backlink:updated", record);
+        res.json({ success: true, record });
+      } catch (err) {
+        logger.error("[backlinks] update remark error:", err);
         res.status(500).json({ success: false, error: "Database error" });
       }
     },

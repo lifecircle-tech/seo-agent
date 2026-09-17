@@ -232,7 +232,8 @@ export async function getCompetitorBacklinksDomain(
         "and",
         ["backlink_spam_score", "<", 50],
       ],
-      limit: 20,
+      limit: 500,
+      offset: 500,
     },
   ]);
 

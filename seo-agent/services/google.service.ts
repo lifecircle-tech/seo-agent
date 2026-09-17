@@ -147,12 +147,12 @@ async function getSitePerformanceMetrics(
 
   for (let row of dailyMetrics.data.rows ?? []) {
     traffic_sparkline.push({
-      date: row.keys?.[0] ?? "",
+      date: row.keys?.[0].split("-").reverse().join("-") ?? "",
       clicks: row.clicks ?? 0,
     });
 
     position_sparkline.push({
-      date: row.keys?.[0] ?? "",
+      date: row.keys?.[0].split("-").reverse().join("-") ?? "",
       position: Number(row.position?.toFixed(2)) ?? 0,
     });
   }
@@ -235,12 +235,12 @@ async function getCityPerformanceMetrics(
 
   for (let row of dailyMetrics.data.rows ?? []) {
     traffic_sparkline.push({
-      date: row.keys?.[0] ?? "",
+      date: row.keys?.[0].split("-").reverse().join("-") ?? "",
       clicks: row.clicks ?? 0,
     });
 
     position_sparkline.push({
-      date: row.keys?.[0] ?? "",
+      date: row.keys?.[0].split("-").reverse().join("-") ?? "",
       position: Number(row.position?.toFixed(2)) ?? 0,
     });
   }
