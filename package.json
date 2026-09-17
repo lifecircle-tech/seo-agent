@@ -6,10 +6,12 @@
   "scripts": {
     "start": "node dist/server.js",
     "dev": "tsx watch server.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "inspect": "npx @modelcontextprotocol/inspector@latest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "bcryptjs": "^3.0.3",
     "cheerio": "^1.2.0",
     "cors": "^2.8.5",
@@ -20,7 +22,6 @@
     "mysql2": "^3.21.1",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.7",
-    "ollama": "^0.6.3",
     "pg": "^8.20.0",
     "socket.io": "^4.7.0",
     "turndown": "^7.2.4"

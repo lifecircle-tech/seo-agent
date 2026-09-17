@@ -11,6 +11,10 @@ import { Server as SocketIOServer } from "socket.io";
 import cors from "cors";
 import cron from "node-cron";
 
+// Lifecircle MCPs
+import { mountMcpRoutes } from "./MCPs/server/httpTransport";
+import { madhavi_server } from "./madhavi/server";
+
 import { seoAgentRouter } from "./seo-agent/routes/index";
 import { approvalsRouter } from "./seo-agent/routes/approvals.routes.js";
 import { alertsRouter } from "./seo-agent/routes/alerts.routes.js";
@@ -20,6 +24,7 @@ import { pageContentRouter } from "./seo-agent/routes/page-content.routes.js";
 import { initSEOModels } from "./seo-agent/models/index.js";
 import { pool } from "./db.js";
 import { maltiRouter, initMalti } from "./malti/index.js";
+import madhaviRouter from "./madhavi/routes/index";
 
 // Daily orchestrators
 import { dailyTechnicalAudit } from "./seo-agent/orchestrators/daily.js";
@@ -203,10 +208,12 @@ app.use(express.json());
 
 app.use((req, _res, next) => {
   console.log(
-    `[${req.method}] ${req.originalUrl}, ${JSON.stringify(req.query)}`,
+    `[${new Date().toLocaleString()}] [${req.method}] ${req.originalUrl}, ${JSON.stringify(req.query)}`,
   );
   next();
 });
+
+mountMcpRoutes(app);
 
 // ── Routes ────────────────────────────────────────────────────────────
 app.use("/seo-agent", seoAgentRouter(io));
@@ -216,6 +223,7 @@ app.use("/contents", pageContentRouter(io));
 app.use("/config", configRouter);
 app.use("/sites", sitesRouter);
 app.use("/malti", maltiRouter);
+app.use("/madhavi", madhaviRouter);
 
 // ── Health ────────────────────────────────────────────────────────────
 app.get("/health", async (_req: Request, res: Response) => {
@@ -314,9 +322,10 @@ if (process.env.NODE_ENV !== "test") {
     }
 
     console.log("[db] tables ready");
-    httpServer.listen(PORT, () =>
-      console.log(`[approvals-api] listening on port ${PORT}`),
-    );
+    httpServer.listen(PORT, () => {
+      madhavi_server(app);
+      console.log(`[approvals-api] listening on port ${PORT}`);
+    });
   })();
 }
 

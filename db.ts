@@ -19,4 +19,12 @@ const lc_pool = mysql.createPool({
   timezone: "Z",
 });
 
-export { pool, lc_pool };
+const madhavi_pool = mysql.createPool({
+  uri:
+    process.env.MADHAVI_DATABASE_URL ?? "mysql://root:@localhost:3306/madhavi",
+  waitForConnections: true,
+  connectionLimit: 10,
+  timezone: "Z",
+});
+
+export { pool, lc_pool, madhavi_pool };
