@@ -66,14 +66,14 @@ export async function discoverNewKeywordsForSite(siteId: number) {
       city: city.city,
       state: city.state,
       country: city.country,
-      services: city.services,
+      services: city.services || [site.brand_name.toLoweCase()],
       get fullLocation() {
         return `${this.city},${this.state},${this.country}`;
       },
     })),
   };
 
-  console.log("SITES ", site);
+  logger.log("Running Keyword discovery for ", site);
   const rawKeywords = await discoverSiteKeywords(site.domain, site.cities);
 
   const pages = new Map();

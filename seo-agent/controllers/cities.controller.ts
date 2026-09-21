@@ -6,10 +6,6 @@ import { CityConfig, CityConfigJSON } from "../models/cities-config.model.js";
 function toJSON(row: CityConfig): CityConfigJSON {
   return {
     ...row,
-    target_keywords:
-      typeof row.target_keywords === "string"
-        ? JSON.parse(row.target_keywords)
-        : row.target_keywords,
     services:
       row.services === null || row.services === undefined
         ? null
@@ -32,7 +28,6 @@ export async function createCityConfig(
     | "city"
     | "state"
     | "country"
-    | "target_keywords"
     | "services"
   >,
 ): Promise<CityConfigJSON> {
@@ -47,7 +42,7 @@ export async function createCityConfig(
   }
 
   await pool.query<ResultSetHeader>(
-    `INSERT INTO cities_config (id, site_id, city, state, country, target_keywords, services, created_at)
+    `INSERT INTO cities_config (id, site_id, city, state, country, services, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, NOW(3))`,
     [
       data.id,
@@ -55,7 +50,6 @@ export async function createCityConfig(
       data.city,
       data.state,
       data.country,
-      JSON.stringify(data.target_keywords),
       data.services != null ? JSON.stringify(data.services) : null,
     ],
   );

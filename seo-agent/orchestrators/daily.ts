@@ -412,52 +412,52 @@ export async function dailyTechnicalAudit() {
   const { sites } = await listSitesConfigs({ limit: 1000 });
   let sitesWithIssues = 0;
 
-  const site = sites[0];
-  // for (const site of sites) {
-  try {
-    const issues = [] as any;
-    const requested = { success_count: 0 } as any;
-    // 1. Checked updates for requested indexing
-    const indexed = await checkIndexedPagesUpdate(site.site_id, site.domain);
+  // const site = sites[0];
+  for (const site of sites.filter((s) => [1, 2].includes(s.site_id))) {
+    try {
+      const issues = [] as any;
+      const requested = { success_count: 0 } as any;
+      // 1. Checked updates for requested indexing
+      const indexed = await checkIndexedPagesUpdate(site.site_id, site.domain);
 
-    // 2. Checking all issues
-    // const issues = await runDailyCheckForSite(site.site_id, site.domain);
+      // 2. Checking all issues
+      // const issues = await runDailyCheckForSite(site.site_id, site.domain);
 
-    // 3. Request for not indexed pages
-    // const requested = await requestIndexingForNotIndexedPages(site.site_id);
+      // 3. Request for not indexed pages
+      // const requested = await requestIndexingForNotIndexedPages(site.site_id);
 
-    if (
-      issues.length === 0 &&
-      requested.success_count === 0 &&
-      indexed.indexed_count === 0
-    ) {
-      // ── SILENT on healthy days ──────────────────────────────
-      logger.info(
-        `[daily] site_id=${site.site_id} (${site.domain}) is HEALTHY — no Slack message sent`,
+      if (
+        issues.length === 0 &&
+        requested.success_count === 0 &&
+        indexed.indexed_count === 0
+      ) {
+        // ── SILENT on healthy days ──────────────────────────────
+        logger.info(
+          `[daily] site_id=${site.site_id} (${site.domain}) is HEALTHY — no Slack message sent`,
+        );
+        return;
+        // continue;
+      }
+
+      if (issues.length) sitesWithIssues++;
+
+      if (DRY_RUN) {
+        logger.info(
+          `[daily] DRY_RUN — would post ${issues.length} issue(s) to Slack for ${site.domain}`,
+        );
+      } else {
+        // await postDailyAlert(site.domain, issues, requested, indexed);
+        logger.info(
+          `[daily] Slack alert posted for ${site.domain} (${issues.length} issues)`,
+        );
+      }
+    } catch (err: any) {
+      logger.error(
+        `[daily] Unhandled error for site_id=${site.site_id}: ${err.message}`,
+        err,
       );
-      return;
-      // continue;
     }
-
-    if (issues.length) sitesWithIssues++;
-
-    if (DRY_RUN) {
-      logger.info(
-        `[daily] DRY_RUN — would post ${issues.length} issue(s) to Slack for ${site.domain}`,
-      );
-    } else {
-      // await postDailyAlert(site.domain, issues, requested, indexed);
-      logger.info(
-        `[daily] Slack alert posted for ${site.domain} (${issues.length} issues)`,
-      );
-    }
-  } catch (err: any) {
-    logger.error(
-      `[daily] Unhandled error for site_id=${site.site_id}: ${err.message}`,
-      err,
-    );
   }
-  // }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 

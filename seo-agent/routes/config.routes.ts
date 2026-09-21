@@ -149,7 +149,7 @@ router.get("/cities", async (req: Request, res: Response) => {
       limit,
       offset,
     });
-    res.json(cities);
+    res.json(cities.map((city) => ({ ...city, target_keywords: [] })));
   } catch (err) {
     logger.error("[cities GET]", err);
     res.status(500).json({ error: String(err) });
@@ -206,7 +206,6 @@ router.post("/cities", async (req: Request, res: Response) => {
         city,
         state,
         country,
-        target_keywords: [],
         services: services ?? null,
       });
       res.status(201).json({ ok: true, created: config });

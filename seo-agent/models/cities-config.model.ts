@@ -8,7 +8,6 @@ export interface CityConfig extends RowDataPacket {
   city: string; // VARCHAR(255)
   state: string; // VARCHAR(255)
   country: string; // VARCHAR(255)
-  target_keywords: string[]; // JSON (list of strings)
   services: string[] | null; // JSON (list of service names), nullable
   site_name: string | null; // joined from sites_config
   domain: string | null;     // joined from sites_config
@@ -21,7 +20,6 @@ export interface CityConfigJSON {
   city: string;
   state: string;
   country: string;
-  target_keywords: string[];
   services: string[] | null;
   site_name: string | null;
   domain: string | null;
@@ -38,7 +36,6 @@ export async function createCitiesConfigTable(): Promise<void> {
       city            VARCHAR(255)  NOT NULL,
       state           VARCHAR(255)  NOT NULL,
       country         VARCHAR(255)  NOT NULL,
-      target_keywords JSON          NOT NULL,
       services        JSON          NULL,
       created_at      DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
       INDEX idx_cities_config_site_id (site_id)

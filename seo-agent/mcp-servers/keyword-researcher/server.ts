@@ -59,7 +59,11 @@ export async function discoverSiteKeywords(siteUrl: string, cities: any[]) {
   )) as [];
 
   const suggestions_2 = (await getKeywordsSuggestionForKeywords(
-    cities.map((c) => c.services.map((s: string) => s + " " + c.city)).flat(),
+    cities
+      .map((c) =>
+        c.services ? c.services.map((s: string) => s + " " + c.city) : c.city,
+      )
+      .flat(),
   )) as [];
 
   const total_suggestions = [...suggestions, ...suggestions_2];

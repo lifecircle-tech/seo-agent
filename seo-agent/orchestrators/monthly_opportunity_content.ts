@@ -129,16 +129,23 @@ these rules:
   - title,
   - meta_description,
   - url_slug,
-  - content : Full article with proper H1/H2/H3 formatting in Markdown,
-  - suggestions : object of internal and external links suggestion,
-  - reason : sort description in 4-5 sentences or points for the content
-  - images : [{
+  - content: Full article with proper H1/H2/H3 formatting in Markdown,
+  - suggestions: {
+      internal_links: [
+        { anchor_text, url }
+      ],
+      external_links: [
+        { anchor_text, url }
+      ]
+    },
+  - reason: sort description in 4-5 sentences or points for the content
+  - images: [{
       context: ideas about image to generate,
       alt_text: Alternate text for image,
       title: title of the image,
       description: brief detail about image,
     }],
-  - page_type : "post" (for WordPress)
+  - page_type: "post" (for WordPress)
 
 8. CONSTRAINTS
   - Stay within ±10% of the target word count.
@@ -218,8 +225,6 @@ export async function opportunityContentGeneration() {
       paaQuestions,
       site_pages,
     );
-
-    logger.debug(JSON.stringify(response, null, 2));
 
     // Get keywords analytics from keywords table
     const temp_keywords = await getKeywordsAnalytics(

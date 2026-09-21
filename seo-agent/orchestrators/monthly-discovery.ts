@@ -32,7 +32,10 @@ import {
   upsertPages,
 } from "../controllers/page.controller.js";
 import { getPageRankings } from "../mcp-servers/keyword-tracker/server.js";
-import { getAllWPPages, getWPPageDetails } from "../services/wordpress.service.js";
+import {
+  getAllWPPages,
+  getWPPageDetails,
+} from "../services/wordpress.service.js";
 import { isUrlRedirected, redirectingToURL } from "../../libs/functions.js";
 import { getPagePerformance } from "../services/google.service.js";
 import { getCompetitorBySiteId } from "../controllers/competitor.controller.js";
@@ -461,7 +464,7 @@ async function runMonthlyDiscovery() {
         city: city.city,
         state: city.state,
         country: city.country,
-        services: city.services,
+        services: city.services || [site.brand_name.toLowerCase()],
         get fullLocation() {
           return `${this.city},${this.state},${this.country}`;
         },
@@ -472,236 +475,237 @@ async function runMonthlyDiscovery() {
   const overallSummary: string[] = [];
 
   // 2. Loop Sites
-  let site = detailed_sites.find((s) => s.site_id == 1) as any;
+  // let site = detailed_sites.find((s) => s.site_id == 2) as any;
 
-  // for (const site of sites) {
-  logger.info(`[site] ${site.domain} (${site.brand_name})`);
-  let siteKeywordsTotal = 0;
-  let siteOpportunitiesTotal = 0;
+  for (const site of detailed_sites.filter((s) => [1, 2].includes(s.site_id))) {
+    logger.info(`[site] ${site.domain} (${site.brand_name})`);
+    let siteKeywordsTotal = 0;
+    let siteOpportunitiesTotal = 0;
 
-  let site_pages = (await getAllWPPages(site.site_id)) as any[];
-  site_pages = site_pages
-    .filter((page) => !page.redirecting_to)
-    .map((page) => ({
-      url: page.url,
-      type: page.type,
-      canonical: page.canonical,
-    }));
+    let site_pages = (await getAllWPPages(site.site_id)) as any[];
+    site_pages = site_pages
+      .filter((page) => !page.redirecting_to)
+      .map((page) => ({
+        url: page.url,
+        type: page.type,
+        canonical: page.canonical,
+      }));
 
-  try {
-    logger.info(`[city] Researching: ${site.brand_name}...`);
+    try {
+      logger.info(`[city] Researching: ${site.brand_name}...`);
 
-    // Finding competitors keywords gap
-    const competitor_config = await getCompetitorBySiteId(site.site_id);
-    let competitors_keywords_gap: any[] = [];
+      // Finding competitors keywords gap
+      const competitor_config = await getCompetitorBySiteId(site.site_id);
+      let competitors_keywords_gap: any[] = [];
 
-    if (competitor_config) {
-      const keywordGaps = await getKeywordsGapForCompetitorDomain(
-        competitor_config.site_id,
-        competitor_config?.domain as string,
-        competitor_config.competitor_domain,
-      );
-
-      competitors_keywords_gap = keywordGaps.map(
-        ({ competitor_domain, gaps }) => ({
-          competitor_domain,
-          keywords: gaps,
-        }),
-      );
-    }
-
-    // Call keyword-researcher MCP logic
-    const rawKeywords = await discoverSiteKeywords(site.domain, site.cities);
-    const pagesMap = new Map();
-
-    rawKeywords.map((item) => {
-      if (pagesMap.has(item.keyword)) {
-        if (item.page) {
-          pagesMap.set(item.keyword, [
-            ...pagesMap.get(item.keyword),
-            item.page,
-          ]);
-        }
-      } else {
-        if (item.page) {
-          pagesMap.set(item.keyword, [item.page]);
-        }
-      }
-    });
-
-    if (!DRY_RUN) {
-      if (rawKeywords.length > 0) {
-        try {
-          await upsertKeywords(
-            rawKeywords.map((k) => ({
-              id: randomUUID(),
-              site_id: site.site_id,
-              keyword: k.keyword,
-              is_new: pagesMap.get(k.keyword) ? false : true,
-              search_volume: k.volume ?? null,
-              difficulty: k.difficulty ?? null,
-              position: k.current_position ?? null,
-              clicks: k.clicks,
-              impressions: k.impressions,
-              ctr: k.ctr,
-              cpc: k.cpc,
-              competition: k.competition ?? null,
-              competition_level: k.competition_level ?? null,
-              monthly_searches: k.monthly_searches || null,
-            })),
-          );
-          logger.info(`[city] Persisted ${rawKeywords.length} keywords to DB`);
-        } catch (err) {
-          logger.error(`[city] Failed to persist keywords:`, err);
-        }
-      }
-
-      await updateNewUrlAndLinkKeywords(site, pagesMap);
-
-      // const clustered = getKeywordClusters(rawKeywords);
-      const prioritised = prioritiseKeywords(rawKeywords);
-      const pagesDetails = await getPagesDetails(site, pagesMap);
-
-      siteKeywordsTotal += prioritised.length;
-
-      // AI Analysis
-      const { opportunities } = await analyzeWithAI(
-        site,
-        prioritised,
-        pagesDetails,
-        competitors_keywords_gap,
-        site_pages,
-      );
-      siteOpportunitiesTotal += opportunities.length;
-
-      if (opportunities.length > 0) {
-        // ── PAA Discovery ──────────────────────────────────────────────
-        // Collect target keywords across all opportunities,
-        // fetch their PAA questions, and persist before creating opportunities.
-        try {
-          const allTargetKeywords = Array.from(
-            new Set<string>(
-              opportunities.flatMap(
-                (opp: any) =>
-                  opp.opportunity_details.target_keywords as string[],
-              ),
-            ),
-          );
-
-          // Resolve keyword text → DB id for junction FK
-          const keywords = await getKeywordsAnalytics(
-            rawKeywords.map((k) => k.keyword),
-          );
-          const kwIdMap = new Map(
-            keywords.map((k) => [k.keyword.toLowerCase(), k.id]),
-          );
-
-          logger.info(
-            `[monthly-discovery] Fetching PAA for ${allTargetKeywords.length} opportunity keywords...`,
-          );
-
-          const paaItems: Parameters<typeof bulkUpsertPaaQuestions>[0] = [];
-
-          await Promise.all(
-            allTargetKeywords.map(async (kwText) => {
-              try {
-                if (!kwText) return;
-                const results = await getPaaQuestions(kwText);
-                const keywordId = kwIdMap.get(kwText.toLowerCase());
-                if (!keywordId) return; // keyword not in DB yet — skip
-                for (const r of results) {
-                  paaItems.push({
-                    id: randomUUID(),
-                    site_id: site.site_id,
-                    keyword_id: keywordId,
-                    question: r.question,
-                    answer: r.answer,
-                    source_url: r.source_url,
-                    category: null,
-                  });
-                }
-              } catch (err: any) {
-                logger.warn(
-                  `[monthly-discovery] PAA fetch failed for "${kwText}": ${err.message}`,
-                );
-              }
-            }),
-          );
-
-          if (paaItems.length > 0) {
-            await bulkUpsertPaaQuestions(paaItems);
-            logger.info(
-              `[monthly-discovery] Persisted ${paaItems.length} PAA questions to DB`,
-            );
-            reportText.push(`- Found ${paaItems.length} PAA opportunities`);
-          }
-        } catch (err) {
-          logger.error(`[monthly-discovery] PAA discovery failed:`, err);
-        }
-
-        for (const opp of opportunities) {
-          try {
-            if (opp.opportunity_type === "consolidate_or_differentiate") {
-              await createApprovalQueue([
-                {
-                  site_id: site.site_id,
-                  module: "cms-connector",
-                  type: "canonical",
-                  priority: opp.priority,
-                  title: opp.opportunity_details.title,
-                  original_content: {
-                    url: opp.opportunity_details.url,
-                    keywords: opp.opportunity_details.target_keywords,
-                    current_title: opp.opportunity_details.title,
-                  },
-                  suggested_content: {
-                    recommended_primary_url:
-                      opp.opportunity_details.recommended_primary_url,
-                    competing_urls: opp.opportunity_details.competing_urls,
-                  },
-                  reason: opp.reasoning,
-                  preview_url: opp.opportunity_details.url,
-                },
-              ]);
-            } else {
-              await createOpportunity({
-                id: randomUUID(),
-                site_id: site.site_id,
-                opportunity_type: opp.opportunity_type,
-                priority: opp.priority ?? null,
-                reasoning: opp.reasoning ?? null,
-                topic: opp.topic,
-                description: opp.description,
-                opportunity_details: opp.opportunity_details,
-              });
-            }
-          } catch (err) {
-            logger.error(
-              `[monthly-discovery] Failed to save opportunity:`,
-              err,
-            );
-          }
-        }
-        logger.info(
-          `[monthly-discovery] Persisted ${opportunities.length} opportunities to DB`,
+      if (competitor_config) {
+        const keywordGaps = await getKeywordsGapForCompetitorDomain(
+          competitor_config.site_id,
+          competitor_config?.domain as string,
+          competitor_config.competitor_domain,
+        );
+        competitors_keywords_gap = keywordGaps.map(
+          ({ competitor_domain, gaps }) => ({
+            competitor_domain,
+            keywords: gaps,
+          }),
         );
       }
-    }
-  } catch (err: any) {
-    logger.error(
-      `[error] Failed discovery for ${site.brand_name}: ${err.message}`,
-    );
-  }
 
-  const siteReport = `${site.brand_name} (${site.domain}):
+      // Call keyword-researcher MCP logic
+      const rawKeywords = await discoverSiteKeywords(site.domain, site.cities);
+      const pagesMap = new Map();
+
+      rawKeywords.map((item) => {
+        if (pagesMap.has(item.keyword)) {
+          if (item.page) {
+            pagesMap.set(item.keyword, [
+              ...pagesMap.get(item.keyword),
+              item.page,
+            ]);
+          }
+        } else {
+          if (item.page) {
+            pagesMap.set(item.keyword, [item.page]);
+          }
+        }
+      });
+
+      if (!DRY_RUN) {
+        if (rawKeywords.length > 0) {
+          try {
+            await upsertKeywords(
+              rawKeywords.map((k) => ({
+                id: randomUUID(),
+                site_id: site.site_id,
+                keyword: k.keyword,
+                is_new: pagesMap.get(k.keyword) ? false : true,
+                search_volume: k.volume ?? null,
+                difficulty: k.difficulty ?? null,
+                position: k.current_position ?? null,
+                clicks: k.clicks,
+                impressions: k.impressions,
+                ctr: k.ctr,
+                cpc: k.cpc,
+                competition: k.competition ?? null,
+                competition_level: k.competition_level ?? null,
+                monthly_searches: k.monthly_searches || null,
+              })),
+            );
+            logger.info(
+              `[city] Persisted ${rawKeywords.length} keywords to DB`,
+            );
+          } catch (err) {
+            logger.error(`[city] Failed to persist keywords:`, err);
+          }
+        }
+
+        await updateNewUrlAndLinkKeywords(site, pagesMap);
+
+        // const clustered = getKeywordClusters(rawKeywords);
+        const prioritised = prioritiseKeywords(rawKeywords);
+        const pagesDetails = await getPagesDetails(site, pagesMap);
+
+        siteKeywordsTotal += prioritised.length;
+
+        // AI Analysis
+        const { opportunities } = await analyzeWithAI(
+          site,
+          prioritised,
+          pagesDetails,
+          competitors_keywords_gap,
+          site_pages,
+        );
+        siteOpportunitiesTotal += opportunities.length;
+
+        if (opportunities.length > 0) {
+          // ── PAA Discovery ──────────────────────────────────────────────
+          // Collect target keywords across all opportunities,
+          // fetch their PAA questions, and persist before creating opportunities.
+          try {
+            const allTargetKeywords = Array.from(
+              new Set<string>(
+                opportunities.flatMap(
+                  (opp: any) =>
+                    opp.opportunity_details.target_keywords as string[],
+                ),
+              ),
+            );
+
+            // Resolve keyword text → DB id for junction FK
+            const keywords = await getKeywordsAnalytics(
+              rawKeywords.map((k) => k.keyword),
+            );
+            const kwIdMap = new Map(
+              keywords.map((k) => [k.keyword.toLowerCase(), k.id]),
+            );
+
+            logger.info(
+              `[monthly-discovery] Fetching PAA for ${allTargetKeywords.length} opportunity keywords...`,
+            );
+
+            const paaItems: Parameters<typeof bulkUpsertPaaQuestions>[0] = [];
+
+            await Promise.all(
+              allTargetKeywords.map(async (kwText) => {
+                try {
+                  if (!kwText) return;
+                  const results = await getPaaQuestions(kwText);
+                  const keywordId = kwIdMap.get(kwText.toLowerCase());
+                  if (!keywordId) return; // keyword not in DB yet — skip
+                  for (const r of results) {
+                    paaItems.push({
+                      id: randomUUID(),
+                      site_id: site.site_id,
+                      keyword_id: keywordId,
+                      question: r.question,
+                      answer: r.answer,
+                      source_url: r.source_url,
+                      category: null,
+                    });
+                  }
+                } catch (err: any) {
+                  logger.warn(
+                    `[monthly-discovery] PAA fetch failed for "${kwText}": ${err.message}`,
+                  );
+                }
+              }),
+            );
+
+            if (paaItems.length > 0) {
+              await bulkUpsertPaaQuestions(paaItems);
+              logger.info(
+                `[monthly-discovery] Persisted ${paaItems.length} PAA questions to DB`,
+              );
+              reportText.push(`- Found ${paaItems.length} PAA opportunities`);
+            }
+          } catch (err) {
+            logger.error(`[monthly-discovery] PAA discovery failed:`, err);
+          }
+
+          for (const opp of opportunities) {
+            try {
+              if (opp.opportunity_type === "consolidate_or_differentiate") {
+                await createApprovalQueue([
+                  {
+                    site_id: site.site_id,
+                    module: "cms-connector",
+                    type: "canonical",
+                    priority: opp.priority,
+                    title: opp.opportunity_details.title,
+                    original_content: {
+                      url: opp.opportunity_details.url,
+                      keywords: opp.opportunity_details.target_keywords,
+                      current_title: opp.opportunity_details.title,
+                    },
+                    suggested_content: {
+                      recommended_primary_url:
+                        opp.opportunity_details.recommended_primary_url,
+                      competing_urls: opp.opportunity_details.competing_urls,
+                    },
+                    reason: opp.reasoning,
+                    preview_url: opp.opportunity_details.url,
+                  },
+                ]);
+              } else {
+                await createOpportunity({
+                  id: randomUUID(),
+                  site_id: site.site_id,
+                  opportunity_type: opp.opportunity_type,
+                  priority: opp.priority ?? null,
+                  reasoning: opp.reasoning ?? null,
+                  topic: opp.topic,
+                  description: opp.description,
+                  opportunity_details: opp.opportunity_details,
+                });
+              }
+            } catch (err) {
+              logger.error(
+                `[monthly-discovery] Failed to save opportunity:`,
+                err,
+              );
+            }
+          }
+          logger.info(
+            `[monthly-discovery] Persisted ${opportunities.length} opportunities to DB`,
+          );
+        }
+      }
+    } catch (err: any) {
+      logger.error(
+        `[error] Failed discovery for ${site.brand_name}: ${err.message}`,
+      );
+    }
+
+    const siteReport = `${site.brand_name} (${site.domain}):
     - Discovered ${siteKeywordsTotal} keywords.
     - Created ${siteOpportunitiesTotal} content ideas.
     ${reportText.join("\n")}`;
-  overallSummary.push(siteReport);
-  logger.info(
-    `[monthly-discovery] All Cities for site_id ${site.site_id} Finished`,
-  );
-  // }
+    overallSummary.push(siteReport);
+    logger.info(
+      `[monthly-discovery] All Cities for site_id ${site.site_id} Finished`,
+    );
+  }
 
   // 3. Post to Slack
   if (!DRY_RUN) {

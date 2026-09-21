@@ -294,34 +294,32 @@ export async function weeklyPageChecker() {
 
   const summaries = [];
 
-  const site = sites[0];
-
-  // for (const site of sites) {
-  try {
-    // Use the site's industry as the service category (e.g. "elder care", "physiotherapy")
-    // const service = site.industry ?? "services";
-    // const result = await runPageBuilderForSite(
-    //   site.site_id,
-    //   site.domain,
-    //   service,
-    // );
-    const result = await runMissingPageChecker(site.site_id, site.domain);
-    if (result) {
-      summaries.push(result);
-      await saveMissingPagesReport(site.site_id, {
-        total_cities: result.total_cities,
-        missing_count: result.missing_count,
-        missing: result.cities,
-      });
+  for (const site of sites.filter((s) => [1, 2].includes(s.site_id))) {
+    try {
+      // Use the site's industry as the service category (e.g. "elder care", "physiotherapy")
+      // const service = site.industry ?? "services";
+      // const result = await runPageBuilderForSite(
+      //   site.site_id,
+      //   site.domain,
+      //   service,
+      // );
+      const result = await runMissingPageChecker(site.site_id, site.domain);
+      if (result) {
+        summaries.push(result);
+        await saveMissingPagesReport(site.site_id, {
+          total_cities: result.total_cities,
+          missing_count: result.missing_count,
+          missing: result.cities,
+        });
+      }
+    } catch (err: any) {
+      logger.error(
+        `[daily_page_builder] Unhandled error for site_id=${site.site_id}:`,
+        err,
+      );
+      summaries.push();
     }
-  } catch (err: any) {
-    logger.error(
-      `[daily_page_builder] Unhandled error for site_id=${site.site_id}:`,
-      err,
-    );
-    summaries.push();
   }
-  // }
 
   if (!DRY_RUN) {
     try {

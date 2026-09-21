@@ -415,17 +415,17 @@ export async function monthlyAudit() {
     `[monthly_audit] Loaded ${sites.length} sites. Starting monthly audit...`,
   );
 
-  const site = sites[0];
-  // for (const site of sites) {
-  try {
-    await runMonthlyAudit(site.site_id, site.domain);
-  } catch (exc: any) {
-    logger.error(
-      `[monthly_audit] Unhandled error for site_id=${site.site_id}: ${exc.message}`,
-      exc,
-    );
+  // const site = sites[0];
+  for (const site of sites.filter((s) => [1, 2].includes(s.site_id))) {
+    try {
+      await runMonthlyAudit(site.site_id, site.domain);
+    } catch (exc: any) {
+      logger.error(
+        `[monthly_audit] Unhandled error for site_id=${site.site_id}: ${exc.message}`,
+        exc,
+      );
+    }
   }
-  // }
 
   logger.info(`[monthly_audit] All sites processed.`);
 }

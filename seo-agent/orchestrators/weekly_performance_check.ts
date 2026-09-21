@@ -399,5 +399,7 @@ async function runWeeklyPerformanceCheckTasks(siteId: number) {
 }
 
 export async function weeklyPerformanceCheck() {
-  await runWeeklyPerformanceCheckTasks(1);
+  for (let site of [1, 2]) {
+    await runWeeklyPerformanceCheckTasks(site);
+  }
 }

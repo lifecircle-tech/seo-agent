@@ -103,7 +103,12 @@ async function step1CmsConnector(siteId: number) {
       const is_redirected = await isUrlRedirected(page.url);
       const redirected_to = await redirectingToURL(page.url);
 
-      pages.push({ ...pageWithoutContent, ...row, is_redirected, redirected_to });
+      pages.push({
+        ...pageWithoutContent,
+        ...row,
+        is_redirected,
+        redirected_to,
+      });
 
       const record_page = await getPageByUrl(page.url);
       let keywordPerformance: any;
@@ -157,7 +162,7 @@ async function step1CmsConnector(siteId: number) {
 
     is_redirected: page.is_redirected,
     redirected_to: page.redirected_to,
-    canonical_url: page.canonical_url
+    canonical_url: page.canonical_url,
   }));
 
   const prompt = `You are an SEO meta-tag specialist. You will be given a list of pages, each 
@@ -388,7 +393,7 @@ export async function dailyWPPagesTasks() {
   );
 
   // Run pipeline for each configured site
-  // for (const site of sitesConfig) {
-  await runDailyWPPagesTasks(1);
-  // }
+  for (const site of sitesConfig.filter((s) => [1, 2].includes(s.site_id))) {
+    await runDailyWPPagesTasks(site.site_id);
+  }
 }

@@ -731,7 +731,7 @@ export async function weeklyTasks() {
   );
 
   // Run pipeline for each configured site
-  // for (const site of sitesConfig) {
-  await runWeeklyTasks(1);
-  // }
+  for (const site of sitesConfig.filter((s) => [1, 2].includes(s.site_id))) {
+    await runWeeklyTasks(site.site_id);
+  }
 }

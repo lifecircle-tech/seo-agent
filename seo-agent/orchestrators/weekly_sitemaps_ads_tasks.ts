@@ -188,7 +188,7 @@ export async function weeklySitemapAdsTasks() {
   );
 
   // Run pipeline for each configured site
-  // for (const site of sitesConfig) {
-  await runWeeklySitemapAdsTasks(1);
-  // }
+  for (const site of sitesConfig.filter((s) => [1, 2].includes(s.site_id))) {
+    await runWeeklySitemapAdsTasks(site.site_id);
+  }
 }

@@ -371,14 +371,15 @@ export async function updateStatusToCompleted(
 
 export async function getPlannedOpportunitiesByType(
   opportunity_type: string,
+  site_id: number,
   limit: number = 5,
 ): Promise<OpportunityJSON[]> {
   const [rows] = await pool.query<Opportunity[]>(
     `SELECT * FROM opportunities
-     WHERE opportunity_type = ? AND status = 'planned'
+     WHERE opportunity_type = ? AND status = 'planned' AND site_id = ?
      ORDER BY priority ASC, created_at ASC
      LIMIT ?`,
-    [opportunity_type, limit],
+    [opportunity_type, site_id, limit],
   );
   return rows.map(toJSON);
 }

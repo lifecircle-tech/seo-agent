@@ -354,7 +354,7 @@ export async function weeklyBacklinksMonitorTasks() {
   );
 
   // Run pipeline for each configured site
-  // for (const site of sitesConfig) {
-  await runBacklinksTasks(1);
-  // }
+  for (const site of sitesConfig.filter((s) => [1, 2].includes(s.site_id))) {
+    await runBacklinksTasks(site.site_id);
+  }
 }

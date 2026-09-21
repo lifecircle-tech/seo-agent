@@ -534,7 +534,14 @@ Return ONLY a JSON object with keys:
   - meta_description,
   - url,
   - content: the new content described above, in Markdown
-  - suggestions : object of internal and external links suggestion,
+  - suggestions: {
+      internal_links: [
+        { anchor_text, url }
+      ],
+      external_links: [
+        { anchor_text, url }
+      ]
+    },
   - reason: simple and brief about what changed and the expected SEO impact, in Markdown
   - images : [{
       context: ideas about image to generate,
@@ -616,78 +623,79 @@ export async function dailyOpportunityTasks() {
 
   let { sites } = await listSitesConfigs({ limit: 1000 });
 
-  let site = sites.find((s) => s.site_id == 1) as any;
+  // let site = sites.find((s) => s.site_id == 1) as any;
 
-  // for (const site of sites) {
-  if (!site) {
-    logger.error(
-      `[daily_opportunity_tasks] No site config found for site_id=${site.site_id}`,
+  for (const site of sites.filter((s) => [1, 2].includes(s.site_id))) {
+    if (!site) {
+      logger.error(`[daily_opportunity_tasks] No site config found`);
+      return;
+    }
+
+    let site_pages = (await getAllWPPages(site.site_id)) as any[];
+    site_pages = site_pages
+      .filter((page) => !page.redirecting_to)
+      .map((page) => ({
+        url: page.url,
+        type: page.type,
+        // title: page.title,
+        canonical: page.canonical,
+      }));
+
+    const metaRewriteOpportunities = await getPlannedOpportunitiesByType(
+      "meta_rewrite",
+      site.site_id,
+      OPPORTUNITY_LIMIT,
     );
-    return;
-  }
+    logger.info(
+      `[daily_opportunity_tasks] Processing ${metaRewriteOpportunities.length} meta_rewrite opportunities`,
+    );
+    for (const opp of metaRewriteOpportunities) {
+      try {
+        await processMetaRewriteOpportunity(opp, site);
+      } catch (err: any) {
+        logger.error(
+          `[daily_opportunity_tasks] meta_rewrite failed for opp=${opp.id}: ${err.message}`,
+          err,
+        );
+      }
+    }
 
-  let site_pages = (await getAllWPPages(site.site_id)) as any[];
-  site_pages = site_pages
-    .filter((page) => !page.redirecting_to)
-    .map((page) => ({
-      url: page.url,
-      type: page.type,
-      // title: page.title,
-      canonical: page.canonical,
-    }));
+    const refreshContentOpportunities = await getPlannedOpportunitiesByType(
+      "refresh_content",
+      site.site_id,
+      OPPORTUNITY_LIMIT,
+    );
+    logger.info(
+      `[daily_opportunity_tasks] Processing ${refreshContentOpportunities.length} refresh_content opportunities`,
+    );
+    for (const opp of refreshContentOpportunities) {
+      try {
+        await processRefreshContentOpportunity(opp, site, site_pages);
+      } catch (err: any) {
+        logger.error(
+          `[daily_opportunity_tasks] refresh_content failed for opp=${opp.id}: ${err.message}`,
+          err,
+        );
+      }
+    }
 
-  const metaRewriteOpportunities = await getPlannedOpportunitiesByType(
-    "meta_rewrite",
-    OPPORTUNITY_LIMIT,
-  );
-  logger.info(
-    `[daily_opportunity_tasks] Processing ${metaRewriteOpportunities.length} meta_rewrite opportunities`,
-  );
-  for (const opp of metaRewriteOpportunities) {
-    try {
-      await processMetaRewriteOpportunity(opp, site);
-    } catch (err: any) {
-      logger.error(
-        `[daily_opportunity_tasks] meta_rewrite failed for opp=${opp.id}: ${err.message}`,
-        err,
-      );
+    const newContentOpportunities = await getPlannedOpportunitiesByType(
+      "new_content",
+      site.site_id,
+      OPPORTUNITY_LIMIT,
+    );
+    logger.info(
+      `[daily_opportunity_tasks] Processing ${newContentOpportunities.length} new_content opportunities`,
+    );
+    for (const opp of newContentOpportunities) {
+      try {
+        await processNewContentOpportunity(opp, site, site_pages);
+      } catch (err: any) {
+        logger.error(
+          `[daily_opportunity_tasks] new_content failed for opp=${opp.id}: ${err.message}`,
+          err,
+        );
+      }
     }
   }
-
-  const refreshContentOpportunities = await getPlannedOpportunitiesByType(
-    "refresh_content",
-    OPPORTUNITY_LIMIT,
-  );
-  logger.info(
-    `[daily_opportunity_tasks] Processing ${refreshContentOpportunities.length} refresh_content opportunities`,
-  );
-  for (const opp of refreshContentOpportunities) {
-    try {
-      await processRefreshContentOpportunity(opp, site, site_pages);
-    } catch (err: any) {
-      logger.error(
-        `[daily_opportunity_tasks] refresh_content failed for opp=${opp.id}: ${err.message}`,
-        err,
-      );
-    }
-  }
-
-  const newContentOpportunities = await getPlannedOpportunitiesByType(
-    "new_content",
-    OPPORTUNITY_LIMIT,
-  );
-  logger.info(
-    `[daily_opportunity_tasks] Processing ${newContentOpportunities.length} new_content opportunities`,
-  );
-  for (const opp of newContentOpportunities) {
-    try {
-      await processNewContentOpportunity(opp, site, site_pages);
-    } catch (err: any) {
-      logger.error(
-        `[daily_opportunity_tasks] new_content failed for opp=${opp.id}: ${err.message}`,
-        err,
-      );
-    }
-  }
-  // }
 }

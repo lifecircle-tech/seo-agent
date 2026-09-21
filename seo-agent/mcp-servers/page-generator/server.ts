@@ -245,7 +245,7 @@ export async function getMissingCityPages(siteId: number): Promise<{
 
   // 1. Fetch all cities from cities_config for this site
   const [cityRows] = await pool.query<RowDataPacket[]>(
-    "SELECT city, state, country, services, target_keywords FROM cities_config WHERE site_id = ?",
+    "SELECT city, state, country, services FROM cities_config WHERE site_id = ?",
     [siteId],
   );
 

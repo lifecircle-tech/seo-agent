@@ -319,6 +319,7 @@ const getPagesWithHighImpressionLowCtr = async (
 
   const numberOfExtractionsPerDay = 50;
   const startIndex = getStartIndex(new Date(), numberOfExtractionsPerDay) ?? 0;
+    return pages.slice(0, numberOfExtractionsPerDay);
 
   if (typeof startIndex === "number" && startIndex < pages.length) {
     return pages.slice(startIndex, startIndex + numberOfExtractionsPerDay);
