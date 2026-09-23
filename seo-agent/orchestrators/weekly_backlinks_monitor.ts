@@ -188,7 +188,7 @@ async function linkProspects(siteId: number) {
 
 async function checkExistingBacklinkStatus(siteId: number) {
   let backlinks = await getAllBacklinks();
-  const site = sitesConfig.find((s) => (s.site_id = siteId));
+  const site = sitesConfig.find((s) => s.site_id == siteId);
 
   if (!backlinks.length) {
     return null;

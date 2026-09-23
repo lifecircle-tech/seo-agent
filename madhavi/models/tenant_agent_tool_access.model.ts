@@ -24,8 +24,8 @@ interface TenantAgentToolAccessUpdateInput {
 
 interface TenantAgentToolAccessFilter extends PaginationInput {
   tenant_id?: string | number;
-  agent_id?: string;
-  tool_id?: string;
+  agent_id?: string | number;
+  tool_id?: string | number;
   slug?: string;
   status?: string;
 }
@@ -68,7 +68,7 @@ async function findTenantAgentToolAccesses(
     conditions.push("tato.tool_id = ?");
     params.push(filter.tool_id ?? -1);
   }
-  if(filter.slug) {
+  if (filter.slug) {
     conditions.push("t.slug = ?");
     params.push(filter.slug ?? "");
   }

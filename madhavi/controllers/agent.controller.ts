@@ -3,16 +3,43 @@ import {
   insertAgent,
   findAgents,
   findAgentById,
+  findAgentByKey,
   updateAgentById,
   deleteAgentById,
 } from "../models/agent.model.js";
 import { parsePaginationQuery } from "../utils/common.js";
-import { findAgentPrompts } from "../models/agent_prompt.model.js";
+import {
+  findAgentPrompts,
+  insertAgentPrompt,
+} from "../models/agent_prompt.model.js";
+
+const AGENT_KEY_PATTERN = /^[A-Za-z0-9_]+$/;
 
 async function createAgent(req: Request, res: Response) {
-  const { name, is_active } = req.body;
+  const { name, key, description, prompt, is_active } = req.body;
 
-  const agent_id = await insertAgent({ name, is_active });
+  if (!key || !AGENT_KEY_PATTERN.test(key)) {
+    res.status(400).json({
+      error:
+        "'key' is required and must contain only letters, numbers, and underscores",
+    });
+    return;
+  }
+
+  if (!prompt) {
+    res.status(400).json({
+      error: "'prompt' is required",
+    });
+    return;
+  }
+
+  const agent_id = await insertAgent({ name, key, description, is_active });
+  const agent_prompt = await insertAgentPrompt({
+    agent_id,
+    section: "prompt",
+    content: prompt,
+    version: 1,
+  });
   const agent = await findAgentById(agent_id);
 
   res.status(201).json(agent);
@@ -30,10 +57,10 @@ async function getAgents(req: Request, res: Response) {
   res.json(agents);
 }
 
-async function getAgentById(req: Request, res: Response) {
-  const { id } = req.params as { id: string };
+async function getAgentByKey(req: Request, res: Response) {
+  const { key } = req.params as { key: string };
 
-  const agent = await findAgentById(id);
+  const agent = await findAgentByKey(key);
 
   if (!agent) {
     res.status(404).json({ error: "Agent not found" });
@@ -43,11 +70,28 @@ async function getAgentById(req: Request, res: Response) {
   res.json(agent);
 }
 
+async function checkAgentKeyAvailability(req: Request, res: Response) {
+  const { key } = req.params as { key: string };
+
+  if (!key || !AGENT_KEY_PATTERN.test(key)) {
+    res.status(400).json({
+      error:
+        "'key' is required and must contain only letters, numbers, and underscores",
+    });
+    return;
+  }
+
+  const agent = await findAgentByKey(key);
+  const available = !agent;
+
+  res.json({ key, available });
+}
+
 async function updateAgent(req: Request, res: Response) {
   const { id } = req.params as { id: string };
-  const { name, is_active } = req.body;
+  const { name, description, is_active } = req.body;
 
-  const updated = await updateAgentById(id, { name, is_active });
+  const updated = await updateAgentById(id, { name, description, is_active });
 
   if (!updated) {
     res.status(404).json({ error: "Agent not found" });
@@ -84,4 +128,12 @@ async function getMadhaviAndPrompt(req: Request, res: Response) {
   res.json(response);
 }
 
-export { createAgent, getAgents, getAgentById, updateAgent, deleteAgent, getMadhaviAndPrompt };
+export {
+  createAgent,
+  getAgents,
+  getAgentByKey,
+  checkAgentKeyAvailability,
+  updateAgent,
+  deleteAgent,
+  getMadhaviAndPrompt,
+};

@@ -1,15 +1,9 @@
 import { Request, Response } from "express";
 import {
-  insertTenantAgentTokensUsage,
-  findTenantAgentTokensUsages,
-  findTenantAgentTokensUsageById,
-  updateTenantAgentTokensUsageById,
-  deleteTenantAgentTokensUsageById,
   getTenantTokenUsageSummary,
   getTenantTokenUsageDailyAnalytics,
   getTenantTokenUsageMonthlyAnalytics,
 } from "../models/tenant_agent_tokens_usage.model.js";
-import { parsePaginationQuery } from "../utils/common.js";
 
 interface TokenUsageBucket {
   period: string;
@@ -35,87 +29,6 @@ function monthKey(date: Date) {
 
 function dayKey(date: Date) {
   return `${monthKey(date)}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-async function createTenantAgentTokensUsage(req: Request, res: Response) {
-  const {
-    tenant_id,
-    agent_id,
-    input_tokens,
-    output_tokens,
-    request_started_at,
-    request_completed_at,
-  } = req.body;
-
-  const usage_id = await insertTenantAgentTokensUsage({
-    tenant_id,
-    agent_id,
-    input_tokens,
-    output_tokens,
-    request_started_at,
-    request_completed_at,
-  });
-  const usage = await findTenantAgentTokensUsageById(usage_id);
-
-  res.status(201).json(usage);
-}
-
-async function getTenantAgentTokensUsages(req: Request, res: Response) {
-  const { tenant_id, agent_id } = req.query;
-
-  const usages = await findTenantAgentTokensUsages({
-    tenant_id: tenant_id as string | undefined,
-    agent_id: agent_id as string | undefined,
-    ...parsePaginationQuery(req.query),
-  });
-
-  res.json(usages);
-}
-
-async function getTenantAgentTokensUsageById(req: Request, res: Response) {
-  const { id } = req.params as { id: string };
-
-  const usage = await findTenantAgentTokensUsageById(id);
-
-  if (!usage) {
-    res.status(404).json({ error: "Token usage record not found" });
-    return;
-  }
-
-  res.json(usage);
-}
-
-async function updateTenantAgentTokensUsage(req: Request, res: Response) {
-  const { id } = req.params as { id: string };
-  const { input_tokens, output_tokens, request_completed_at } = req.body;
-
-  const updated = await updateTenantAgentTokensUsageById(id, {
-    input_tokens,
-    output_tokens,
-    request_completed_at,
-  });
-
-  if (!updated) {
-    res.status(404).json({ error: "Token usage record not found" });
-    return;
-  }
-
-  const usage = await findTenantAgentTokensUsageById(id);
-
-  res.json(usage);
-}
-
-async function deleteTenantAgentTokensUsage(req: Request, res: Response) {
-  const { id } = req.params as { id: string };
-
-  const deleted = await deleteTenantAgentTokensUsageById(id);
-
-  if (!deleted) {
-    res.status(404).json({ error: "Token usage record not found" });
-    return;
-  }
-
-  res.status(204).send();
 }
 
 async function getTenantTokenUsageSummaryReport(
@@ -176,12 +89,4 @@ async function getTenantTokenUsageAnalyticsReport(
   res.json({ tenant: slug, daily, monthly });
 }
 
-export {
-  createTenantAgentTokensUsage,
-  getTenantAgentTokensUsages,
-  getTenantAgentTokensUsageById,
-  updateTenantAgentTokensUsage,
-  deleteTenantAgentTokensUsage,
-  getTenantTokenUsageSummaryReport,
-  getTenantTokenUsageAnalyticsReport,
-};
+export { getTenantTokenUsageSummaryReport, getTenantTokenUsageAnalyticsReport };

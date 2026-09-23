@@ -1,8 +1,8 @@
 import { RowDataPacket } from "mysql2";
-import pulsePool from "../../db-pulse";
+import { lc_pool } from "../../db";
 
 async function getClientsDetails(client_id: number) {
-  const [rows] = await pulsePool.query<RowDataPacket[]>(
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
     `
     SELECT cl.clnt_id, cl.clnt_name, cl.pat_name,
     FROM life_client cl
@@ -17,7 +17,7 @@ async function getClientsDetails(client_id: number) {
 }
 
 async function getPatientDetailById(patient_id: number) {
-  const [rows] = await pulsePool.query<RowDataPacket[]>(
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
     `
     SELECT
       p.first_name,

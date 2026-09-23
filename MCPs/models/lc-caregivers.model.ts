@@ -1,5 +1,5 @@
 import { RowDataPacket } from "mysql2";
-import pulsePool from "../../db-pulse";
+import { lc_pool } from "../../db";
 
 async function getCaregiversWithActiveBooking({
   limit = 50,
@@ -8,7 +8,7 @@ async function getCaregiversWithActiveBooking({
   limit?: number;
   offset?: number;
 }) {
-  const [rows] = await pulsePool.query<RowDataPacket[]>(
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
     `
     SELECT cg.hp_unique_id, cg.fullname, cg.phone_number
     FROM n_hp_profile cg
@@ -27,7 +27,7 @@ async function getCaregiversWithActiveBooking({
 
 // Get Caregiver details for Caregiver with
 async function getCaregiverDetails(cg_id: number) {
-  const [rows] = await pulsePool.query<RowDataPacket[]>(
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
     `
     SELECT
       cg.hp_unique_id,
@@ -59,7 +59,7 @@ async function getCaregiverDetails(cg_id: number) {
 }
 
 async function getCaregiverActiveBookingDetails(cg_id: number) {
-  const [rows] = await pulsePool.query<RowDataPacket[]>(
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
     `
     SELECT b.id, cl.clnt_name, cl.pat_name, p.first_name, e.emp_name, b.patient_id, b.old_client_id, b.hp_manager
     FROM n_bookings b
@@ -83,7 +83,7 @@ async function isCaregiverPhoneNumber(phone: string) {
     ph_number = phone.slice(-10);
   }
 
-  const [rows] = await pulsePool.query<RowDataPacket[]>(
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
     `SELECT 1 FROM n_hp_profile WHERE phone_number REGEXP ?;`,
     [ph_number],
   );

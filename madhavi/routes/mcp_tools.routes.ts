@@ -4,7 +4,7 @@ import { getActiveMcpTools } from "../controllers/mcp_tools.controller.js";
 
 const router = Router();
 
-// base path - '/madhavi/mcp-tools'
+// base path - '/madhavi/mcp-tool
 
 router.get("/active", asyncHandler(getActiveMcpTools));
 

@@ -3,7 +3,6 @@ import {
   insertTenantAgentToolAccess,
   findTenantAgentToolAccesses,
   findTenantAgentToolAccessById,
-  updateTenantAgentToolAccessById,
   deleteTenantAgentToolAccessById,
 } from "../models/tenant_agent_tool_access.model.js";
 import { parsePaginationQuery } from "../utils/common.js";
@@ -37,35 +36,6 @@ async function getTenantAgentToolAccesses(req: Request, res: Response) {
   res.json(toolAccesses);
 }
 
-async function getTenantAgentToolAccessById(req: Request, res: Response) {
-  const { id } = req.params as { id: string };
-
-  const toolAccess = await findTenantAgentToolAccessById(id);
-
-  if (!toolAccess) {
-    res.status(404).json({ error: "Tenant agent tool access not found" });
-    return;
-  }
-
-  res.json(toolAccess);
-}
-
-async function updateTenantAgentToolAccess(req: Request, res: Response) {
-  const { id } = req.params as { id: string };
-  const { status } = req.body;
-
-  const updated = await updateTenantAgentToolAccessById(id, { status });
-
-  if (!updated) {
-    res.status(404).json({ error: "Tenant agent tool access not found" });
-    return;
-  }
-
-  const toolAccess = await findTenantAgentToolAccessById(id);
-
-  res.json(toolAccess);
-}
-
 async function deleteTenantAgentToolAccess(req: Request, res: Response) {
   const { id } = req.params as { id: string };
 
@@ -82,7 +52,5 @@ async function deleteTenantAgentToolAccess(req: Request, res: Response) {
 export {
   createTenantAgentToolAccess,
   getTenantAgentToolAccesses,
-  getTenantAgentToolAccessById,
-  updateTenantAgentToolAccess,
   deleteTenantAgentToolAccess,
 };

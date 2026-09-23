@@ -12,7 +12,7 @@ import {
   getTenantsCaregivers,
 } from "../services/tenants-caregiver.service";
 import {
-  getMadhavisPrompt,
+  getAgentsPrompt,
   getTenantsSpecificPrompt,
 } from "../services/prompts.service";
 import { getTenantsTools } from "../services/tenants-tools.service";
@@ -28,7 +28,7 @@ const client = new Anthropic({
   maxRetries: 1,
 });
 
-const mcp_url = process.env.MCP_TOOL_URL || "http://localhost:3002/mcp"
+const mcp_url = process.env.MCP_TOOL_URL || "http://localhost:3002/mcp";
 
 async function connectMcp() {
   const serverUrl = new URL(mcp_url);
@@ -78,14 +78,16 @@ async function runLoop({
   tenant?: { id: number; name: string };
 }) {
   const local_chat_messages = [...chat_messages];
-  const system_prompt = await getMadhavisPrompt();
+  const { prompt: system_prompt } = await getAgentsPrompt({
+    key: "welfare_manager",
+  });
 
   let tenant_prompt = "";
   let mcp_tools = [];
 
   if (tenant) {
-    mcp_tools = await getTenantsTools(tenant.id);
-    tenant_prompt = await getTenantsSpecificPrompt(tenant.id);
+    mcp_tools = await getTenantsTools({ tenant_id: tenant.id, agent_id: 1 });
+    tenant_prompt = await getTenantsSpecificPrompt(tenant.id, 1);
   }
 
   const anthropic_tools = anthropicTools.filter((tool) =>
@@ -149,7 +151,7 @@ async function runLoop({
   // while (true) {
   //   logger.log("Inside loop...");
   const response = await client.messages.create({
-    model: "claude-sonnet-4-6",
+    model: "claude-sonnet-5",
     max_tokens: 5000,
     tools: anthropic_tools,
     system: system_blocks,

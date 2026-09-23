@@ -87,17 +87,19 @@ async function findTenantById(tenant_id: string | number) {
 
 async function findTenantsAgents(tenant_id: string) {
   const [rows] = await madhavi_pool.query<RowDataPacket[]>(
-    `SELECT a.*, ta.prompt_count, tat.tool_count from agent a
+    `SELECT ta.access_id, a.*, tap.tenant_prompt, tat.tool_count from tenant_agent_access ta
+     LEFT JOIN agent a ON a.agent_id = ta.agent_id
      LEFT JOIN (
-        SELECT COUNT(*) as prompt_count, tap.agent_id, tap.tenant_id FROM tenant_agent_prompt tap
+        SELECT 1 as tenant_prompt, tap.agent_id, tap.tenant_id FROM tenant_agent_prompt tap
         WHERE tap.tenant_id = ? GROUP BY (tap.agent_id)
-     ) as ta on ta.agent_id = a.agent_id
+     ) as tap on tap.agent_id = a.agent_id
      LEFT JOIN (
         SELECT COUNT(*) as tool_count, tata.agent_id from tenant_agent_tool_access tata
         WHERE tata.tenant_id = ? AND status = 'active' GROUP BY (tata.agent_id)
-     ) as tat on tat.agent_id = a.agent_id;
+     ) as tat on tat.agent_id = a.agent_id
+      WHERE ta.tenant_id = ?;
     `,
-    [tenant_id, tenant_id],
+    [tenant_id, tenant_id, tenant_id],
   );
 
   return rows ?? null;

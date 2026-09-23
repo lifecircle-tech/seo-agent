@@ -16,10 +16,14 @@ import {
 } from "../services/lc-cm-conversation.service";
 import { recordTenantAgentTokensUsage } from "../services/tenant-token-usage.service";
 import {
-  getMadhavisPrompt,
+  getAgentsPrompt,
   getTenantsSpecificPrompt,
 } from "../services/prompts.service";
 import { getTenantsTools } from "../services/tenants-tools.service";
+import {
+  getAgentTools,
+  getTenantsAccessedAgent,
+} from "../services/agent.service";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -27,132 +31,37 @@ const client = new Anthropic({
   maxRetries: 1,
 });
 
-const systemBlocks: Anthropic.TextBlockParam[] = [
-  {
-    type: "text",
-    text: `You are Madhavi (Female), a Welfare Manager for LifeCircle. You communicate directly with 
-  caregivers to check in on them, support their wellbeing, gather feedback, act on issues, 
-  and handle their requests. You also communicate with human care manager to aware them of 
-  caregivers condition.
+const mcp_url = process.env.MCP_TOOL_URL || "http://localhost:3002/mcp";
 
-  You are not a generic chatbot. You are their manager: warm, attentive, dependable, and 
-  accountable for following through.
+const CREATE_SUPPORT_PROMPT = `
+## Data for creating support ticket
+Assign and pass the following properties before calling tools to create support
+ticket based on different support type.
+{
+  cg_id,
+  support_id,
+  title: same as support type name,
+  description: reason why person is requested to raise support (in first person)
+}
 
-  Responsibilities
-  - Initiate contact — Reach out proactively to start conversations rather than waiting passively.
-  Open with a warm, brief, human greeting.
-  - Check on wellbeing — Ask how the caregiver is doing, physically and mentally. Listen actively; 
-  don't rush past the answer.
-  - Collect feedback on living conditions — Ask about their own living situation (accommodation, 
-  safety, comfort, any hardships) if relevant to their role.
-  - Collect feedback on client/patient — Ask about the clients/patient they care for: how things are going, 
-  any concerns, changes in condition, or friction.
-  - Collect feedback on work — Ask if they are able to do their work, facing any challenges, made 
-  any mistakes with patient while caretaking them.
-  - Take action on conditions raised — When an issue is reported (about the caregiver, patient or client), 
-  determine the right next step and act on it, or clearly state what action will be taken and by when.
-  - Identify and escalate emergencies — Recognize signs of emergency, risk, abuse, self-harm, or 
-  immediate threat (to the team member, patient or client) and escalate immediately to the appropriate human 
-  contact, without waiting for confirmation.
-  - Approve or reject requests — Evaluate requests (leave, resources, schedule changes, reimbursements, 
-  etc.) against defined policy/criteria and give a clear decision.
-  - Deliver final outcomes — For every request or issue raised, always circle back with a clear final 
-  answer or resolution — never leave a thread open-ended without telling the caregiver what happens next.
-  - Know your limits — When a query is outside what you can resolve, say so plainly and provide the 
-  contact details of the appropriate human manager.
+### support_id = 7
+{
+  amount: advance amount needed by caregiver in INR
+}
 
-  CONVERSATION RULES:
-  - Start the first conversation with a greeting. E.g. "Hi, my name is Madhvi."
-  - Warm but professional tone — like a manager who genuinely cares, not a script-reader. Avoid 
-  corporate stiffness and avoid being overly casual.
-  - Always be respectful and kind, regardless of how the person communicates with you.
-  - One question at a time — don't overwhelm the caregiver with a checklist of questions in one message.
-  - Listen before advising — acknowledge what they've said before moving to the next topic or offering 
-  a solution.
-  - Be honest about limitations — never pretend to take an action you can't actually take.
-  - No false reassurance — don't promise outcomes you can't guarantee (e.g., "your request will 
-  definitely be approved").
-  - Close the loop — every conversation should end with the person knowing what happens next, even if 
-  the next step is "I'll follow up with you by [time/date]."
-  - No need to reply if person is acknowledging your last message. (e.g., 'ok', 'thik hai')
+### support_id = 8
+{
+  from_date: date in dd-MM-YYYY
+  to_date: date in dd-MM-YYYY
+}
 
-  EMERGENCY CATEGORIZATION:
-  After every message from the caregivers, classify the latest/most recent message into one of three tiers. 
-  Re-evaluate the tier continuously as the conversation progresses — a conversation can move up a tier 
-  at any point, even mid-conversation.
-  - Tier 1 — All Clear
-    Definition: Everything is fine on the caregivers's end. No action needed.
-    Examples: Routine check-ins with a positive/neutral response, general updates, small talk, 
-    confirmations, no complaints or concerns raised.
-  - Tier 2 — Minor Inconvenience or Request
-    Definition: A non-urgent issue, complaint, inconvenience, or request that doesn't require 
-    immediate human intervention but a care manager should be made aware of.
-    Examples: Minor scheduling conflicts, small complaints about patient, client or living condition, routine 
-    requests (leave, resources), minor emergencies, recurring but non-critical friction.
-  - Tier 3 — Critical or Uncertain
-    Definition: A critical condition, emergency, safety threat, or a situation that is ambiguous/uncertain 
-    enough that it cannot be confidently resolved or ruled out as safe.
-    Examples: Signs of harm, abuse, neglect, self-harm, medical emergency, serious client/patient incident, 
-    safety threats, distress signals, or any message where intent/severity is unclear and risk cannot be ruled out.
+### support_id = 9
+{
+  from_date: date in dd-MM-YYYY
+}
 
-  EMERGENCY & RISK PROTOCOL:
-  Treat the following as immediate priority, overriding all other tasks in the conversation:
-  - Signs of physical harm, injury, or medical emergency
-  - Signs of abuse, neglect, or exploitation (of the caregiver, patient or client)
-  - Expressions of self-harm, suicidal ideation, or crisis
-  - Safety threats from a client, employer, or third party
-  - Any situation involving immediate danger
-
-  LANGUAGE RULES:
-  - Start with language person knows other than English, else default to English, but if person responds in 
-  another language, respond in that language.
-  - Use language script same as what person knows. E.g. if person knows Hindi, use Hindi script from first message itself.
-  - Use transliteration, if first conversation started in english, if person responds in transliteration.
-  E.g. if person responds in Hindi transliteration, respond in Hindi transliteration.
-  - If person responds in different language script, continue responding in that language script. 
-  E.g. if person responds in Hindi script, respond in Hindi script.
-
-  When You Can't Help
-  If a query falls outside your scope (policy exceptions, legal/HR matters, anything requiring human judgment or authority you don't have):
-  - Be upfront that this is beyond what you can resolve.
-  - Don't guess or provide made-up answers.
-  - Provide the contact details of the appropriate human manager and encourage the person to reach out.
-    
-  TIER ACTION:
-  - Tier 1 — No action need, continue the conversation.
-  - Tier 2 — Raise support ticket, send awareness message to care manager, acknowledge and continue conversation. Do not ask for approval from care manager, just share information.
-  - Tier 3 — Instant message to care manager, take any immediate supportive action available, assure them care manager will contact them soon.
-
-  NOTES:
-  - patient — person whom caregiver is taking care
-  - client — person who is relative to patient
-
-  TOOL AND ACTION NOTES:
-  - while sending message, ensure country code in phone number
-  - all caregives and caremanager are location in india, use '+91' for country code
-  - in case of emergency or critical situation, prefer messaging to care manager first, then acknowledge caregiver
-  - do not message to care manager with incomplete information, first gather necessary details first then share with care manager
-  - for tier 2 emergency, send soft message on slack
-  - for tier 3 emergency, send high alert message on both slack
-  `,
-    cache_control: { type: "ephemeral" },
-  },
-  {
-    type: "text",
-    text: `
-    TOOL USES:
-    - Don't call all tools on every run
-    - Call tools only when needed.
-
-    "send message tools":
-    - call whatsapp message tool to send message to caregivers
-    - for emergency, call only slack message tool to send message to care manager
-    `,
-    cache_control: { type: "ephemeral" },
-  },
-];
-
-const mcp_url = process.env.MCP_TOOL_URL || "http://localhost:3002/mcp"
+For rest of the support type, no extra information is required.
+`;
 
 async function connectMcp() {
   const serverUrl = new URL(mcp_url);
@@ -191,31 +100,40 @@ async function connectMcp() {
 async function runLoop({
   mcpClient,
   anthropicTools,
+  agentKey = "welfare_manager",
   chat_messages = [],
   caregiver = null,
   booking_detail = null,
 }: {
   mcpClient: Client;
   anthropicTools: Anthropic.Tool[];
+  agentKey: string;
   chat_messages: any[];
   caregiver: { caregiver: Record<string, string | number> } | null;
   booking_detail?: Record<string, string | number> | null;
 }) {
   const local_chat_messages = [...chat_messages];
-  const system_prompt = await getMadhavisPrompt();
+  const { agent_id, prompt: system_prompt } = await getAgentsPrompt({
+    key: agentKey,
+  });
+  let tenant_prompt = await getTenantsSpecificPrompt(1, agent_id);
+  let agent_tools = await getAgentTools({ agent_id });
+  let tenant_tools = await getTenantsTools({ tenant_id: 1, agent_id });
+  let mcp_tools = new Set([...agent_tools, ...tenant_tools]);
 
-  let tenant_prompt = await getTenantsSpecificPrompt(1);
-  let mcp_tools = await getTenantsTools(1);
+  if (mcp_tools.has("create_support_ticket")) {
+    mcp_tools.add("get_support_types");
+  }
+  logger.log("tools ", agentKey, mcp_tools);
 
   const anthropic_tools = anthropicTools.filter((tool) =>
-    mcp_tools.includes(tool.name),
+    Array.from(mcp_tools).includes(tool.name),
   );
-  console.log("system prompt ", system_prompt);
 
   const system_blocks: Anthropic.TextBlockParam[] = [
     {
       type: "text",
-      text:  `You work for LifeCircle.\n` + system_prompt,
+      text: `You work for LifeCircle.\n` + system_prompt,
       cache_control: { type: "ephemeral" },
     },
   ];
@@ -223,7 +141,14 @@ async function runLoop({
   tenant_prompt &&
     system_blocks.push({
       type: "text",
-      text: system_prompt,
+      text: tenant_prompt,
+      cache_control: { type: "ephemeral" },
+    });
+
+  mcp_tools.has("create_support_ticket") &&
+    system_blocks.push({
+      type: "text",
+      text: CREATE_SUPPORT_PROMPT,
       cache_control: { type: "ephemeral" },
     });
 
@@ -238,19 +163,15 @@ async function runLoop({
     - call whatsapp message tool to send message to caregivers
     - for emergency, call only slack message tool to send message to care manager
     `,
-    cache_control: { type: "ephemeral" },
   });
 
   const messages: Anthropic.MessageParam[] = [
     {
       role: "user",
-      content: `CAREGIVER INFO:
-  ${JSON.stringify(caregiver)}
-
+      content: `CAREGIVER INFO:\n${JSON.stringify(caregiver)}
   ${
     booking_detail
-      ? `ACTIVE BOOKING DETAILS:
-    ${booking_detail}
+      ? `ACTIVE BOOKING DETAILS:\n${booking_detail}
     `
       : ""
   }
@@ -276,7 +197,7 @@ async function runLoop({
   while (true) {
     logger.log("Inside loop...");
     const response = await client.messages.create({
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
       max_tokens: 5000,
       tools: anthropic_tools,
       system: system_blocks,
@@ -392,7 +313,7 @@ export async function startAgentConversation() {
   }
 }
 
-export async function startAgent(chat_id: string) {
+export async function startAgent(chat_id: string, agent_key: string) {
   const { mcpClient, anthropicTools } = await connectMcp();
 
   try {
@@ -413,10 +334,92 @@ export async function startAgent(chat_id: string) {
       mcpClient,
       anthropicTools,
       chat_messages: chat_history,
+      agentKey: agent_key,
       caregiver,
       booking_detail,
     });
   } finally {
     await mcpClient.close();
   }
+}
+
+export async function multiAgentRouter(chat_id: string) {
+  const agents = await getTenantsAccessedAgent({ tenant_id: 1 });
+
+  const agent_tools = agents.map((a) => ({
+    name: a.key,
+    description: a.description,
+    input_schema: { type: "object" } as Anthropic.Tool.InputSchema,
+  }));
+
+  const chat_history = await getChatMessages(chat_id);
+  const messages = chat_history
+    .slice(0, 6)
+    .map((message: any) => {
+      return message.sender === "madhavi"
+        ? { role: "assistant", content: message.message }
+        : { role: "user", content: message.message };
+    })
+    .reverse();
+  // messages.push({ role: "user", content: message });
+
+  const ROUTER_SYSTEM_PROMPT = `You are a routing orchestrator for a multi-agent system. Your only job is to
+analyze the incoming input and dispatch it to the correct department agent(s).
+You do not answer the user's input yourself, and you do not perform the
+work — you only decide who should handle it.
+
+## How to decide
+
+1. Read the past conversation carefully. Identify the underlying intent of
+   recent message, not just keywords — e.g. "why was I charged twice" is
+   account, not operation, even though "why" sounds like a how-to question.
+2. If the request clearly maps to exactly one agent, call that agent's tool.
+3. If the request is ambiguous between two departments, pick the department
+   that would need to act first in a real support workflow, not the one that
+   merely mentions the topic.
+4. If the request does not clearly match any department (e.g. small talk,
+   out-of-scope topics, or missing information needed to route), call tool
+   that handles general query.
+5. If there is only one agent in tool list, default call to that agent
+
+## Rules
+
+- Never attempt to resolve the user's issue yourself.
+- Never guess at facts (account details, prices, booking status) — that
+  belongs to the department agent, not you.
+- If unsure between two plausible departments, prefer most relevant tool as the
+  default only when the ambiguity is about "something isn't working"`;
+
+  logger.log("Running agent router orchestrator...");
+  const response = await client.messages.create({
+    model: "claude-haiku-4-5",
+    max_tokens: 300,
+    system: [
+      {
+        type: "text",
+        text: ROUTER_SYSTEM_PROMPT, // the prompt above
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    tools: agent_tools,
+    tool_choice: { type: "any" },
+    messages: messages,
+  });
+
+  logger.debug("Stop Reason", response.stop_reason);
+  logger.debug("USAGE", response.usage);
+
+  const toolCalls = response.content.filter(
+    (block) => block.type === "tool_use",
+  );
+
+  if (toolCalls.length === 0) {
+    // call welfare manager
+    startAgent(chat_id, "welfare_manager");
+  }
+
+  let toolCall = toolCalls[0];
+  logger.log(`🤖 Claude requested tool [${toolCall.name}]`);
+
+  startAgent(chat_id, toolCall.name);
 }

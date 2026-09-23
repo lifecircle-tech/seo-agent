@@ -54,6 +54,7 @@ async function getTenantBySlug(req: Request, res: Response) {
   const { slug } = req.params as { slug: string };
 
   const tenant = await findTenantBySlug(slug);
+  const agents_access = await findTenantsAgents(tenant.tenant_id);
   const prompts = await findAllTenantsAgentPrompt(tenant.tenant_id);
 
   if (!tenant) {
@@ -61,22 +62,7 @@ async function getTenantBySlug(req: Request, res: Response) {
     return;
   }
 
-  res.json({ ...tenant, prompts });
-}
-
-async function getTenantAgents(req: Request, res: Response) {
-  const { id } = req.params as { id: string };
-
-  const agents = await findTenantsAgents(id);
-
-  res.json(
-    agents.map((agent) => ({
-      ...agent,
-      agent_name: agent.name,
-      promptSectionCount: agent.prompt_count,
-      activeToolCount: agent.tool_count,
-    })),
-  );
+  res.json({ ...tenant, agents_access, prompts });
 }
 
 async function updateTenant(req: Request, res: Response) {
@@ -118,7 +104,6 @@ export {
   getTenants,
   getTenantById,
   getTenantBySlug,
-  getTenantAgents,
   updateTenant,
   deleteTenant,
 };

@@ -4,7 +4,7 @@ import { normalizePagination, type PaginationInput } from "../utils/common.js";
 
 const TENANT_AGENT_PROMPT_SELECT = `
   SELECT tap.tenant_prompt_id, t.tenant_id AS tenant_id, a.agent_id AS agent_id,
-         tap.section, tap.content, tap.updated_at
+         tap.access_id, tap.section, tap.content, tap.updated_at
   FROM tenant_agent_prompt tap
   JOIN tenant t ON t.tenant_id = tap.tenant_id
   JOIN agent a ON a.agent_id = tap.agent_id
@@ -13,6 +13,7 @@ const TENANT_AGENT_PROMPT_SELECT = `
 interface TenantAgentPromptInput {
   tenant_id: string;
   agent_id: string;
+  access_id: string | number;
   section: string;
   content: string;
 }
@@ -35,11 +36,14 @@ async function insertTenantAgentPrompt(data: TenantAgentPromptInput) {
   if (!data.agent_id) {
     throw new Error(`Agent not found: ${data.agent_id}`);
   }
+  if (!data.access_id) {
+    throw new Error(`Tenant agent access not found: ${data.access_id}`);
+  }
 
   const [result] = await madhavi_pool.query<ResultSetHeader>(
-    `INSERT INTO tenant_agent_prompt (tenant_id, agent_id, section, content)
-     VALUES (?, ?, ?, ?)`,
-    [data.tenant_id, data.agent_id, data.section, data.content],
+    `INSERT INTO tenant_agent_prompt (tenant_id, agent_id, access_id, section, content)
+     VALUES (?, ?, ?, ?, ?)`,
+    [data.tenant_id, data.agent_id, data.access_id, data.section, data.content],
   );
 
   return result.insertId;
@@ -106,6 +110,21 @@ async function deleteTenantAgentPromptById(tenant_prompt_id: string) {
   return result.affectedRows > 0;
 }
 
+async function updateTenantAgentPromptAccessId(
+  tenant_id: string | number,
+  agent_id: string | number,
+  access_id: string | number | null,
+) {
+  const [result] = await madhavi_pool.query<ResultSetHeader>(
+    `UPDATE tenant_agent_prompt
+     SET access_id = ?
+     WHERE tenant_id = ? AND agent_id = ?`,
+    [access_id, tenant_id, agent_id],
+  );
+
+  return result.affectedRows > 0;
+}
+
 async function findAllTenantsAgentPrompt(tenant_id: string) {
   const [rows] = await madhavi_pool.query<RowDataPacket[]>(
     `
@@ -126,6 +145,7 @@ export {
   findTenantAgentPrompts,
   findTenantAgentPromptById,
   updateTenantAgentPromptById,
+  updateTenantAgentPromptAccessId,
   deleteTenantAgentPromptById,
   findAllTenantsAgentPrompt,
 };

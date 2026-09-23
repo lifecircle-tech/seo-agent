@@ -1,8 +1,15 @@
 import { findTenantAgentToolAccesses } from "../models/tenant_agent_tool_access.model";
 
-async function getTenantsTools(tenant_id: number) {
+async function getTenantsTools({
+  tenant_id,
+  agent_id,
+}: {
+  tenant_id: number;
+  agent_id: number;
+}) {
   const tools_list = await findTenantAgentToolAccesses({
     tenant_id,
+    agent_id,
     status: "active",
   });
 

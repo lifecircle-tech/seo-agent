@@ -9,7 +9,7 @@ const AGENT_PROMPT_SELECT = `
 `;
 
 interface AgentPromptInput {
-  agent_id: string;
+  agent_id: string | number;
   section: string;
   content: string;
   version?: number | null;
@@ -69,6 +69,24 @@ async function findAgentPromptById(prompt_id: string | number) {
   return rows[0] ?? null;
 }
 
+async function findAgentPromptByAgentId(agent_id: string | number) {
+  const [rows] = await madhavi_pool.query<RowDataPacket[]>(
+    `${AGENT_PROMPT_SELECT} WHERE ap.agent_id = ?`,
+    [agent_id],
+  );
+
+  return rows[0] ?? null;
+}
+
+async function findAgentPromptByAgentKey(key: string) {
+  const [rows] = await madhavi_pool.query<RowDataPacket[]>(
+    `${AGENT_PROMPT_SELECT} WHERE a.key = ?`,
+    [key],
+  );
+
+  return rows[0] ?? null;
+}
+
 async function updateAgentPromptById(
   prompt_id: string,
   data: AgentPromptUpdateInput,
@@ -79,7 +97,33 @@ async function updateAgentPromptById(
          content = COALESCE(?, content),
          version = COALESCE(?, version)
      WHERE prompt_id = ?`,
-    [data.section ?? null, data.content ?? null, data.version ?? null, prompt_id],
+    [
+      data.section ?? null,
+      data.content ?? null,
+      data.version ?? null,
+      prompt_id,
+    ],
+  );
+
+  return result.affectedRows > 0;
+}
+
+async function updateAgentPromptByAgentId(
+  agent_id: string,
+  data: AgentPromptUpdateInput,
+) {
+  const [result] = await madhavi_pool.query<ResultSetHeader>(
+    `UPDATE agent_prompt
+     SET section = COALESCE(?, section),
+         content = COALESCE(?, content),
+         version = COALESCE(?, version)
+     WHERE agent_id = ?`,
+    [
+      data.section ?? null,
+      data.content ?? null,
+      data.version ?? null,
+      agent_id,
+    ],
   );
 
   return result.affectedRows > 0;
@@ -98,6 +142,9 @@ export {
   insertAgentPrompt,
   findAgentPrompts,
   findAgentPromptById,
+  findAgentPromptByAgentId,
+  findAgentPromptByAgentKey,
   updateAgentPromptById,
+  updateAgentPromptByAgentId,
   deleteAgentPromptById,
 };

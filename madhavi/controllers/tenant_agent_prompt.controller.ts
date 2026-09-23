@@ -1,51 +1,42 @@
 import { Request, Response } from "express";
 import {
   insertTenantAgentPrompt,
-  findTenantAgentPrompts,
   findTenantAgentPromptById,
   updateTenantAgentPromptById,
   deleteTenantAgentPromptById,
 } from "../models/tenant_agent_prompt.model.js";
-import { parsePaginationQuery } from "../utils/common.js";
+import { findTenantAgentAccessByTenantAndAgent } from "../models/tenant_agent_access.model.js";
 
 async function createTenantAgentPrompt(req: Request, res: Response) {
   const { tenant_id, agent_id, section, content } = req.body;
+  const resolvedAgentId = agent_id;
+
+  const access = await findTenantAgentAccessByTenantAndAgent(
+    tenant_id,
+    resolvedAgentId,
+  );
+
+  if (!access) {
+    res.status(404).json({ error: "Tenant agent access not found" });
+    return;
+  }
+  if (access.status !== "active") {
+    res
+      .status(403)
+      .json({ error: "Agent access is not active for this tenant" });
+    return;
+  }
 
   const tenant_prompt_id = await insertTenantAgentPrompt({
     tenant_id,
-    agent_id: agent_id || '1',
+    agent_id: resolvedAgentId,
+    access_id: access.access_id,
     section,
     content,
   });
   const tenantAgentPrompt = await findTenantAgentPromptById(tenant_prompt_id);
 
   res.status(201).json(tenantAgentPrompt);
-}
-
-async function getTenantAgentPrompts(req: Request, res: Response) {
-  const { tenant_id, agent_id, section } = req.query;
-
-  const tenantAgentPrompts = await findTenantAgentPrompts({
-    tenant_id: tenant_id as string | undefined,
-    agent_id: agent_id as string | undefined,
-    section: section as string | undefined,
-    ...parsePaginationQuery(req.query),
-  });
-
-  res.json(tenantAgentPrompts);
-}
-
-async function getTenantAgentPromptById(req: Request, res: Response) {
-  const { id } = req.params as { id: string };
-
-  const tenantAgentPrompt = await findTenantAgentPromptById(id);
-
-  if (!tenantAgentPrompt) {
-    res.status(404).json({ error: "Tenant agent prompt not found" });
-    return;
-  }
-
-  res.json(tenantAgentPrompt);
 }
 
 async function updateTenantAgentPrompt(req: Request, res: Response) {
@@ -77,10 +68,4 @@ async function deleteTenantAgentPrompt(req: Request, res: Response) {
   res.status(204).send();
 }
 
-export {
-  createTenantAgentPrompt,
-  getTenantAgentPrompts,
-  getTenantAgentPromptById,
-  updateTenantAgentPrompt,
-  deleteTenantAgentPrompt,
-};
+export { createTenantAgentPrompt, updateTenantAgentPrompt, deleteTenantAgentPrompt };
