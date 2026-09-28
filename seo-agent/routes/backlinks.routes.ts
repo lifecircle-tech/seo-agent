@@ -151,9 +151,10 @@ export function backlinksRouter(io: SocketIOServer): Router {
     requireAuth,
     async (req: Request, res: Response) => {
       try {
-        const { limit, offset } = req.query as Record<string, string>;
+        const { site_id, limit, offset } = req.query as Record<string, string>;
 
         const result = await getBacklinksGroupedDomain({
+          site_id: site_id ? Number(site_id) : undefined,
           limit: limit ? Number(limit) : undefined,
           offset: offset ? Number(offset) : undefined,
         });

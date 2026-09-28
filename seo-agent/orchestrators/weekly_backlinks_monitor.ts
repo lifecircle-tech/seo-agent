@@ -68,9 +68,11 @@ async function backlinkMonitor(siteId: number) {
   ]);
 
   if (newLinks) {
-    logger.info(
+    logger.debug(
       "NEW LINKS ",
-      newLinks.backlinks.map((item) => item.url_from + " " + item.url_to),
+      newLinks.backlinks.map(
+        (item) => newLinks.site_id + " " + item.url_to + " " + item.url_from,
+      ),
     );
     await upsertBacklinks(
       newLinks.backlinks.map((backlink) => ({
@@ -92,9 +94,11 @@ async function backlinkMonitor(siteId: number) {
     );
   }
   if (lostLinks) {
-    logger.info(
+    logger.debug(
       "LOST LINKS ",
-      lostLinks.backlinks.map((item) => item.url_from + " " + item.url_to),
+      lostLinks.backlinks.map(
+        (item) => lostLinks.site_id + " " + item.url_to + " " + item.url_from,
+      ),
     );
     await upsertBacklinks(
       lostLinks.backlinks.map((backlink) => ({
@@ -116,9 +120,11 @@ async function backlinkMonitor(siteId: number) {
     );
   }
   if (toxicLinks) {
-    logger.info(
+    logger.debug(
       "TOXIC LINKS ",
-      toxicLinks.toxic_links.map((item) => item.url_from + " " + item.url_to),
+      toxicLinks.toxic_links.map(
+        (item) => toxicLinks.site_id + " " + item.url_to + " " + item.url_from,
+      ),
     );
     await upsertBacklinks(
       toxicLinks.toxic_links.map((backlink) => ({

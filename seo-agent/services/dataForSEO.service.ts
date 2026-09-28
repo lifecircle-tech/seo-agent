@@ -231,9 +231,22 @@ export async function getCompetitorBacklinksDomain(
         ["domain_from_rank", ">", 0],
         "and",
         ["backlink_spam_score", "<", 50],
+        "and",
+        ["page_from_status_code", "=", 200],
+        "and",
+        [
+          ["domain_from_platform_type", "has", "blog"],
+          "or",
+          ["domain_from_platform_type", "has", "cms"],
+          "or",
+          ["domain_from_platform_type", "has", "message-boards"],
+          "or",
+          ["domain_from_platform_type", "has", "wikis"],
+          "or",
+          ["domain_from_platform_type", "has", "news"],
+        ],
       ],
       limit: 500,
-      offset: 500,
     },
   ]);
 

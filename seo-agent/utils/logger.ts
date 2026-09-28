@@ -19,28 +19,7 @@ function getDebugLogFilePath(): string {
   return path.join(LOG_DIR, `seo-agent-debug.log`);
 }
 
-function formatLine(level: LogLevel, message: string, meta?: unknown): string {
-  const ts = new Date().toISOString();
-  const metaPart = meta !== undefined ? `${JSON.stringify(meta, null, 2)}` : "";
-  let logMessage = message ? `[${ts}] [${level.padEnd(5)}] ${message}` : "";
-  logMessage =
-    logMessage + metaPart ? `[${ts}] [${level.padEnd(5)}] ${metaPart}` : "";
-  return `[${ts}] [${level.padEnd(5)}] ${message} ${metaPart}\n`;
-}
-
-function write(level: LogLevel, message: string, meta?: unknown): void {
-  const line = formatLine(level, message, meta);
-  console.log(line.trim());
-  fs.appendFileSync(getLogFilePath(), line);
-  if (level === "ERROR") {
-    fs.appendFileSync(getErrorLogFilePath(), line);
-  }
-  if (level === "DEBUG") {
-    fs.appendFileSync(getDebugLogFilePath(), line);
-  }
-}
-
-function formatLogLines(level: string, ...arg: any[]) {
+function formatLogLines(level: LogLevel, ...arg: any[]) {
   const ts = new Date().toLocaleString();
   let lines = "";
 
@@ -57,15 +36,24 @@ function formatLogLines(level: string, ...arg: any[]) {
   return lines;
 }
 
-function log(level: string, ...arg: any[]) {
+function log(level: LogLevel, ...arg: any[]) {
   console.log(`[${level}]`, ...arg);
-  fs.appendFileSync(getLogFilePath(), formatLogLines(level, ...arg));
+  const lines = formatLogLines(level, ...arg);
+  fs.appendFileSync(getLogFilePath(), lines);
+
+  if (level === "ERROR") {
+    fs.appendFileSync(getErrorLogFilePath(), lines);
+  }
+
+  if (level === "DEBUG") {
+    fs.appendFileSync(getDebugLogFilePath(), lines);
+  }
 }
 
 export const logger = {
-  info: (message: string, meta?: unknown) => write("INFO", message, meta),
-  warn: (message: string, meta?: unknown) => write("WARN", message, meta),
-  error: (message: string, meta?: unknown) => write("ERROR", message, meta),
-  debug: (message: string, meta?: unknown) => write("DEBUG", message, meta),
   log: (...args: any[]) => log("LOG", ...args),
+  info: (...args: any[]) => log("INFO", ...args),
+  warn: (...args: any[]) => log("WARN", ...args),
+  error: (...args: any[]) => log("ERROR", ...args),
+  debug: (...args: any[]) => log("DEBUG", ...args),
 };

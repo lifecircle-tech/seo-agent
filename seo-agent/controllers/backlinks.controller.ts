@@ -158,7 +158,9 @@ export async function listBacklinks(filters: {
     filters.sort_by as BacklinkSortColumn,
   )
     ? (filters.sort_by as BacklinkSortColumn)
-    : filters.is_prospect ? "status IS NOT NULL, status DESC, created_at" : "created_at";
+    : filters.is_prospect
+      ? "status IS NOT NULL, status DESC, created_at"
+      : "created_at";
   const sortOrder = filters.sort_order === "asc" ? "ASC" : "DESC";
 
   const [[countRow], [rows]] = await Promise.all([
@@ -196,6 +198,7 @@ export async function listBacklinks(filters: {
 
 // ── GET BY Backlinks by Domain Grouping ───────────────────────────────
 export async function getBacklinksGroupedDomain(filters: {
+  site_id?: number;
   limit?: number;
   offset?: number;
 }): Promise<{
@@ -209,6 +212,14 @@ export async function getBacklinksGroupedDomain(filters: {
   limit: number;
   offset: number;
 }> {
+  const params: unknown[] = [];
+  const conditions: string[] = [];
+
+  if (filters.site_id !== undefined) {
+    conditions.push("site_id = ?");
+    params.push(filters.site_id);
+  }
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const limit = Math.min(filters.limit ?? 10, 100);
   const offset = filters.offset ?? 0;
 
@@ -217,14 +228,17 @@ export async function getBacklinksGroupedDomain(filters: {
     await conn.query("SET SESSION group_concat_max_len = 20000");
 
     const [[countRow], [rows]] = await Promise.all([
-      conn.query<RowDataPacket[]>(`
+      conn.query<RowDataPacket[]>(
+        `
         SELECT COUNT(*) AS count FROM (
           SELECT domain_from
           FROM backlinks
-          WHERE is_prospect = false
+          ${where ? where + " AND is_prospect = false" : "WHERE is_prospect = false"}
           GROUP BY domain_from
         ) AS grouped_domains;
-      `),
+      `,
+        params,
+      ),
       conn.query<RowDataPacket[]>(
         `SELECT domain_from,
           domain_from_rank,
@@ -254,11 +268,12 @@ export async function getBacklinksGroupedDomain(filters: {
             ']'
           ) AS backlink
         FROM backlinks
+        ${where}
         GROUP BY domain_from
         HAVING backlink IS NOT NULL
         LIMIT ? OFFSET ?;
       `,
-        [limit, offset],
+        [...params, limit, offset],
       ),
     ]);
 
