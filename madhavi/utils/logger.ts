@@ -9,14 +9,17 @@ if (!fs.existsSync(LOG_DIR)) {
 
 type LogLevel = "LOG" | "INFO" | "WARN" | "ERROR" | "DEBUG";
 
-function getLogFilePath(): string {
+function getMCPLogFilePath(): string {
   return path.join(LOG_DIR, `mcp-tools.log`);
 }
+function getLogFilePath(): string {
+  return path.join(LOG_DIR, `madhavi.log`);
+}
 function getErrorLogFilePath(): string {
-  return path.join(LOG_DIR, `mcp-tools-error.log`);
+  return path.join(LOG_DIR, `madhavi-error.log`);
 }
 function getDebugLogFilePath(): string {
-  return path.join(LOG_DIR, `mcp-tools-debug.log`);
+  return path.join(LOG_DIR, `madhavi-debug.log`);
 }
 
 function formatLogLines(level: LogLevel, ...arg: any[]) {
@@ -49,7 +52,21 @@ function write(level: LogLevel, ...arg: any[]) {
   }
 }
 
+function mcp_write(level: LogLevel, ...arg: any[]) {
+  console.log(`[${level}]`, ...arg);
+  fs.appendFileSync(getMCPLogFilePath(), formatLogLines(level, ...arg));
+
+  // if (level === "ERROR") {
+  //   fs.appendFileSync(getErrorLogFilePath(), formatLogLines(level, ...arg));
+  // }
+
+  // if (level === "DEBUG") {
+  //   fs.appendFileSync(getDebugLogFilePath(), formatLogLines(level, ...arg));
+  // }
+}
+
 export const logger = {
+  mcp_log: (...args: any[]) => mcp_write("LOG", ...args),
   log: (...args: any[]) => write("LOG", ...args),
   info: (...args: any[]) => write("INFO", ...args),
   debug: (...args: any[]) => write("DEBUG", ...args),

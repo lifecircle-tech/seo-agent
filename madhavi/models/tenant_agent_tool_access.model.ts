@@ -81,7 +81,7 @@ async function findTenantAgentToolAccesses(
   const { limit, offset } = normalizePagination(filter);
 
   const [rows] = await madhavi_pool.query<RowDataPacket[]>(
-    `${TENANT_AGENT_TOOL_ACCESS_SELECT} ${where} ORDER BY tato.granted_at DESC LIMIT ? OFFSET ?`,
+    `${TENANT_AGENT_TOOL_ACCESS_SELECT} ${where} ORDER BY tato.granted_at ASC LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
 

@@ -59,7 +59,7 @@ async function findAgentToolAccesses(filter: AgentToolAccessFilter = {}) {
   const { limit, offset } = normalizePagination(filter);
 
   const [rows] = await madhavi_pool.query<RowDataPacket[]>(
-    `${AGENT_TOOL_ACCESS_SELECT} ${where} ORDER BY ata.granted_at DESC LIMIT ? OFFSET ?`,
+    `${AGENT_TOOL_ACCESS_SELECT} ${where} ORDER BY ata.granted_at ASC LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
 
