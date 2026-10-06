@@ -15,10 +15,12 @@ interface CreateSupportTicket {
 
 async function getSupportTypes() {
   const support_list = await getSupportTypeModel("hpapp");
-  const support_types = support_list.map((type: any) => ({
-    support_id: type.id,
-    name: type.name,
-  }));
+  const support_types = support_list
+    .map((type: any) => ({
+      support_id: type.id,
+      name: type.name,
+    }))
+    .filter((type: any) => type.support_id != -2);
 
   return support_types;
 }
@@ -43,7 +45,7 @@ async function createSupportTicket(data: CreateSupportTicket) {
 
     console.log("payload", payload);
 
-    return "success";
+    // return "success";
     const result = await createSupportTicketModel(data);
     if (result) {
       return "success";

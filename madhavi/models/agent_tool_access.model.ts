@@ -53,6 +53,9 @@ async function findAgentToolAccesses(filter: AgentToolAccessFilter = {}) {
   if (filter.status) {
     conditions.push("ata.status = ?");
     params.push(filter.status);
+  } else {
+    conditions.push("ata.status = ?");
+    params.push('active');
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";

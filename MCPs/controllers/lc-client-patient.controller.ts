@@ -1,6 +1,6 @@
 import {
-  getClientsDetails as getClientsDetailsModel,
-  getPatientDetailById as getPatientDetailByIdModel,
+  getClientsDetailsModel,
+  getPatientDetailByIdModel,
 } from "../models/lc-client-patient.model.js";
 
 async function getClientsDetails(client_id: number) {

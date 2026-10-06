@@ -80,6 +80,21 @@ function scheduleAgentRun(
   }, AGENT_RUN_DEBOUNCE_MS);
 }
 
+// Hourly: run the agent conversation for every caregiver with an active
+// booking. noOverlap skips a tick if the previous cycle is still running.
+// cron.schedule(
+//   "0 * * * *",
+//   () =>
+//     lcAgentConversation().catch((err) => {
+//       logger.error("Hourly agent conversation failed:", err);
+//     }),
+//   {
+//     timezone: "Asia/Kolkata",
+//     name: "Hourly Caregiver Agent Conversation",
+//     noOverlap: true,
+//   },
+// );
+
 export function madhavi_server(app: Express) {
   // lcAgentConversation().catch((err) => {
   //   console.error("startAgentConversation failed:", err);

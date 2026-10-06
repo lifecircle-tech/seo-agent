@@ -1,4 +1,4 @@
-import { logger } from "../../seo-agent/utils/logger";
+import { logger } from "../../madhavi/utils/logger";
 
 interface ToolCallLogEntry {
   tool: string;
@@ -11,7 +11,7 @@ interface ToolCallLogEntry {
 // approximated by session id + remote IP — swap in a real identity once
 // auth is added.
 export function logToolCall({ tool, params, sessionId, ip }: ToolCallLogEntry) {
-  logger.log("mcp-tool call", {
+  logger.mcp_log("mcp-tool call", {
     event: "tool_call",
     timestamp: new Date().toISOString(),
     tool,

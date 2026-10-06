@@ -21,6 +21,12 @@ import {
   getTenantsCMChatHistory,
   upsertTenantsCMChat,
 } from "../services/tenants-cm-conversation.service";
+import {
+  getAgentDocumentTools,
+  getAgentSkillTools,
+  getAgentTools,
+  getTenantsAccessedAgent,
+} from "../services/agent.service";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -29,6 +35,16 @@ const client = new Anthropic({
 });
 
 const mcp_url = process.env.MCP_TOOL_URL || "http://localhost:3002/mcp";
+
+const TOOLS_PROMPT = `\n
+TOOL USES:
+- Don't call all tools on every run
+- Call tools only when needed.
+
+"send message tools":
+- call whatsapp message tool to send message to caregivers
+- for emergency, call only slack message tool to send message to care manager
+`;
 
 async function connectMcp() {
   const serverUrl = new URL(mcp_url);
@@ -67,70 +83,87 @@ async function connectMcp() {
 async function runLoop({
   mcpClient,
   anthropicTools,
+  agentKey,
   chat_messages = [],
   caregiver = null,
   tenant,
 }: {
   mcpClient: Client;
   anthropicTools: Anthropic.Tool[];
+  agentKey: string;
   chat_messages: any[];
   caregiver: { caregiver: Record<string, string | number> } | null;
   tenant?: { id: number; name: string };
 }) {
   const local_chat_messages = [...chat_messages];
-  const { prompt: system_prompt } = await getAgentsPrompt({
-    key: "welfare_manager",
+  const { agent_id, prompt } = await getAgentsPrompt({
+    key: agentKey,
   });
 
   let tenant_prompt = "";
-  let mcp_tools = [];
+  let agent_tools = await getAgentTools({ agent_id });
+  let tenant_tools = await getTenantsTools({ tenant_id: 1, agent_id });
 
   if (tenant) {
-    mcp_tools = await getTenantsTools({ tenant_id: tenant.id, agent_id: 1 });
-    tenant_prompt = await getTenantsSpecificPrompt(tenant.id, 1);
+    tenant_tools = await getTenantsTools({ tenant_id: tenant.id, agent_id });
+    tenant_prompt = await getTenantsSpecificPrompt(tenant.id, agent_id);
   }
+  let mcp_tools = new Set([...agent_tools, ...tenant_tools]);
 
-  const anthropic_tools = anthropicTools.filter((tool) =>
-    mcp_tools.includes(tool.name),
+  const document_tools = await getAgentDocumentTools({ agent_id: 1 });
+  const skill_tools = await getAgentSkillTools({ agent_id: 1 });
+  const document_tool_content_by_name = new Map(
+    document_tools.map((doc) => [doc.tool.name, doc.content]),
+  );
+  const skill_tool_content_by_name = new Map(
+    skill_tools.map((skill) => [skill.tool.name, skill.content]),
   );
 
+  const anthropic_tools = [
+    ...anthropicTools.filter((tool) =>
+      Array.from(mcp_tools).includes(tool.name),
+    ),
+    ...document_tools.map((doc) => doc.tool),
+    ...skill_tools.map((skill) => skill.tool),
+  ];
+
+  let system_prompt = prompt;
+  if (tenant_prompt) {
+    system_prompt += "\n\n" + tenant_prompt;
+  }
   const system_blocks: Anthropic.TextBlockParam[] = [
     {
       type: "text",
-      text: `You work for ${tenant?.name}.\n` + system_prompt,
+      text: system_prompt,
       cache_control: { type: "ephemeral" },
     },
   ];
 
-  tenant_prompt &&
-    system_blocks.push({
-      type: "text",
-      text: system_prompt,
-      cache_control: { type: "ephemeral" },
-    });
+  let tools_prompt = TOOLS_PROMPT;
+
+  if (document_tools.length > 0 || skill_tools.length > 0) {
+    tools_prompt +=
+      "\n" +
+      `DOCUMENT & SKILL TOOLS:
+  - You have been granted access to certain reference document and skill-guide tools listed above.
+  - Each one's description tells you exactly what document or skill it provides.
+  - Call a document tool only when the conversation needs information that lives in that specific document.
+  - Call a skill tool only when the conversation needs to follow that specific skill's instructions.
+  - Do not call these tools speculatively, out of curiosity, or on every turn - only when the information is actually missing and needed to proceed.`;
+  }
 
   system_blocks.push({
     type: "text",
-    text: `
-    TOOL USES:
-    - Don't call all tools on every run
-    - Call tools only when needed.
-
-    "send message tools":
-    - call whatsapp message tool to send message to caregivers
-    - for emergency, call only slack message tool to send message to care manager
-    `,
+    text: tools_prompt,
     cache_control: { type: "ephemeral" },
   });
 
   const messages: Anthropic.MessageParam[] = [
     {
       role: "user",
-      content: `CAREGIVER INFO:
-  ${JSON.stringify(caregiver)}
+      content: `CAREGIVER INFO:\n${JSON.stringify(caregiver)}
 
-  CONVERSATION HISTORY:
-  ${JSON.stringify(local_chat_messages)}
+  CONVERSATION HISTORY:\n${JSON.stringify(local_chat_messages)}
 
   Using above conversation history, write message what to reply.
   Communicate with person and send message using 'send_whatsapp_message' tool.
@@ -182,6 +215,28 @@ async function runLoop({
   const toolResults: Anthropic.ToolResultBlockParam[] = [];
   for (const toolCall of toolCalls) {
     logger.log(`🤖 Claude requested tool [${toolCall.name}]`);
+
+    if (document_tool_content_by_name.has(toolCall.name)) {
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: toolCall.id,
+        content:
+          document_tool_content_by_name.get(toolCall.name) ??
+          `Document not found for tool: ${toolCall.name}`,
+      });
+      continue;
+    }
+
+    if (skill_tool_content_by_name.has(toolCall.name)) {
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: toolCall.id,
+        content:
+          skill_tool_content_by_name.get(toolCall.name) ??
+          `Skill not found for tool: ${toolCall.name}`,
+      });
+      continue;
+    }
 
     const result = await mcpClient.callTool({
       name: toolCall.name,
@@ -248,7 +303,8 @@ export async function startAgentConversation() {
     const tenants = await getAllTenants();
 
     for (let tenant of tenants.filter((t) => t.id != 1)) {
-      const caregivers = await getTenantsCaregivers(tenant?.id);
+      const caregivers = await getTenantsCaregivers(tenant.id);
+      const [agent] = await getTenantsAccessedAgent({ tenant_id: tenant.id });
       await Promise.all(
         (caregivers ?? []).map(async (cg) => {
           const caregiver = { caregiver: cg };
@@ -258,6 +314,7 @@ export async function startAgentConversation() {
             mcpClient,
             anthropicTools,
             chat_messages: chat_history,
+            agentKey: agent.key,
             caregiver,
             tenant: tenant,
           });
@@ -281,11 +338,13 @@ export async function startAgent(chat_id: string) {
     );
 
     const tenant = await getTenantDetailsOfCaregiver(caregiver.caregiver.cg_id);
+    const [agent] = await getTenantsAccessedAgent({ tenant_id: tenant.id });
 
     return await runLoop({
       mcpClient,
       anthropicTools,
       chat_messages: chat_history,
+      agentKey: agent.key,
       caregiver,
       tenant,
     });

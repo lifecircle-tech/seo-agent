@@ -3,7 +3,6 @@ import {
   upsertTenantsCmConversation,
   findTenantsCmConversationByCaregiverId,
   findTenantsCmConversationByChatId,
-  deleteTenantsCmConversationByCaregiverId,
 } from "../models/tenants_cm_conversation.model.js";
 
 async function upsertTenantsCMChat({
@@ -57,19 +56,9 @@ async function getTenantsCMChatHistory(caregiver_id: number) {
   return chat_history.slice(0, 20);
 }
 
-async function deleteTenantsCMChat(caregiver_id: number) {
-  try {
-    return await deleteTenantsCmConversationByCaregiverId(caregiver_id);
-  } catch (err) {
-    console.log("[deleteTenantsCMChat]", err);
-    return false;
-  }
-}
-
 export {
   upsertTenantsCMChat,
   getTenantsCMChatByCaregiverId,
   getTenantsCMChatByChatId,
   getTenantsCMChatHistory,
-  deleteTenantsCMChat,
 };

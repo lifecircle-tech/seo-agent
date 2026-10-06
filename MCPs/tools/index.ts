@@ -4,6 +4,7 @@ import {
   registerSlackMessage,
 } from "./messages.tool.js";
 import {
+  registerCaregiver,
   registerCaregiversPayment,
   registerCareManager,
   registerClients,
@@ -14,6 +15,7 @@ import {
 export function registerTools(server: McpServer) {
   registerWhatsappMessage(server);
   registerSlackMessage(server);
+  registerCaregiver(server);
   registerCareManager(server);
   registerClients(server);
   registerCaregiversPayment(server);

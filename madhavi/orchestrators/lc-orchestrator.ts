@@ -11,6 +11,7 @@ import {
 } from "../services/lc-caregivers.service";
 import {
   getCMChatByChatId,
+  getCMChatByHpUniqueId,
   getCMChatHistory,
   upsertCMChat,
 } from "../services/lc-cm-conversation.service";
@@ -23,6 +24,8 @@ import { getTenantsTools } from "../services/tenants-tools.service";
 import {
   getAgentTools,
   getTenantsAccessedAgent,
+  getAgentDocumentTools,
+  getAgentSkillTools,
 } from "../services/agent.service";
 
 const client = new Anthropic({
@@ -61,6 +64,21 @@ ticket based on different support type.
 }
 
 For rest of the support type, no extra information is required.
+
+CONSTRAINTS:
+- Create support ticket only from support type and matches quries
+`;
+
+const TOOLS_PROMPT = `\n
+TOOL USES:
+- Don't call all tools on every run
+- Call tools only when needed.
+
+"send message tools":
+- call whatsapp message tool to send message to caregivers
+- for emergency, call only 'report_to_slack' tool to send message
+- also call 'report_to_slack' tool to share same message is sent to care manager
+- call 'ask_missing_in_slack' tool to report about missing information from document, tool error or suggestion to be made
 `;
 
 async function connectMcp() {
@@ -113,7 +131,7 @@ async function runLoop({
   booking_detail?: Record<string, string | number> | null;
 }) {
   const local_chat_messages = [...chat_messages];
-  const { agent_id, prompt: system_prompt } = await getAgentsPrompt({
+  const { agent_id, prompt } = await getAgentsPrompt({
     key: agentKey,
   });
   let tenant_prompt = await getTenantsSpecificPrompt(1, agent_id);
@@ -124,26 +142,43 @@ async function runLoop({
   if (mcp_tools.has("create_support_ticket")) {
     mcp_tools.add("get_support_types");
   }
-  logger.log("tools ", agentKey, mcp_tools);
+  mcp_tools.add("report_to_slack");
+  mcp_tools.add("ask_missing_in_slack");
 
-  const anthropic_tools = anthropicTools.filter((tool) =>
-    Array.from(mcp_tools).includes(tool.name),
+  const document_tools = await getAgentDocumentTools({ agent_id });
+  const skill_tools = await getAgentSkillTools({ agent_id });
+  const document_tool_content_by_name = new Map(
+    document_tools.map((doc) => [doc.tool.name, doc.content]),
   );
+  const skill_tool_content_by_name = new Map(
+    skill_tools.map((skill) => [skill.tool.name, skill.content]),
+  );
+
+  logger.log("tools ", agentKey, mcp_tools);
+  logger.log("document_tools ", agentKey, document_tools);
+  logger.log("skill_tools ", agentKey, skill_tools);
+
+  const anthropic_tools = [
+    ...anthropicTools.filter((tool) =>
+      Array.from(mcp_tools).includes(tool.name),
+    ),
+    ...document_tools.map((doc) => doc.tool),
+    ...skill_tools.map((skill) => skill.tool),
+  ];
+
+  let system_prompt = prompt;
+  if (tenant_prompt) {
+    system_prompt += "\n\n" + tenant_prompt;
+  }
 
   const system_blocks: Anthropic.TextBlockParam[] = [
     {
       type: "text",
-      text: `You work for LifeCircle.\n` + system_prompt,
+      text: system_prompt + "\n\n NOTES:\n- You don't have access to update any data behave of users. Always ask user to update data themselves."
+      + "\n- As of now, you can only create support ticket (id allowed).",
       cache_control: { type: "ephemeral" },
     },
   ];
-
-  tenant_prompt &&
-    system_blocks.push({
-      type: "text",
-      text: tenant_prompt,
-      cache_control: { type: "ephemeral" },
-    });
 
   mcp_tools.has("create_support_ticket") &&
     system_blocks.push({
@@ -152,17 +187,23 @@ async function runLoop({
       cache_control: { type: "ephemeral" },
     });
 
+  let tools_prompt = TOOLS_PROMPT;
+
+  if (document_tools.length > 0 || skill_tools.length > 0) {
+    tools_prompt +=
+      "\n" +
+      `DOCUMENT & SKILL TOOLS:
+  - You have been granted access to certain reference document and skill-guide tools listed above.
+  - Each one's description tells you exactly what document or skill it provides.
+  - Call a document tool only when the conversation needs information that lives in that specific document.
+  - Call a skill tool only when the conversation needs to follow that specific skill's instructions.
+  - Do not call these tools speculatively, out of curiosity, or on every turn - only when the information is actually missing and needed to proceed.`;
+  }
+
   system_blocks.push({
     type: "text",
-    text: `
-    TOOL USES:
-    - Don't call all tools on every run
-    - Call tools only when needed.
-
-    "send message tools":
-    - call whatsapp message tool to send message to caregivers
-    - for emergency, call only slack message tool to send message to care manager
-    `,
+    text: tools_prompt,
+    cache_control: { type: "ephemeral" },
   });
 
   const messages: Anthropic.MessageParam[] = [
@@ -176,8 +217,7 @@ async function runLoop({
       : ""
   }
 
-  CONVERSATION HISTORY:
-  ${JSON.stringify(local_chat_messages)}
+  CONVERSATION HISTORY:\n${JSON.stringify(local_chat_messages)}
 
   Using above conversation history, write message what to reply.
   Communicate with person and send message using 'send_whatsapp_message' tool.
@@ -229,6 +269,28 @@ async function runLoop({
     for (const toolCall of toolCalls) {
       logger.log(`🤖 Claude requested tool [${toolCall.name}]`);
 
+      if (document_tool_content_by_name.has(toolCall.name)) {
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: toolCall.id,
+          content:
+            document_tool_content_by_name.get(toolCall.name) ??
+            `Document not found for tool: ${toolCall.name}`,
+        });
+        continue;
+      }
+
+      if (skill_tool_content_by_name.has(toolCall.name)) {
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: toolCall.id,
+          content:
+            skill_tool_content_by_name.get(toolCall.name) ??
+            `Skill not found for tool: ${toolCall.name}`,
+        });
+        continue;
+      }
+
       const result = await mcpClient.callTool({
         name: toolCall.name,
         arguments: toolCall.input as Record<string, unknown>,
@@ -267,6 +329,8 @@ async function runLoop({
       });
     }
 
+    logger.debug("tools result ", toolResults);
+
     messages.push({
       role: "user",
       content: toolResults,
@@ -285,28 +349,100 @@ async function runLoop({
   return finalResponseText;
 }
 
-// Connects to the MCP server and runs a single agent turn, closing the
-// connection when done. Intended to be triggered per webhook call.
+// One batch of caregivers is processed per hourly scheduler run; the next
+// batch waits for the next run. Within a batch, a few agents run at a time.
+const CONVERSATION_PAGE_SIZE = 50;
+const CONVERSATION_BATCH_SIZE = 50;
+const CONVERSATION_CONCURRENCY = 5;
+
+// Caregivers already picked up by a scheduler run in this process, so the
+// agent never runs twice on the same caregiver.
+const processedCaregivers = new Set<number>();
+
+// Picks the next caregivers (in the list's date order) that have not been
+// processed yet. A caregiver who already has a CM chat was messaged before
+// (possibly by an earlier process), so they are skipped too.
+async function getNextCaregiversToProcess() {
+  const selected: { cg_id: number; name: string; phone: string }[] = [];
+  let offset = 0;
+
+  while (selected.length < CONVERSATION_BATCH_SIZE) {
+    const caregivers = await getCareGiverWithActiveBooking({
+      limit: CONVERSATION_PAGE_SIZE,
+      offset,
+    });
+    if (!caregivers || caregivers.length === 0) break;
+
+    for (const cg of caregivers) {
+      if (selected.length >= CONVERSATION_BATCH_SIZE) break;
+      if (processedCaregivers.has(cg.cg_id)) continue;
+
+      processedCaregivers.add(cg.cg_id);
+      // if (await getCMChatByHpUniqueId(cg.cg_id)) continue;
+
+      selected.push(cg);
+    }
+
+    if (caregivers.length < CONVERSATION_PAGE_SIZE) break;
+    offset += CONVERSATION_PAGE_SIZE;
+  }
+
+  return selected;
+}
+
+// Runs the agent for the next batch of unprocessed caregivers with an active
+// booking, then stops. Triggered by the hourly scheduler, so the first batch
+// runs at the first tick, the next batch an hour later, and so on.
 export async function startAgentConversation() {
+  const pending = await getNextCaregiversToProcess();
+  if (pending.length === 0) {
+    logger.log("Agent conversation cycle: no new caregivers to process");
+    return;
+  }
+
   const { mcpClient, anthropicTools } = await connectMcp();
 
+  let succeeded = 0;
+  let failed = 0;
+
   try {
-    const caregivers = await getCareGiverWithActiveBooking({});
+    for (let i = 0; i < pending.length; i += CONVERSATION_CONCURRENCY) {
+      const batch = pending.slice(i, i + CONVERSATION_CONCURRENCY);
 
-    return await Promise.all(
-      (caregivers ?? []).map(async (cg) => {
-        const caregiver = await getCareGiverDetails(cg.cg_id);
-        const booking_detail = await getCareGiverActiveBookingDetails(cg.cg_id);
-        const chat_history = await getCMChatHistory(cg.cg_id);
+      const results = await Promise.allSettled(
+        batch.map(async (cg) => {
+          const caregiver = await getCareGiverDetails(cg.cg_id);
+          const booking_detail = await getCareGiverActiveBookingDetails(
+            cg.cg_id,
+          );
+          const chat_history = await getCMChatHistory(cg.cg_id);
 
-        // return await runLoop({
-        //   mcpClient,
-        //   anthropicTools,
-        //   chat_messages: chat_history,
-        //   caregiver,
-        //   booking_detail,
-        // });
-      }),
+          return await runLoop({
+            mcpClient,
+            anthropicTools,
+            agentKey: "welfare_manager",
+            chat_messages: [],
+            caregiver,
+            booking_detail,
+          });
+        }),
+      );
+
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled") {
+          succeeded++;
+        } else {
+          failed++;
+          logger.error(
+            `Agent conversation failed for caregiver ${batch[index].cg_id}:`,
+            result.reason,
+          );
+        }
+      });
+    }
+
+    logger.log(
+      `Agent conversation cycle done: ${succeeded} succeeded, ${failed} failed`,
     );
   } finally {
     await mcpClient.close();

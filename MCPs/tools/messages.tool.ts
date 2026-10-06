@@ -2,7 +2,15 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendMessage } from "../services/timelines.service.js";
 import { notifyCareManager } from "../services/slack.service.js";
-import { logger } from "../../seo-agent/utils/logger.js";
+import {
+  notifyMadhaviReport,
+  notifyMissingInformation,
+} from "../services/slack.service.js";
+
+const slackOutputSchema = z.object({
+  status: z.enum(["ok", "error"]),
+  message: z.string(),
+});
 
 // Send message to whatsapp through timeline for a given phone.
 export function registerWhatsappMessage(server: McpServer) {
@@ -24,7 +32,6 @@ export function registerWhatsappMessage(server: McpServer) {
     },
     async ({ phone, message }) => {
       const data = await sendMessage(phone, message);
-      logger.log("TIMELINE Send ", data);
 
       const reply = {
         status: data.status ?? undefined,
@@ -39,8 +46,9 @@ export function registerWhatsappMessage(server: McpServer) {
   );
 }
 
-// Notify a care manager via Slack.
+// Tools for reporting to Slack
 export function registerSlackMessage(server: McpServer) {
+  // Notify a care manager via Slack.
   server.registerTool(
     "send_slack_message",
     {
@@ -51,14 +59,10 @@ export function registerSlackMessage(server: McpServer) {
         cm_id: z.number(),
         message: z.string().max(1000),
       },
-      outputSchema: z.object({
-        status: z.string().optional(),
-        message: z.string().optional(),
-      }),
+      outputSchema: slackOutputSchema,
     },
     async ({ cm_id, message }) => {
       const data = await notifyCareManager(cm_id, message);
-      logger.log("SLACK Send ", cm_id, message);
 
       const reply = {
         status: data.status ?? undefined,
@@ -68,6 +72,50 @@ export function registerSlackMessage(server: McpServer) {
       return {
         content: [{ type: "text" as const, text: JSON.stringify(reply) }],
         structuredContent: reply,
+      };
+    },
+  );
+
+  server.registerTool(
+    "report_to_slack",
+    {
+      title: "Report to Slack",
+      description: "Send a report or emergency alert message to Slack channel",
+      inputSchema: {
+        message: z.string(),
+      },
+      outputSchema: slackOutputSchema,
+    },
+    async ({ message }) => {
+      const result = await notifyMadhaviReport(message);
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+        structuredContent: result,
+        isError: result.status === "error",
+      };
+    },
+  );
+
+  server.registerTool(
+    "ask_missing_in_slack",
+    {
+      title:
+        "Ask Missing Information, suggestion or report tool error to Slack",
+      description:
+        "Post about missing information in documents, improvements, suggestions or report tool error to Slack channel",
+      inputSchema: {
+        message: z.string(),
+      },
+      outputSchema: slackOutputSchema,
+    },
+    async ({ message }) => {
+      const result = await notifyMissingInformation(message);
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+        structuredContent: result,
+        isError: result.status === "error",
       };
     },
   );

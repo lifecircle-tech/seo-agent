@@ -1,7 +1,7 @@
 import { RowDataPacket } from "mysql2";
 import { lc_pool } from "../../db";
 
-async function getClientsDetails(client_id: number) {
+async function getClientsDetailsModel(client_id: number) {
   const [rows] = await lc_pool.query<RowDataPacket[]>(
     `
     SELECT cl.clnt_id, cl.clnt_name, cl.pat_name,
@@ -11,12 +11,10 @@ async function getClientsDetails(client_id: number) {
     [client_id],
   );
 
-  const client = rows[0];
-
-  return client;
+  return rows[0];
 }
 
-async function getPatientDetailById(patient_id: number) {
+async function getPatientDetailByIdModel(patient_id: number) {
   const [rows] = await lc_pool.query<RowDataPacket[]>(
     `
     SELECT
@@ -38,9 +36,65 @@ async function getPatientDetailById(patient_id: number) {
     [patient_id],
   );
 
-  const patient = rows[0];
-
-  return patient;
+  return rows[0];
 }
 
-export { getClientsDetails, getPatientDetailById };
+async function getPatientCarePlansModel(patient_id: number) {
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
+    `SELECT ncp.* FROM n_care_plan ncp
+    WHERE ncp.patient_id = ? AND ncp.status = 1
+    ORDER BY ncp.version_no DESC
+    LIMIT 1
+    `,
+    [patient_id],
+  );
+
+  return rows[0];
+}
+
+async function getPatientCareScheduleModel(patient_id: number) {
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
+    `SELECT base.frequency, act.activity_name, act.how_to, cat.cat_name AS category_name
+    FROM n_care_plan_schedule_base base
+    INNER JOIN n_care_plan_activity AS act ON base.activity_id = act.id
+    INNER JOIN n_care_plan_activity_category AS cat ON act.category_id = cat.id
+    WHERE base.care_plan_id = (
+        SELECT ncp.id FROM n_care_plan ncp
+        WHERE ncp.patient_id = ? AND ncp.status = 1
+        ORDER BY ncp.version_no DESC
+        LIMIT 1
+      )
+      AND base.status = 1 AND base.activity_id > 0
+
+    `,
+    [patient_id],
+  );
+
+  return rows;
+}
+
+async function getPatientMedicinesModel(care_plan_id: number) {
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
+    `
+    SELECT
+      m.med_name,
+      base.medicine_dose as dose,
+      base.frequency,
+      base.medicine_instruction as instruction
+    FROM n_care_plan_schedule_base AS base
+    LEFT JOIN n_medicine m ON m.id = base.medicine_id
+    WHERE base.care_plan_id = ? AND base.status = 1 AND base.activity_id = 0
+    ORDER BY base.id ASC
+  `,
+    [care_plan_id],
+  );
+  return rows;
+}
+
+export {
+  getClientsDetailsModel,
+  getPatientDetailByIdModel,
+  getPatientCarePlansModel,
+  getPatientCareScheduleModel,
+  getPatientMedicinesModel,
+};

@@ -1,8 +1,8 @@
 import {
-  getCaregiversWithActiveBooking as getCaregiversWithActiveBookingModel,
-  getCaregiverDetails as getCaregiverDetailsModel,
-  getCaregiverActiveBookingDetails as getCaregiverActiveBookingDetailsModel,
-  isCaregiverPhoneNumber as isCaregiverPhoneNumberModel,
+  getCaregiversWithActiveBookingModel,
+  getCaregiverDetailsModel,
+  getCaregiverActiveBookingDetailsModel,
+  isCaregiverPhoneNumberModel,
 } from "../models/lc-caregivers.model.js";
 
 async function getCaregiversWithActiveBooking({

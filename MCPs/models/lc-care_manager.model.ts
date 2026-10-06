@@ -1,7 +1,7 @@
 import { RowDataPacket } from "mysql2";
 import { lc_pool } from "../../db";
 
-async function getCaremanagerDetails(cm_id: number) {
+async function getCaremanagerDetailsModel(cm_id: number) {
   const [rows] = await lc_pool.query<RowDataPacket[]>(
     `
     SELECT cm.det_id, cm.emp_name, cm.det_mobile
@@ -16,4 +16,4 @@ async function getCaremanagerDetails(cm_id: number) {
   return caremanager;
 }
 
-export { getCaremanagerDetails };
+export { getCaremanagerDetailsModel };
