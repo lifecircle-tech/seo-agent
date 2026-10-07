@@ -31,17 +31,28 @@ export function registerWhatsappMessage(server: McpServer) {
       }),
     },
     async ({ phone, message }) => {
-      const data = await sendMessage(phone, message);
+      try {
+        const data = await sendMessage(phone, message);
 
-      const reply = {
-        status: data.status ?? undefined,
-        message: data.message ?? undefined,
-        chat_id: data.chat_id != null ? String(data.chat_id) : undefined,
-      };
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(reply) }],
-        structuredContent: reply,
-      };
+        const reply = {
+          status: data.status ?? undefined,
+          message: data.message ?? undefined,
+          chat_id: data.chat_id != null ? String(data.chat_id) : undefined,
+        };
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(reply) }],
+          structuredContent: reply,
+        };
+      } catch (err: any) {
+        const error = {
+          status: "error",
+          message: `Failed to send timeline message: ${err.message}`,
+        };
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(error) }],
+          structuredContent: error,
+        };
+      }
     },
   );
 }

@@ -1,5 +1,6 @@
 import {
   createSupportTicketModel,
+  getCaregiversSupportTicketListModel,
   getSupportTypeModel,
 } from "../models/lc-support.model";
 
@@ -58,4 +59,23 @@ async function createSupportTicket(data: CreateSupportTicket) {
   }
 }
 
-export { getSupportTypes, createSupportTicket };
+async function getCaregiverSupportTickets(cg_user_id: number) {
+  try {
+    const tickets = await getCaregiversSupportTicketListModel(cg_user_id);
+
+    const support = tickets.map((s) => ({
+      support_id: s.support_type_id,
+      title: s.title,
+      description: s.description,
+      status: s.status == 18 ? 'open' : 'closed',
+      created_on: s.created_on
+    }));
+
+    return support;
+  } catch (err: any) {
+    console.log("create_support_ticket", err);
+    return "error fetching support tickets";
+  }
+}
+
+export { getSupportTypes, createSupportTicket, getCaregiverSupportTickets };

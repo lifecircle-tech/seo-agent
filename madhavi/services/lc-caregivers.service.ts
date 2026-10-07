@@ -1,6 +1,6 @@
 import { getAgeFromDOB } from "../utils/common.js";
 import {
-  getCaregiverActiveBookingDetails,
+  getCaregiverActiveBookingDetailsModel,
   getCaregiverDetails,
   getCaregiversWithActiveBooking,
   isCaregiverPhoneNumber as isCaregiverPhoneNumberModel,
@@ -59,6 +59,7 @@ async function getCareGiverDetails(cg_id: number) {
     return {
       caregiver: {
         cg_id: caregiver.hp_unique_id,
+        cg_user_id: caregiver.user_id,
         name: caregiver.fullname,
         phone: caregiver.phone_number,
         gender: caregiver.gender,
@@ -81,7 +82,7 @@ async function getCareGiverActiveBookingDetails(cg_id: number) {
     // > = SAMPLE.SAMPLE_BOOKING_DATA;
     // return bookings[cg_id] ?? null;
 
-    const booking = await getCaregiverActiveBookingDetails(cg_id);
+    const booking = await getCaregiverActiveBookingDetailsModel(cg_id);
 
     return {
       booking_id: booking.id || undefined,

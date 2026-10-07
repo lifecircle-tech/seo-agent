@@ -93,6 +93,7 @@ async function getCaregiverProfileStatus(cg_id: number) {
     return {
       profile_status: "profile completed",
       cg_id: cg_profile.hp_unique_id,
+      cg_user_id: cg_profile.user_id,
       hp_unique_id: cg_profile.hp_unique_id,
       name: cg_profile.name,
       gender: cg_profile.gender,

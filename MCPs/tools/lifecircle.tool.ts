@@ -15,6 +15,7 @@ import {
 import {
   createSupportTicket,
   getSupportTypes,
+  getCaregiverSupportTickets,
 } from "../services/lc-support.service.js";
 
 // Caregiver tools
@@ -370,7 +371,7 @@ export function registerSupportTicket(server: McpServer) {
       description:
         "Create Support ticket for caregiver like leave request, payment",
       inputSchema: {
-        cg_id: z.number(),
+        cg_user_id: z.number(),
         support_id: z.number(),
         title: z.string(),
         description: z.string(),
@@ -383,7 +384,7 @@ export function registerSupportTicket(server: McpServer) {
       }),
     },
     async ({
-      cg_id,
+      cg_user_id,
       support_id,
       title,
       description,
@@ -392,7 +393,7 @@ export function registerSupportTicket(server: McpServer) {
       amount,
     }) => {
       const result = await createSupportTicket({
-        user_id: cg_id,
+        user_id: cg_user_id,
         support_id,
         title,
         description,
@@ -406,6 +407,50 @@ export function registerSupportTicket(server: McpServer) {
       return {
         content: [{ type: "text", text: JSON.stringify(structured) }],
         structuredContent: structured,
+      };
+    },
+  );
+
+  server.registerTool(
+    "caregiver_support_requests",
+    {
+      title: "Caregiver Support Requests",
+      description:
+        "Get list of support requests/tickets raised by caregiver with title, description, status (open/closed) and created date",
+      inputSchema: {
+        cg_user_id: z.number(),
+      },
+      outputSchema: z.object({
+        support_requests: z
+          .array(
+            z.object({
+              support_id: z.number(),
+              title: z.string(),
+              description: z.string(),
+              status: z.enum(["open", "closed"]),
+              created_on: z.string(),
+            }),
+          )
+          .optional(),
+        error: z.string().optional(),
+      }),
+    },
+    async ({ cg_user_id }) => {
+      const result = await getCaregiverSupportTickets(cg_user_id);
+      // The service returns a list on success and an error message string on failure
+      const structuredContent = Array.isArray(result)
+        ? {
+            support_requests: result.map((ticket) => ({
+              ...ticket,
+              created_on: new Date(ticket.created_on).toISOString(),
+            })),
+          }
+        : { error: result };
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(structuredContent) }],
+        structuredContent,
+        isError: !Array.isArray(result),
       };
     },
   );

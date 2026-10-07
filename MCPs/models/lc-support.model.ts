@@ -46,4 +46,22 @@ async function createSupportTicketModel(data: CreateSupportTicket) {
   return result.insertId;
 }
 
-export { getSupportTypeModel, createSupportTicketModel };
+async function getCaregiversSupportTicketListModel(cg_user_id: number) {
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
+    `
+    SELECT nsr.*
+    FROM n_support_requests nsr
+    WHERE nsr.user_id = ?
+    ORDER BY nsr.created_on DESC
+    `,
+    [cg_user_id],
+  );
+
+  return rows;
+}
+
+export {
+  getSupportTypeModel,
+  createSupportTicketModel,
+  getCaregiversSupportTicketListModel,
+};

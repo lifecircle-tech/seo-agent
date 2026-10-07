@@ -41,7 +41,7 @@ const CREATE_SUPPORT_PROMPT = `
 Assign and pass the following properties before calling tools to create support
 ticket based on different support type.
 {
-  cg_id,
+  cg_user_id,
   support_id,
   title: same as support type name,
   description: reason why person is requested to raise support (in first person)
@@ -144,6 +144,7 @@ async function runLoop({
   }
   mcp_tools.add("report_to_slack");
   mcp_tools.add("ask_missing_in_slack");
+  mcp_tools.add("caregiver_support_requests");
 
   const document_tools = await getAgentDocumentTools({ agent_id });
   const skill_tools = await getAgentSkillTools({ agent_id });
@@ -174,8 +175,10 @@ async function runLoop({
   const system_blocks: Anthropic.TextBlockParam[] = [
     {
       type: "text",
-      text: system_prompt + "\n\n NOTES:\n- You don't have access to update any data behave of users. Always ask user to update data themselves."
-      + "\n- As of now, you can only create support ticket (id allowed).",
+      text:
+        system_prompt +
+        "\n\n NOTES:\n- You don't have access to update any data behave of users. Always ask user to update data themselves." +
+        "\n- As of now, you can only create support ticket (id allowed).",
       cache_control: { type: "ephemeral" },
     },
   ];
@@ -375,10 +378,8 @@ async function getNextCaregiversToProcess() {
 
     for (const cg of caregivers) {
       if (selected.length >= CONVERSATION_BATCH_SIZE) break;
-      if (processedCaregivers.has(cg.cg_id)) continue;
 
-      processedCaregivers.add(cg.cg_id);
-      // if (await getCMChatByHpUniqueId(cg.cg_id)) continue;
+      if (await getCMChatByHpUniqueId(cg.cg_id)) continue;
 
       selected.push(cg);
     }
@@ -416,6 +417,10 @@ export async function startAgentConversation() {
             cg.cg_id,
           );
           const chat_history = await getCMChatHistory(cg.cg_id);
+
+          console.log("caregiver", caregiver);
+          console.log("booking", booking_detail);
+          console.log("chat", chat_history.length);
 
           return await runLoop({
             mcpClient,

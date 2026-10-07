@@ -1,4 +1,5 @@
 import { setTimeout } from "timers/promises";
+import { logger } from "../../madhavi/utils/logger";
 
 const baseUrl = process.env.TIMELINE_URL;
 
@@ -61,37 +62,42 @@ async function sendMessage(phone: string, message: string) {
     };
   }
 
-  const url = `${baseUrl}/messages`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      phone: phone,
-      whatsapp_account_phone: "+919154241774",
-      text: message,
-    }),
-  });
+  try {
+    const url = `${baseUrl}/messages`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        phone: phone,
+        whatsapp_account_phone: "+919154241774",
+        text: message,
+      }),
+    });
 
-  if (!response.ok) {
+    if (!response.ok) {
+      return {
+        status: "error",
+        message: `Failed to send timeline message: ${response.status} ${response.statusText}`,
+      };
+    }
+
+    const data = await response.json();
+
+    await setTimeout(1500);
+    const chat_id = await getChatIdFromMessageId(data.data.message_uid);
+
     return {
-      status: "error",
-      message: `Failed to send timeline message: ${response.status} ${response.statusText}`,
+      status: "ok",
+      message: "Message sent",
+      chat_id: chat_id ?? undefined,
     };
+  } catch (err: any) {
+    logger.log("[timelines -> sendMessage]", err);
+    throw new Error(err.message);
   }
-
-  const data = await response.json();
-
-  await setTimeout(1500);
-  const chat_id = await getChatIdFromMessageId(data.data.message_uid);
-
-  return {
-    status: "ok",
-    message: "Message sent",
-    chat_id: chat_id ?? undefined,
-  };
 }
 
 async function getChatIdFromMessageId(
@@ -99,25 +105,30 @@ async function getChatIdFromMessageId(
 ): Promise<string | undefined> {
   const token = getTimelineToken();
 
-  const url = `${baseUrl}/messages/${message_id}`;
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-  });
+  try {
+    const url = `${baseUrl}/messages/${message_id}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
 
-  if (!response.ok) {
-    console.error(
-      `Failed to fetch chat id for message ${message_id}: ${response.status} ${response.statusText}`,
-    );
-    return undefined;
+    if (!response.ok) {
+      console.error(
+        `Failed to fetch chat id for message ${message_id}: ${response.status} ${response.statusText}`,
+      );
+      return undefined;
+    }
+
+    const data = await response.json();
+
+    return data.data.chat_id;
+  } catch (err: any) {
+    logger.log("[timelines -> getChatIdFromMessageId]", err);
+    throw new Error(err.message);
   }
-
-  const data = await response.json();
-
-  return data.data.chat_id;
 }
 
 export { getChatMessages, sendMessage, getChatIdFromMessageId };

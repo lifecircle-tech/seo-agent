@@ -31,6 +31,7 @@ async function getCaregiverDetails(cg_id: number) {
     `
     SELECT
       cg.hp_unique_id,
+      nu.id AS user_id,
       cg.fullname,
       cg.phone_number,
       cg.dob,
@@ -38,6 +39,7 @@ async function getCaregiverDetails(cg_id: number) {
       bh.bkng_id as booking_id,
       cg_languages.languages AS languages
     FROM n_hp_profile cg
+    LEFT JOIN n_user nu ON nu.hp_unique_id = cg.hp_unique_id
     LEFT JOIN life_gender g ON g.gen_id = cg.gender
     LEFT JOIN n_booking_hp bh ON bh.hp_unique_id = cg.hp_unique_id
     LEFT JOIN (
@@ -58,7 +60,7 @@ async function getCaregiverDetails(cg_id: number) {
   return caregiver;
 }
 
-async function getCaregiverActiveBookingDetails(cg_id: number) {
+async function getCaregiverActiveBookingDetailsModel(cg_id: number) {
   const [rows] = await lc_pool.query<RowDataPacket[]>(
     `
     SELECT b.id, cl.clnt_name, cl.pat_name, p.first_name, e.emp_name, b.patient_id, b.old_client_id, b.hp_manager
@@ -96,6 +98,6 @@ async function isCaregiverPhoneNumber(phone: string) {
 export {
   getCaregiversWithActiveBooking,
   getCaregiverDetails,
-  getCaregiverActiveBookingDetails,
+  getCaregiverActiveBookingDetailsModel,
   isCaregiverPhoneNumber,
 };

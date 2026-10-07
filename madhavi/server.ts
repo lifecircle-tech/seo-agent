@@ -13,6 +13,7 @@ import {
 
 import cron from "node-cron";
 import { logger } from "./utils/logger.js";
+import { getDigitalCMChatByChatId } from "./models/lc-cm-conversation.model";
 
 // Debounce window: if more messages arrive for the same chat within this
 // window, they collapse into a single agent run after the last one.
@@ -80,10 +81,11 @@ function scheduleAgentRun(
   }, AGENT_RUN_DEBOUNCE_MS);
 }
 
-// Hourly: run the agent conversation for every caregiver with an active
-// booking. noOverlap skips a tick if the previous cycle is still running.
+// Hourly during the day (9 AM - 4 PM IST): run the agent conversation for the
+// next batch of caregivers with an active booking. noOverlap skips a tick if
+// the previous cycle is still running.
 // cron.schedule(
-//   "0 * * * *",
+//   "0 10-16 * * *",
 //   () =>
 //     lcAgentConversation().catch((err) => {
 //       logger.error("Hourly agent conversation failed:", err);
@@ -113,24 +115,23 @@ export function madhavi_server(app: Express) {
   app.post("/digital-manager", async (req, res) => {
     const body = req.body;
 
-    if (
-      body.event_type === "message:received:new" &&
-      body.chat &&
-      ["916361479764", "918105938170"].includes(body.chat.phone)
-    ) {
+    if (body.event_type === "message:received:new" && body.chat) {
       console.log("Received request body:", body);
       const chat_id = body.chat.chat_id;
+      const is_chat_exists = await getDigitalCMChatByChatId(chat_id);
 
-      const is_LC_member = await isLCMemberPhoneNumber(body.chat.phone);
-      const is_LC_caregiver = await isCaregiverPhoneNumber(body.chat.phone);
+      if (!!is_chat_exists) {
+        const is_LC_member = await isLCMemberPhoneNumber(body.chat.phone);
+        const is_LC_caregiver = await isCaregiverPhoneNumber(body.chat.phone);
 
-      // if (is_LC_member) {
-      //   if (is_LC_caregiver) {
-      scheduleAgentRun(chat_id, multiAgentRouter);
-      //   }
-      // } else {
-      // scheduleAgentRun(chat_id, tenantAgent);
-      // }
+        // if (is_LC_member) {
+        if (is_LC_caregiver) {
+          scheduleAgentRun(chat_id, multiAgentRouter);
+        }
+        // } else {
+        // scheduleAgentRun(chat_id, tenantAgent);
+        // }
+      }
     }
 
     // Process the request body as needed

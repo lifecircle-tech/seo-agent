@@ -73,7 +73,8 @@ async function getCaregiverDetailsModel(cg_id: number) {
 async function getCaregiverProfileDetailsModel(cg_id: number) {
   const [rows] = await lc_pool.query<RowDataPacket[]>(
     `SELECT
-      hp.hp_unique_id, 
+      hp.hp_unique_id,
+      nu.id as user_id,
       hp.fullname as name,
       hp.photo as profile_pic,
       ms.code, 
@@ -99,6 +100,7 @@ async function getCaregiverProfileDetailsModel(cg_id: number) {
       hp.registered_on,
       hp.created_on
     FROM n_hp_profile hp
+    LEFT JOIN n_user nu ON nu.hp_unique_id = hp.hp_unique_id
     LEFT JOIN n_master_status ms ON ms.id = hp.status
     LEFT JOIN n_master_gender mg ON mg.id = hp.gender
     LEFT JOIN (
