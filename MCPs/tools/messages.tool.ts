@@ -6,6 +6,7 @@ import {
   notifyMadhaviReport,
   notifyMissingInformation,
 } from "../services/slack.service.js";
+import { logger } from "../../madhavi/utils/logger.js";
 
 const slackOutputSchema = z.object({
   status: z.enum(["ok", "error"]),
@@ -33,6 +34,7 @@ export function registerWhatsappMessage(server: McpServer) {
     async ({ phone, message }) => {
       try {
         const data = await sendMessage(phone, message);
+        logger.log("[whatsapp message]", data);
 
         const reply = {
           status: data.status ?? undefined,
@@ -46,7 +48,7 @@ export function registerWhatsappMessage(server: McpServer) {
       } catch (err: any) {
         const error = {
           status: "error",
-          message: `Failed to send timeline message: ${err.message}`,
+          message: `Something went wrong: ${err.message}`,
         };
         return {
           content: [{ type: "text" as const, text: JSON.stringify(error) }],

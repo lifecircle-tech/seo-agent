@@ -115,23 +115,28 @@ export function madhavi_server(app: Express) {
   app.post("/digital-manager", async (req, res) => {
     const body = req.body;
 
-    if (body.event_type === "message:received:new" && body.chat) {
-      console.log("Received request body:", body);
+    if (
+      body.event_type === "message:received:new" &&
+      body.chat &&
+      !body.chat.is_group &&
+      body.chat.phone
+    ) {
       const chat_id = body.chat.chat_id;
       const is_chat_exists = await getDigitalCMChatByChatId(chat_id);
 
-      if (!!is_chat_exists) {
-        const is_LC_member = await isLCMemberPhoneNumber(body.chat.phone);
-        const is_LC_caregiver = await isCaregiverPhoneNumber(body.chat.phone);
+      // if (!!is_chat_exists) {
+      console.log("Received request body:", body);
+      // const is_LC_member = await isLCMemberPhoneNumber(body.chat.phone);
+      const is_LC_caregiver = await isCaregiverPhoneNumber(body.chat.phone);
 
-        // if (is_LC_member) {
-        if (is_LC_caregiver) {
-          scheduleAgentRun(chat_id, multiAgentRouter);
-        }
-        // } else {
-        // scheduleAgentRun(chat_id, tenantAgent);
-        // }
+      // if (is_LC_member) {
+      if (is_LC_caregiver) {
+        scheduleAgentRun(chat_id, multiAgentRouter);
       }
+      // } else {
+      // scheduleAgentRun(chat_id, tenantAgent);
+      // }
+      // }
     }
 
     // Process the request body as needed

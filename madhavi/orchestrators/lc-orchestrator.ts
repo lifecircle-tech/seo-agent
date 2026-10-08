@@ -30,7 +30,7 @@ import {
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
-  timeout: 30 * 1000,
+  timeout: 100 * 1000,
   maxRetries: 1,
 });
 
@@ -66,7 +66,7 @@ ticket based on different support type.
 For rest of the support type, no extra information is required.
 
 CONSTRAINTS:
-- Create support ticket only from support type and matches quries
+- Create support ticket only from support type and matches query
 `;
 
 const TOOLS_PROMPT = `\n
@@ -178,8 +178,9 @@ async function runLoop({
       text:
         system_prompt +
         "\n\n NOTES:\n- You don't have access to update any data behave of users. Always ask user to update data themselves." +
-        "\n- As of now, you can only create support ticket (id allowed).",
-      cache_control: { type: "ephemeral" },
+        "\n- As of now, you can only create support ticket (if allowed)." +
+        "\n- If open support ticket is present for similar concern, do not report in slack",
+      cache_control: { type: "ephemeral", ttl: "1h" },
     },
   ];
 
@@ -187,7 +188,7 @@ async function runLoop({
     system_blocks.push({
       type: "text",
       text: CREATE_SUPPORT_PROMPT,
-      cache_control: { type: "ephemeral" },
+      cache_control: { type: "ephemeral", ttl: "1h" },
     });
 
   let tools_prompt = TOOLS_PROMPT;
@@ -206,7 +207,7 @@ async function runLoop({
   system_blocks.push({
     type: "text",
     text: tools_prompt,
-    cache_control: { type: "ephemeral" },
+    cache_control: { type: "ephemeral", ttl: "1h" },
   });
 
   const messages: Anthropic.MessageParam[] = [
@@ -240,8 +241,8 @@ async function runLoop({
   while (true) {
     logger.log("Inside loop...");
     const response = await client.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 5000,
+      model: "claude-haiku-4-5",
+      max_tokens: 1000,
       tools: anthropic_tools,
       system: system_blocks,
       messages,
@@ -410,40 +411,26 @@ export async function startAgentConversation() {
     for (let i = 0; i < pending.length; i += CONVERSATION_CONCURRENCY) {
       const batch = pending.slice(i, i + CONVERSATION_CONCURRENCY);
 
-      const results = await Promise.allSettled(
-        batch.map(async (cg) => {
-          const caregiver = await getCareGiverDetails(cg.cg_id);
-          const booking_detail = await getCareGiverActiveBookingDetails(
-            cg.cg_id,
-          );
-          const chat_history = await getCMChatHistory(cg.cg_id);
+      for await (let cg of batch) {
+        const caregiver = await getCareGiverDetails(cg.cg_id);
+        const booking_detail = await getCareGiverActiveBookingDetails(cg.cg_id);
+        const chat_history = await getCMChatHistory(cg.cg_id);
 
-          console.log("caregiver", caregiver);
-          console.log("booking", booking_detail);
-          console.log("chat", chat_history.length);
+        const resp = await runLoop({
+          mcpClient,
+          anthropicTools,
+          agentKey: "welfare_manager",
+          chat_messages: chat_history,
+          caregiver,
+          booking_detail,
+        });
 
-          return await runLoop({
-            mcpClient,
-            anthropicTools,
-            agentKey: "welfare_manager",
-            chat_messages: [],
-            caregiver,
-            booking_detail,
-          });
-        }),
-      );
-
-      results.forEach((result, index) => {
-        if (result.status === "fulfilled") {
+        if (resp) {
           succeeded++;
         } else {
           failed++;
-          logger.error(
-            `Agent conversation failed for caregiver ${batch[index].cg_id}:`,
-            result.reason,
-          );
         }
-      });
+      }
     }
 
     logger.log(
@@ -468,8 +455,8 @@ export async function startAgent(chat_id: string, agent_key: string) {
       caregiver?.caregiver.cg_id as number,
     );
 
-    console.log("Caregiver", caregiver);
-    console.log("booking", booking_detail);
+    logger.debug("Caregiver " + chat_id, caregiver);
+    logger.debug("booking " + chat_id, booking_detail);
 
     return await runLoop({
       mcpClient,

@@ -95,7 +95,7 @@ async function sendMessage(phone: string, message: string) {
       chat_id: chat_id ?? undefined,
     };
   } catch (err: any) {
-    logger.log("[timelines -> sendMessage]", err);
+    logger.error("[timelines -> sendMessage]", err);
     throw new Error(err.message);
   }
 }
@@ -126,7 +126,7 @@ async function getChatIdFromMessageId(
 
     return data.data.chat_id;
   } catch (err: any) {
-    logger.log("[timelines -> getChatIdFromMessageId]", err);
+    logger.error("[timelines -> getChatIdFromMessageId]", err);
     throw new Error(err.message);
   }
 }

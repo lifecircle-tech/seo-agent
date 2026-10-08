@@ -168,9 +168,15 @@ async function getCaregiverWorkingStatus(cg_id: number) {
       };
     }
 
-    return {
-      status: "bench : ready to work",
-    };
+    const cg_profile = await getCaregiverProfileDetailsModel(cg_id);
+
+    if (cg_profile) {
+      return {
+        status: "bench : ready to work",
+      };
+    }
+
+    return null;
   } catch (err) {
     console.log("[getCaregiverWorkingStatus]", err);
     return null;
@@ -196,7 +202,7 @@ async function getCaregiverWorkingHistory(cg_id: number) {
         hp_unique_id: work.cg_unique_id,
         client_name: work.client_name,
         patient_name: work.patient_name,
-        patient_condition: work.health_conditions, // flaw in reading health condition, reading duplicate values
+        patient_condition: work.health_conditions || '', // flaw in reading health condition, reading duplicate values
         from_date: work.merged_from_date,
         to_date: work.merged_to_date >= today ? undefined : work.merged_to_date,
       };

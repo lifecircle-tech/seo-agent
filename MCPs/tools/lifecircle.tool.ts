@@ -6,7 +6,7 @@ import {
   getCaregiverWorkingHistory,
   getCaregiverPaymentInfo,
 } from "../services/lc-caregivers.service.js";
-import { searchCaregiverLLM } from "../services/LLM2.service.js";
+// import { searchCaregiverLLM } from "../services/LLM2.service.js";
 import { getCareManagerDetails } from "../services/lc-caremanager.service.js";
 import {
   getPatientDetail,
@@ -43,6 +43,7 @@ export function registerCaregiver(server: McpServer) {
           z.object({
             profile_status: z.string(),
             cg_id: z.number(),
+            cg_user_id: z.number(),
             hp_unique_id: z.number(),
             name: z.string(),
             gender: z.string(),
@@ -156,34 +157,34 @@ export function registerCaregiver(server: McpServer) {
     },
   );
 
-  server.registerTool(
-    "caregiver_llm_search",
-    {
-      title: "Caregiver LLM Search",
-      description:
-        "Answer a natural-language question about caregivers by generating a read-only SQL query and running it. Returns the matching rows, or an error if the question can't be answered",
-      inputSchema: {
-        query: z.string(),
-      },
-      outputSchema: z.object({
-        rows: z.array(z.record(z.string(), z.any())).optional(),
-        error: z.string().optional(),
-      }),
-    },
-    async ({ query }) => {
-      const result = await searchCaregiverLLM(query);
-      // The service returns rows on success and an error message string on failure
-      const structuredContent = Array.isArray(result)
-        ? { rows: result }
-        : { error: result || "Query could not be answered from the schema" };
+  // server.registerTool(
+  //   "caregiver_llm_search",
+  //   {
+  //     title: "Caregiver LLM Search",
+  //     description:
+  //       "Answer a natural-language question about caregivers by generating a read-only SQL query and running it. Returns the matching rows, or an error if the question can't be answered",
+  //     inputSchema: {
+  //       query: z.string(),
+  //     },
+  //     outputSchema: z.object({
+  //       rows: z.array(z.record(z.string(), z.any())).optional(),
+  //       error: z.string().optional(),
+  //     }),
+  //   },
+  //   async ({ query }) => {
+  //     const result = await searchCaregiverLLM(query);
+  //     // The service returns rows on success and an error message string on failure
+  //     const structuredContent = Array.isArray(result)
+  //       ? { rows: result }
+  //       : { error: result || "Query could not be answered from the schema" };
 
-      return {
-        content: [{ type: "text", text: JSON.stringify(structuredContent) }],
-        structuredContent,
-        isError: !Array.isArray(result),
-      };
-    },
-  );
+  //     return {
+  //       content: [{ type: "text", text: JSON.stringify(structuredContent) }],
+  //       structuredContent,
+  //       isError: !Array.isArray(result),
+  //     };
+  //   },
+  // );
 }
 
 // Get care manager details

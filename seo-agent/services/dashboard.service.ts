@@ -66,7 +66,7 @@ export async function discoverNewKeywordsForSite(siteId: number) {
       city: city.city,
       state: city.state,
       country: city.country,
-      services: city.services || [site.brand_name.toLoweCase()],
+      services: city.services || [site.brand_name.toLowerCase()],
       get fullLocation() {
         return `${this.city},${this.state},${this.country}`;
       },
