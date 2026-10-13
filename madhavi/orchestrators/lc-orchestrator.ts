@@ -3,7 +3,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp";
 import { logger } from "../utils/logger";
-import { getChatMessages } from "../services/timelines.service";
+import {
+  getChatMessages,
+  resolveChatIdLater,
+} from "../services/timelines.service";
 import {
   getCareGiverActiveBookingDetails,
   getCareGiverDetails,
@@ -27,6 +30,12 @@ import {
   getAgentDocumentTools,
   getAgentSkillTools,
 } from "../services/agent.service";
+import {
+  getSlackPromptContext,
+  markSlackRepliesRelayed,
+  recordSlackThread,
+} from "../services/lc-slack-conversation.service";
+import { SLACK_TOOL_PURPOSE } from "../config/slack-channels";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -66,7 +75,8 @@ ticket based on different support type.
 For rest of the support type, no extra information is required.
 
 CONSTRAINTS:
-- Create support ticket only from support type and matches query
+- Create support ticket only from support type list provided by 'get_support_types' tool.
+- Before creating support ticket, check if there is already an open support ticket for the same support type. If yes, do not create a new support ticket and inform the user that there is already an open support ticket for the same support type.
 `;
 
 const TOOLS_PROMPT = `\n
@@ -77,11 +87,11 @@ TOOL USES:
 "send message tools":
 - call whatsapp message tool to send message to caregivers
 - for emergency, call only 'report_to_slack' tool to send message
-- also call 'report_to_slack' tool to share same message is sent to care manager
+- also call 'report_to_slack' tool to share same message which is sent to care manager
 - call 'ask_missing_in_slack' tool to report about missing information from document, tool error or suggestion to be made
 `;
 
-async function connectMcp() {
+export async function connectMcp() {
   const serverUrl = new URL(mcp_url);
   const transport = new StreamableHTTPClientTransport(serverUrl);
 
@@ -108,7 +118,7 @@ async function connectMcp() {
     // Add the cache target to the very last tool in the array.
     // This caches the entire tools context block up to this point.
     ...(index === tools.length - 1
-      ? { cache_control: { type: "ephemeral" as const } }
+      ? { cache_control: { type: "ephemeral" as const, ttl: "1h" as const } }
       : {}),
   }));
 
@@ -121,16 +131,17 @@ async function runLoop({
   agentKey = "welfare_manager",
   chat_messages = [],
   caregiver = null,
-  booking_detail = null,
+  chat_id = null,
 }: {
   mcpClient: Client;
   anthropicTools: Anthropic.Tool[];
   agentKey: string;
   chat_messages: any[];
   caregiver: { caregiver: Record<string, string | number> } | null;
-  booking_detail?: Record<string, string | number> | null;
+  chat_id?: string | null;
 }) {
   const local_chat_messages = [...chat_messages];
+  const hp_unique_id = caregiver?.caregiver["cg_id"] as number | undefined;
   const { agent_id, prompt } = await getAgentsPrompt({
     key: agentKey,
   });
@@ -144,7 +155,17 @@ async function runLoop({
   }
   mcp_tools.add("report_to_slack");
   mcp_tools.add("ask_missing_in_slack");
-  mcp_tools.add("caregiver_support_requests");
+  mcp_tools.add("get_caregiver_support_requests");
+
+  // Care team replies from Slack threads raised about this caregiver
+  const slack_context = hp_unique_id
+    ? await getSlackPromptContext(hp_unique_id)
+    : { prompt: "", pending_reply_ids: [] };
+  if (slack_context.prompt) {
+    mcp_tools.add("get_slack_context");
+    mcp_tools.add("read_slack_thread");
+    mcp_tools.add("reply_in_slack_thread");
+  }
 
   const document_tools = await getAgentDocumentTools({ agent_id });
   const skill_tools = await getAgentSkillTools({ agent_id });
@@ -214,14 +235,10 @@ async function runLoop({
     {
       role: "user",
       content: `CAREGIVER INFO:\n${JSON.stringify(caregiver)}
-  ${
-    booking_detail
-      ? `ACTIVE BOOKING DETAILS:\n${booking_detail}
-    `
-      : ""
-  }
 
   CONVERSATION HISTORY:\n${JSON.stringify(local_chat_messages)}
+
+  ${slack_context.prompt}
 
   Using above conversation history, write message what to reply.
   Communicate with person and send message using 'send_whatsapp_message' tool.
@@ -316,12 +333,50 @@ async function runLoop({
           | Record<string, unknown>
           | undefined;
         const chat_id = structuredContent?.["chat_id"] as string | undefined;
+        const message_id = structuredContent?.["message_id"] as
+          | string
+          | undefined;
         logger.log("chat ID ", chat_id);
 
-        if (structuredContent?.status == "ok" && chat_id) {
-          upsertCMChat({
-            cg_id: caregiver?.caregiver["cg_id"] as number,
+        if (structuredContent?.status == "ok") {
+          markSlackRepliesRelayed(slack_context.pending_reply_ids);
+
+          const cg_id = caregiver?.caregiver["cg_id"] as number;
+          const saveChat = (chat_id: string) =>
+            upsertCMChat({ cg_id, chat_id });
+
+          // Timelines may not have assigned the chat yet: resolve it in the
+          // background so the caregiver's reply is still recognised.
+          if (chat_id) saveChat(chat_id);
+          else if (message_id) resolveChatIdLater(message_id, saveChat);
+        }
+      }
+
+      // Link the Slack thread the agent just opened to this caregiver, so
+      // employee replies in it can be routed back to the conversation.
+      const slack_purpose = SLACK_TOOL_PURPOSE[toolCall.name];
+      if (slack_purpose && !result.isError && hp_unique_id) {
+        const structuredContent = result.structuredContent as
+          | Record<string, unknown>
+          | undefined;
+        const channel_id = structuredContent?.["channel_id"] as
+          | string
+          | undefined;
+        const thread_ts = structuredContent?.["thread_ts"] as
+          | string
+          | undefined;
+
+        if (channel_id && thread_ts) {
+          recordSlackThread({
+            hp_unique_id,
             chat_id,
+            agent_key: agentKey,
+            purpose: slack_purpose,
+            channel_id,
+            thread_ts,
+            message: String(
+              (toolCall.input as Record<string, unknown>)["message"] ?? "",
+            ),
           });
         }
       }
@@ -413,7 +468,6 @@ export async function startAgentConversation() {
 
       for await (let cg of batch) {
         const caregiver = await getCareGiverDetails(cg.cg_id);
-        const booking_detail = await getCareGiverActiveBookingDetails(cg.cg_id);
         const chat_history = await getCMChatHistory(cg.cg_id);
 
         const resp = await runLoop({
@@ -422,7 +476,6 @@ export async function startAgentConversation() {
           agentKey: "welfare_manager",
           chat_messages: chat_history,
           caregiver,
-          booking_detail,
         });
 
         if (resp) {
@@ -451,12 +504,8 @@ export async function startAgent(chat_id: string, agent_key: string) {
     const caregiver = await getCareGiverDetails(
       cm_chat_record?.hp_unique_id as number,
     );
-    const booking_detail = await getCareGiverActiveBookingDetails(
-      caregiver?.caregiver.cg_id as number,
-    );
 
     logger.debug("Caregiver " + chat_id, caregiver);
-    logger.debug("booking " + chat_id, booking_detail);
 
     return await runLoop({
       mcpClient,
@@ -464,7 +513,7 @@ export async function startAgent(chat_id: string, agent_key: string) {
       chat_messages: chat_history,
       agentKey: agent_key,
       caregiver,
-      booking_detail,
+      chat_id,
     });
   } finally {
     await mcpClient.close();

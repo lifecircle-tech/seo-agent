@@ -14,6 +14,7 @@ import {
 import cron from "node-cron";
 import { logger } from "./utils/logger.js";
 import { getDigitalCMChatByChatId } from "./models/lc-cm-conversation.model";
+import { startSlackBridge } from "./slack/slack-bridge";
 
 // Debounce window: if more messages arrive for the same chat within this
 // window, they collapse into a single agent run after the last one.
@@ -105,6 +106,15 @@ export function madhavi_server(app: Express) {
   //   console.error("startAgentConversation failed:", err);
   // });
 
+  // An employee replied in a Slack thread the agent opened: run the agent
+  // for that user's chat through the same per-chat queue as WhatsApp
+  // messages, so the two never run concurrently.
+  startSlackBridge(({ chat_id, agent_key }) =>
+    scheduleAgentRun(chat_id, (id) => lcAgent(id, agent_key)),
+  ).catch((err) => {
+    logger.error("Slack bridge failed to start:", err);
+  });
+
   app.get("/digital-manager", async (req, res) => {
     // Process the request body as needed
     // For example, you can send a response back to the client
@@ -124,19 +134,19 @@ export function madhavi_server(app: Express) {
       const chat_id = body.chat.chat_id;
       const is_chat_exists = await getDigitalCMChatByChatId(chat_id);
 
-      // if (!!is_chat_exists) {
-      console.log("Received request body:", body);
-      // const is_LC_member = await isLCMemberPhoneNumber(body.chat.phone);
-      const is_LC_caregiver = await isCaregiverPhoneNumber(body.chat.phone);
+      if (!!is_chat_exists) {
+        console.log("Received request body:", body);
+        // const is_LC_member = await isLCMemberPhoneNumber(body.chat.phone);
+        const is_LC_caregiver = await isCaregiverPhoneNumber(body.chat.phone);
 
-      // if (is_LC_member) {
-      if (is_LC_caregiver) {
-        scheduleAgentRun(chat_id, multiAgentRouter);
+        // if (is_LC_member) {
+        if (is_LC_caregiver) {
+          scheduleAgentRun(chat_id, multiAgentRouter);
+        }
+        // } else {
+        // scheduleAgentRun(chat_id, tenantAgent);
+        // }
       }
-      // } else {
-      // scheduleAgentRun(chat_id, tenantAgent);
-      // }
-      // }
     }
 
     // Process the request body as needed

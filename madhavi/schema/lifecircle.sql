@@ -342,3 +342,57 @@ CREATE TABLE IF NOT EXISTS agent_skills_access (
         FOREIGN KEY (skill_id) REFERENCES agent_skill_tools (skill_id)
         ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------
+-- 19. life_digital_slack_conversation
+--     One row per Slack thread the agent opened about a user
+--     (1-to-n with life_digital_cm_conversation.hp_unique_id).
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS life_digital_slack_conversation (
+    id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    hp_unique_id BIGINT          NOT NULL,
+    chat_id      VARCHAR(16)     NULL,
+    agent_key    VARCHAR(150)    NULL,     -- agent that opened the thread
+    purpose      VARCHAR(50)     NOT NULL, -- slack channel purpose: report, suggestion
+    channel_id   VARCHAR(32)     NOT NULL,
+    thread_ts    VARCHAR(32)     NOT NULL,
+    message      TEXT            NOT NULL, -- agent's original Slack message
+    status       VARCHAR(20)     NOT NULL DEFAULT 'open', -- open, resolved
+    created_at   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                   ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    -- one Slack thread can be about several users (e.g. a search request
+    -- whose results were all messaged)
+    UNIQUE KEY uq_slack_thread_user (channel_id, thread_ts, hp_unique_id),
+    KEY idx_ldsc_hp_unique_id (hp_unique_id),
+    KEY idx_ldsc_chat_id (chat_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Migration for databases created before uq_slack_thread_user:
+-- ALTER TABLE life_digital_slack_conversation
+--     ADD UNIQUE KEY uq_slack_thread_user (channel_id, thread_ts, hp_unique_id),
+--     DROP INDEX uq_slack_thread;
+
+-- ---------------------------------------------------------
+-- 20. life_digital_slack_reply
+--     Employee replies posted in a tracked Slack thread.
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS life_digital_slack_reply (
+    id                    BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    slack_conversation_id BIGINT UNSIGNED NOT NULL,
+    slack_user_id         VARCHAR(32)     NULL,
+    slack_user_name       VARCHAR(150)    NULL,
+    message               TEXT            NOT NULL,
+    message_ts            VARCHAR(32)     NOT NULL,
+    relay_status          VARCHAR(20)     NOT NULL DEFAULT 'pending', -- pending, relayed, internal
+    relayed_at            DATETIME        NULL,
+    created_at            DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_slack_reply (slack_conversation_id, message_ts),
+    KEY idx_ldsr_relay_status (relay_status),
+    CONSTRAINT fk_ldsr_conversation
+        FOREIGN KEY (slack_conversation_id)
+        REFERENCES life_digital_slack_conversation (id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

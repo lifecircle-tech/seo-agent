@@ -95,7 +95,19 @@ async function isCaregiverPhoneNumber(phone: string) {
   return !!record;
 }
 
+async function getCaregiverHpUniqueIdByPhone(phone: string) {
+  const ph_number = phone.length > 10 ? phone.slice(-10) : phone;
+
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
+    `SELECT hp_unique_id FROM n_hp_profile WHERE phone_number REGEXP ? LIMIT 1;`,
+    [ph_number],
+  );
+
+  return (rows[0]?.hp_unique_id as number | undefined) ?? null;
+}
+
 export {
+  getCaregiverHpUniqueIdByPhone,
   getCaregiversWithActiveBooking,
   getCaregiverDetails,
   getCaregiverActiveBookingDetailsModel,

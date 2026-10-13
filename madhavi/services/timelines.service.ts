@@ -1,4 +1,5 @@
 import { setTimeout } from "timers/promises";
+import { logger } from "../utils/logger";
 
 const baseUrl = process.env.TIMELINE_URL;
 
@@ -121,4 +122,38 @@ async function getChatIdFromMessageId(
   return data.data.chat_id;
 }
 
-export { getChatMessages, sendMessage, getChatIdFromMessageId };
+// Background retries for a chat id Timelines had not assigned yet when the
+// message was sent (the send already polled ~11s). Does not block the
+// agent run; `onResolved` runs once the chat id is known.
+const LATE_CHAT_ID_DELAYS_MS = [10_000, 30_000, 60_000, 120_000];
+
+function resolveChatIdLater(
+  message_id: string,
+  onResolved: (chat_id: string) => unknown,
+) {
+  (async () => {
+    for (const delay of LATE_CHAT_ID_DELAYS_MS) {
+      await setTimeout(delay);
+      try {
+        const chat_id = await getChatIdFromMessageId(message_id);
+        if (chat_id) {
+          logger.log(`[timelines] chat id resolved late for message ${message_id}`);
+          await onResolved(String(chat_id));
+          return;
+        }
+      } catch (err) {
+        logger.warn(`[timelines] late chat id lookup for ${message_id} failed`, err);
+      }
+    }
+    logger.error(
+      `[timelines] chat id for message ${message_id} could not be resolved`,
+    );
+  })();
+}
+
+export {
+  getChatMessages,
+  sendMessage,
+  getChatIdFromMessageId,
+  resolveChatIdLater,
+};

@@ -36,6 +36,14 @@ async function getChatMessages(chat_id: string) {
   return messages;
 }
 
+// Timelines assigns the chat to a sent message asynchronously, so the chat
+// id is polled with growing waits (~11s in total) instead of one fixed wait.
+const CHAT_ID_RETRY_DELAYS_MS = [1000, 2000, 3000, 5000];
+
+// A WhatsApp number keeps the same chat, so a resolved chat id is reused
+// for later messages to that phone without waiting on Timelines.
+const chatIdByPhone = new Map<string, string>();
+
 async function sendMessage(phone: string, message: string) {
   const token = getTimelineToken();
 
@@ -62,6 +70,7 @@ async function sendMessage(phone: string, message: string) {
     };
   }
 
+  let message_id: string | undefined;
   try {
     const url = `${baseUrl}/messages`;
     const response = await fetch(url, {
@@ -85,50 +94,73 @@ async function sendMessage(phone: string, message: string) {
     }
 
     const data = await response.json();
-
-    await setTimeout(1500);
-    const chat_id = await getChatIdFromMessageId(data.data.message_uid);
-
-    return {
-      status: "ok",
-      message: "Message sent",
-      chat_id: chat_id ?? undefined,
-    };
+    message_id = data?.data?.message_uid;
   } catch (err: any) {
     logger.error("[timelines -> sendMessage]", err);
     throw new Error(err.message);
   }
+
+  // The message is sent from here on: never report an error, or the agent
+  // may send it again. A missing chat id is resolved later by the caller.
+  const chat_id =
+    chatIdByPhone.get(phone) ??
+    (message_id ? await getChatIdFromMessageId(message_id) : undefined);
+
+  if (chat_id) {
+    chatIdByPhone.set(phone, chat_id);
+  } else {
+    logger.warn(
+      `[timelines -> sendMessage] chat id not available yet for message ${message_id}`,
+    );
+  }
+
+  return {
+    status: "ok",
+    message: "Message sent",
+    chat_id,
+    message_id,
+  };
 }
 
-async function getChatIdFromMessageId(
+// Single lookup; never throws, so a slow or failing Timelines cannot turn
+// a sent message into an error.
+async function fetchChatIdFromMessageId(
   message_id: string,
 ): Promise<string | undefined> {
-  const token = getTimelineToken();
-
   try {
-    const url = `${baseUrl}/messages/${message_id}`;
-    const response = await fetch(url, {
+    const response = await fetch(`${baseUrl}/messages/${message_id}`, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${getTimelineToken()}`,
         "Content-Type": "application/json",
       },
     });
 
     if (!response.ok) {
-      console.error(
-        `Failed to fetch chat id for message ${message_id}: ${response.status} ${response.statusText}`,
+      logger.warn(
+        `[timelines] chat id lookup for message ${message_id}: ${response.status} ${response.statusText}`,
       );
       return undefined;
     }
 
     const data = await response.json();
-
-    return data.data.chat_id;
-  } catch (err: any) {
-    logger.error("[timelines -> getChatIdFromMessageId]", err);
-    throw new Error(err.message);
+    return data?.data?.chat_id != null ? String(data.data.chat_id) : undefined;
+  } catch (err) {
+    logger.warn(`[timelines] chat id lookup for message ${message_id} failed`, err);
+    return undefined;
   }
+}
+
+async function getChatIdFromMessageId(
+  message_id: string,
+  delays_ms: number[] = CHAT_ID_RETRY_DELAYS_MS,
+): Promise<string | undefined> {
+  for (const delay of delays_ms) {
+    await setTimeout(delay);
+    const chat_id = await fetchChatIdFromMessageId(message_id);
+    if (chat_id) return chat_id;
+  }
+  return undefined;
 }
 
 export { getChatMessages, sendMessage, getChatIdFromMessageId };

@@ -6,7 +6,7 @@ import {
   getCaregiverWorkingHistory,
   getCaregiverPaymentInfo,
 } from "../services/lc-caregivers.service.js";
-// import { searchCaregiverLLM } from "../services/LLM2.service.js";
+import { searchCaregiverLLM } from "../services/LLM.service.js";
 import { getCareManagerDetails } from "../services/lc-caremanager.service.js";
 import {
   getPatientDetail,
@@ -17,6 +17,7 @@ import {
   getSupportTypes,
   getCaregiverSupportTickets,
 } from "../services/lc-support.service.js";
+import { logger } from "../../madhavi/utils/logger.js";
 
 // Caregiver tools
 export function registerCaregiver(server: McpServer) {
@@ -74,6 +75,7 @@ export function registerCaregiver(server: McpServer) {
     },
     async ({ cg_id }) => {
       const profile = await getCaregiverProfileStatus(cg_id);
+      logger.debug("[caregiver_profile_status] " + cg_id, profile);
 
       return {
         content: [{ type: "text", text: JSON.stringify({ result: profile }) }],
@@ -114,6 +116,7 @@ export function registerCaregiver(server: McpServer) {
       const status = await getCaregiverWorkingStatus(cg_id);
       // Round-trip so DB Date values serialize to ISO strings for schema validation
       const working_status = status;
+      logger.debug("[caregiver_working_status] " + cg_id, working_status);
 
       return {
         content: [{ type: "text", text: JSON.stringify({ working_status }) }],
@@ -149,6 +152,7 @@ export function registerCaregiver(server: McpServer) {
     },
     async ({ cg_id }) => {
       const working_history = await getCaregiverWorkingHistory(cg_id);
+      logger.debug("[caregiver_working_history] " + cg_id, working_history);
 
       return {
         content: [{ type: "text", text: JSON.stringify({ working_history }) }],
@@ -157,34 +161,34 @@ export function registerCaregiver(server: McpServer) {
     },
   );
 
-  // server.registerTool(
-  //   "caregiver_llm_search",
-  //   {
-  //     title: "Caregiver LLM Search",
-  //     description:
-  //       "Answer a natural-language question about caregivers by generating a read-only SQL query and running it. Returns the matching rows, or an error if the question can't be answered",
-  //     inputSchema: {
-  //       query: z.string(),
-  //     },
-  //     outputSchema: z.object({
-  //       rows: z.array(z.record(z.string(), z.any())).optional(),
-  //       error: z.string().optional(),
-  //     }),
-  //   },
-  //   async ({ query }) => {
-  //     const result = await searchCaregiverLLM(query);
-  //     // The service returns rows on success and an error message string on failure
-  //     const structuredContent = Array.isArray(result)
-  //       ? { rows: result }
-  //       : { error: result || "Query could not be answered from the schema" };
+  server.registerTool(
+    "caregiver_llm_search",
+    {
+      title: "Caregiver LLM Search",
+      description:
+        "Answer a natural-language question about caregivers by generating a read-only SQL query and running it. Returns the matching rows, or an error if the question can't be answered",
+      inputSchema: {
+        query: z.string(),
+      },
+      outputSchema: z.object({
+        rows: z.array(z.record(z.string(), z.any())).optional(),
+        error: z.string().optional(),
+      }),
+    },
+    async ({ query }) => {
+      const result = await searchCaregiverLLM(query);
+      // The service returns rows on success and an error message string on failure
+      const structuredContent = Array.isArray(result)
+        ? { rows: result }
+        : { error: result || "Query could not be answered from the schema" };
 
-  //     return {
-  //       content: [{ type: "text", text: JSON.stringify(structuredContent) }],
-  //       structuredContent,
-  //       isError: !Array.isArray(result),
-  //     };
-  //   },
-  // );
+      return {
+        content: [{ type: "text", text: JSON.stringify(structuredContent) }],
+        structuredContent,
+        isError: !Array.isArray(result),
+      };
+    },
+  );
 }
 
 // Get care manager details
@@ -413,11 +417,11 @@ export function registerSupportTicket(server: McpServer) {
   );
 
   server.registerTool(
-    "caregiver_support_requests",
+    "get_caregiver_support_requests",
     {
-      title: "Caregiver Support Requests",
+      title: "Get Caregiver Support Requests",
       description:
-        "Get list of support requests/tickets raised by caregiver with title, description, status (open/closed) and created date",
+        "Get list of active support requests/tickets raised by caregiver with title, description, status (open/closed) and created date",
       inputSchema: {
         cg_user_id: z.number(),
       },

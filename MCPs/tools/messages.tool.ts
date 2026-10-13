@@ -8,9 +8,14 @@ import {
 } from "../services/slack.service.js";
 import { logger } from "../../madhavi/utils/logger.js";
 
+// channel_id / thread_ts are set when the post went through the Slack Web
+// API; the orchestrator uses them to link the thread to the user.
 const slackOutputSchema = z.object({
   status: z.enum(["ok", "error"]),
   message: z.string(),
+  purpose: z.string().optional(),
+  channel_id: z.string().optional(),
+  thread_ts: z.string().optional(),
 });
 
 // Send message to whatsapp through timeline for a given phone.
@@ -29,6 +34,7 @@ export function registerWhatsappMessage(server: McpServer) {
         status: z.string().optional(),
         message: z.string().optional(),
         chat_id: z.string().optional(),
+        message_id: z.string().optional(),
       }),
     },
     async ({ phone, message }) => {
@@ -40,6 +46,10 @@ export function registerWhatsappMessage(server: McpServer) {
           status: data.status ?? undefined,
           message: data.message ?? undefined,
           chat_id: data.chat_id != null ? String(data.chat_id) : undefined,
+          message_id:
+            "message_id" in data && data.message_id != null
+              ? String(data.message_id)
+              : undefined,
         };
         return {
           content: [{ type: "text" as const, text: JSON.stringify(reply) }],
