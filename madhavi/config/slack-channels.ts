@@ -80,7 +80,7 @@ function agentChannels(): SlackAgentChannelConfig[] {
     {
       key: "caregiver_search",
       description: "Employees ask to search caregivers",
-      channel_id: "GF0UMPNBD",
+      channel_id: process.env.LEADS_HYD_CHANNEL_ID,
       agent_key: "Search_placement_manager",
     },
   ];
