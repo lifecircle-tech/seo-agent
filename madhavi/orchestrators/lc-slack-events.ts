@@ -73,20 +73,20 @@ async function runAgent(input: AgentInput): Promise<string> {
   //   throw new Error(`runAgent not implemented (prompt: ${input.prompt})`);
 }
 
-const { SLACK_BOT_TOKEN, SLACK_APP_TOKEN } = process.env;
-if (!SLACK_BOT_TOKEN || !SLACK_APP_TOKEN) {
+const { SLACK_BOT_TOKEN_MADHAVI, SLACK_APP_TOKEN_MADHAVI } = process.env;
+if (!SLACK_BOT_TOKEN_MADHAVI || !SLACK_APP_TOKEN_MADHAVI) {
   throw new Error(
-    "SLACK_BOT_TOKEN (xoxb-...) and SLACK_APP_TOKEN (xapp-...) must be set in .env",
+    "SLACK_BOT_TOKEN_MADHAVI (xoxb-...) and SLACK_APP_TOKEN_MADHAVI (xapp-...) must be set in .env",
   );
 }
 
 const receiver = new SocketModeReceiver({
-  appToken: SLACK_APP_TOKEN,
+  appToken: SLACK_APP_TOKEN_MADHAVI,
   //   logLevel: LogLevel.DEBUG,
 });
 
 const app = new App({
-  token: SLACK_BOT_TOKEN,
+  token: SLACK_BOT_TOKEN_MADHAVI,
   receiver,
   //   logLevel: LogLevel.DEBUG,
 });
@@ -211,7 +211,7 @@ app.event("app_mention", async ({ event, body, client, context }) => {
   }
 });
 
-const auth = await app.client.auth.test({ token: SLACK_BOT_TOKEN });
+const auth = await app.client.auth.test({ token: SLACK_BOT_TOKEN_MADHAVI });
 console.log(
   "Bot:",
   auth.user,

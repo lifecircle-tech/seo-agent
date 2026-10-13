@@ -148,21 +148,21 @@ async function handleAgentChannelMention(
 // agent opened, stores the reply, and calls `onReply` for threads whose
 // channel relays to the user. Mentions elsewhere are ignored.
 export async function startSlackBridge(onReply: SlackReplyHandler) {
-  const { SLACK_BOT_TOKEN, SLACK_APP_TOKEN } = process.env;
-  if (!SLACK_BOT_TOKEN || !SLACK_APP_TOKEN) {
+  const { SLACK_BOT_TOKEN_MADHAVI, SLACK_APP_TOKEN_MADHAVI } = process.env;
+  if (!SLACK_BOT_TOKEN_MADHAVI || !SLACK_APP_TOKEN_MADHAVI) {
     logger.warn(
-      "[slack-bridge] SLACK_BOT_TOKEN / SLACK_APP_TOKEN not set, Slack replies will not be handled",
+      "[slack-bridge] SLACK_BOT_TOKEN_MADHAVI / SLACK_APP_TOKEN_MADHAVI not set, Slack replies will not be handled",
     );
     return null;
   }
 
   const receiver = new SocketModeReceiver({
-    appToken: SLACK_APP_TOKEN,
+    appToken: SLACK_APP_TOKEN_MADHAVI,
     //   logLevel: LogLevel.DEBUG,
   });
 
   const app = new App({
-    token: SLACK_BOT_TOKEN,
+    token: SLACK_BOT_TOKEN_MADHAVI,
     receiver,
     //   logLevel: LogLevel.DEBUG,
   });
