@@ -103,7 +103,6 @@ export async function connectMcp() {
   logger.log(`🔌 Connecting to running MCP server at: ${serverUrl.href}`);
   await mcpClient.connect(transport);
 
-  logger.log("📋 Fetching registered tools...");
   const { tools: registeredTools } = await mcpClient.listTools();
   const tools = registeredTools.filter((tool) => tool.name);
   logger.log(
@@ -176,9 +175,7 @@ async function runLoop({
     skill_tools.map((skill) => [skill.tool.name, skill.content]),
   );
 
-  logger.log("tools ", agentKey, mcp_tools);
-  logger.log("document_tools ", agentKey, document_tools);
-  logger.log("skill_tools ", agentKey, skill_tools);
+  logger.log("tools " + agentKey, mcp_tools);
 
   const anthropic_tools = [
     ...anthropicTools.filter((tool) =>
@@ -271,8 +268,8 @@ async function runLoop({
       (block) => block.type === "tool_use",
     );
 
-    logger.log("Stop Reason ", response.stop_reason);
-    logger.log("USAGE ", response.usage);
+    logger.debug("Stop Reason ", response.stop_reason);
+    logger.debug("USAGE ", response.usage);
 
     input_tokens += response.usage.input_tokens;
     output_tokens += response.usage.output_tokens;
@@ -365,7 +362,14 @@ async function runLoop({
         const thread_ts = structuredContent?.["thread_ts"] as
           | string
           | undefined;
-
+        logger.debug(
+          "tools- slack thread " +
+            slack_purpose +
+            " " +
+            channel_id +
+            " " +
+            thread_ts,
+        );
         if (channel_id && thread_ts) {
           recordSlackThread({
             hp_unique_id,
@@ -388,7 +392,10 @@ async function runLoop({
       });
     }
 
-    logger.debug("tools result ", toolResults);
+    logger.debug(
+      "tools result ",
+      toolResults.map((res) => ({ content: res.content })),
+    );
 
     messages.push({
       role: "user",
@@ -410,8 +417,8 @@ async function runLoop({
 
 // One batch of caregivers is processed per hourly scheduler run; the next
 // batch waits for the next run. Within a batch, a few agents run at a time.
-const CONVERSATION_PAGE_SIZE = 50;
-const CONVERSATION_BATCH_SIZE = 50;
+const CONVERSATION_PAGE_SIZE = 20;
+const CONVERSATION_BATCH_SIZE = 20;
 const CONVERSATION_CONCURRENCY = 5;
 
 // Caregivers already picked up by a scheduler run in this process, so the
@@ -583,7 +590,7 @@ work — you only decide who should handle it.
     messages: messages,
   });
 
-  logger.debug("Stop Reason", response.stop_reason);
+  logger.debug("Stop Reason" + response.stop_reason);
   logger.debug("USAGE", response.usage);
 
   const toolCalls = response.content.filter(

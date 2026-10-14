@@ -135,7 +135,7 @@ export function madhavi_server(app: Express) {
       const is_chat_exists = await getDigitalCMChatByChatId(chat_id);
 
       if (!!is_chat_exists) {
-        console.log("Received request body:", body);
+        logger.debug("Received request body:", body);
         // const is_LC_member = await isLCMemberPhoneNumber(body.chat.phone);
         const is_LC_caregiver = await isCaregiverPhoneNumber(body.chat.phone);
 

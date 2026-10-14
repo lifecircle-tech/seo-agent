@@ -40,7 +40,7 @@ export function registerWhatsappMessage(server: McpServer) {
     async ({ phone, message }) => {
       try {
         const data = await sendMessage(phone, message);
-        logger.log("[whatsapp message]", data);
+        logger.debug("[send whatsapp message]", data);
 
         const reply = {
           status: data.status ?? undefined,
