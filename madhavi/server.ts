@@ -15,6 +15,10 @@ import cron from "node-cron";
 import { logger } from "./utils/logger.js";
 import { getDigitalCMChatByChatId } from "./models/lc-cm-conversation.model";
 import { startSlackBridge } from "./slack/slack-bridge";
+import {
+  generateDailyReport,
+  todayReportDate,
+} from "./services/lc-daily-report.service";
 
 // Debounce window: if more messages arrive for the same chat within this
 // window, they collapse into a single agent run after the last one.
@@ -98,6 +102,21 @@ function scheduleAgentRun(
 //   },
 // );
 
+// End of day (11:55 PM IST): build the day's agent conversation report,
+// store it and post it to Slack.
+cron.schedule(
+  "0 20 * * *",
+  () =>
+    generateDailyReport(todayReportDate(), { notify: true }).catch((err) => {
+      logger.error("Daily agent report failed:", err);
+    }),
+  {
+    timezone: "Asia/Kolkata",
+    name: "Daily Caregiver Agent Report",
+    noOverlap: true,
+  },
+);
+
 export function madhavi_server(app: Express) {
   // lcAgentConversation().catch((err) => {
   //   console.error("startAgentConversation failed:", err);
@@ -110,7 +129,7 @@ export function madhavi_server(app: Express) {
   // for that user's chat through the same per-chat queue as WhatsApp
   // messages, so the two never run concurrently.
   startSlackBridge(({ chat_id, agent_key }) =>
-    scheduleAgentRun(chat_id, (id) => lcAgent(id, agent_key)),
+    scheduleAgentRun(chat_id, (id) => lcAgent(id, agent_key, "slack_reply")),
   ).catch((err) => {
     logger.error("Slack bridge failed to start:", err);
   });

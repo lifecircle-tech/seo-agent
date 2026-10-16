@@ -9,6 +9,10 @@ build/
 .next/
 out/
 
+# Test
+test/
+sample/
+
 # Environment
 .env
 .env.local

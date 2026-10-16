@@ -36,6 +36,15 @@ import {
   recordSlackThread,
 } from "../services/lc-slack-conversation.service";
 import { SLACK_TOOL_PURPOSE } from "../config/slack-channels";
+import {
+  completeAgentRunAudit,
+  failAgentRunAudit,
+  getActionType,
+  recordAgentAction,
+  startAgentRunAudit,
+  type AuditedAction,
+} from "../services/lc-agent-audit.service";
+import type { AgentRunTrigger } from "../models/lc-agent-audit.model";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -131,6 +140,7 @@ async function runLoop({
   chat_messages = [],
   caregiver = null,
   chat_id = null,
+  trigger_source,
 }: {
   mcpClient: Client;
   anthropicTools: Anthropic.Tool[];
@@ -138,6 +148,7 @@ async function runLoop({
   chat_messages: any[];
   caregiver: { caregiver: Record<string, string | number> } | null;
   chat_id?: string | null;
+  trigger_source: AgentRunTrigger;
 }) {
   const local_chat_messages = [...chat_messages];
   const hp_unique_id = caregiver?.caregiver["cg_id"] as number | undefined;
@@ -252,156 +263,224 @@ async function runLoop({
   let request_completed_at = request_started_at;
   let finalResponseText = "";
 
-  while (true) {
-    logger.log("Inside loop...");
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 1000,
-      tools: anthropic_tools,
-      system: system_blocks,
-      messages,
-    });
-    request_completed_at = new Date().toISOString();
+  // Audit trail of this run for the daily report and the caregiver history
+  const run_id = await startAgentRunAudit({
+    caregiver: caregiver?.caregiver,
+    chat_id,
+    agent_key: agentKey,
+    trigger_source,
+    chat_messages: local_chat_messages,
+  });
+  const audited_actions: AuditedAction[] = [];
+  let run_chat_id = chat_id;
+  const auditAction = (action: AuditedAction & { output: string }) => {
+    audited_actions.push(action);
+    recordAgentAction(run_id, action);
+  };
 
-    messages.push({ role: "assistant", content: response.content });
-    const toolCalls = response.content.filter(
-      (block) => block.type === "tool_use",
-    );
+  try {
+    while (true) {
+      logger.log("Inside loop...");
+      const response = await client.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 1000,
+        tools: anthropic_tools,
+        system: system_blocks,
+        messages,
+      });
+      request_completed_at = new Date().toISOString();
 
-    logger.debug("Stop Reason ", response.stop_reason);
-    logger.debug("USAGE ", response.usage);
-
-    input_tokens += response.usage.input_tokens;
-    output_tokens += response.usage.output_tokens;
-
-    if (toolCalls.length === 0) {
-      const finalResponse = response.content.find(
-        (block) => block.type === "text",
+      messages.push({ role: "assistant", content: response.content });
+      const toolCalls = response.content.filter(
+        (block) => block.type === "tool_use",
       );
-      finalResponseText = finalResponse?.text ?? "";
-      break;
-      // return finalResponseText;
-    }
 
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    for (const toolCall of toolCalls) {
-      logger.log(`🤖 Claude requested tool [${toolCall.name}]`);
+      logger.debug("Stop Reason ", response.stop_reason);
+      logger.debug("USAGE ", response.usage);
 
-      if (document_tool_content_by_name.has(toolCall.name)) {
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: toolCall.id,
-          content:
-            document_tool_content_by_name.get(toolCall.name) ??
-            `Document not found for tool: ${toolCall.name}`,
-        });
-        continue;
-      }
+      input_tokens += response.usage.input_tokens;
+      output_tokens += response.usage.output_tokens;
 
-      if (skill_tool_content_by_name.has(toolCall.name)) {
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: toolCall.id,
-          content:
-            skill_tool_content_by_name.get(toolCall.name) ??
-            `Skill not found for tool: ${toolCall.name}`,
-        });
-        continue;
-      }
-
-      const result = await mcpClient.callTool({
-        name: toolCall.name,
-        arguments: toolCall.input as Record<string, unknown>,
-      });
-
-      // The SDK's inferred content type is a deeply nested union that TS
-      // collapses to `unknown` at this depth; narrow to what we use here.
-      const content = result.content as Array<{
-        type: string;
-        text?: string;
-      }>;
-      const toolOutputText = content
-        .filter((item) => item.type === "text")
-        .map((item) => item.text ?? "")
-        .join("\n");
-
-      if (toolCall.name == "send_whatsapp_message" && !result.isError) {
-        const structuredContent = result.structuredContent as
-          | Record<string, unknown>
-          | undefined;
-        const chat_id = structuredContent?.["chat_id"] as string | undefined;
-        const message_id = structuredContent?.["message_id"] as
-          | string
-          | undefined;
-        logger.log("chat ID ", chat_id);
-
-        if (structuredContent?.status == "ok") {
-          markSlackRepliesRelayed(slack_context.pending_reply_ids);
-
-          const cg_id = caregiver?.caregiver["cg_id"] as number;
-          const saveChat = (chat_id: string) =>
-            upsertCMChat({ cg_id, chat_id });
-
-          // Timelines may not have assigned the chat yet: resolve it in the
-          // background so the caregiver's reply is still recognised.
-          if (chat_id) saveChat(chat_id);
-          else if (message_id) resolveChatIdLater(message_id, saveChat);
-        }
-      }
-
-      // Link the Slack thread the agent just opened to this caregiver, so
-      // employee replies in it can be routed back to the conversation.
-      const slack_purpose = SLACK_TOOL_PURPOSE[toolCall.name];
-      if (slack_purpose && !result.isError && hp_unique_id) {
-        const structuredContent = result.structuredContent as
-          | Record<string, unknown>
-          | undefined;
-        const channel_id = structuredContent?.["channel_id"] as
-          | string
-          | undefined;
-        const thread_ts = structuredContent?.["thread_ts"] as
-          | string
-          | undefined;
-        logger.debug(
-          "tools- slack thread " +
-            slack_purpose +
-            " " +
-            channel_id +
-            " " +
-            thread_ts,
+      if (toolCalls.length === 0) {
+        const finalResponse = response.content.find(
+          (block) => block.type === "text",
         );
-        if (channel_id && thread_ts) {
-          recordSlackThread({
-            hp_unique_id,
-            chat_id,
-            agent_key: agentKey,
-            purpose: slack_purpose,
-            channel_id,
-            thread_ts,
-            message: String(
-              (toolCall.input as Record<string, unknown>)["message"] ?? "",
-            ),
-          });
-        }
+        finalResponseText = finalResponse?.text ?? "";
+        break;
+        // return finalResponseText;
       }
 
-      toolResults.push({
-        type: "tool_result",
-        tool_use_id: toolCall.id,
-        content: toolOutputText,
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      for (const toolCall of toolCalls) {
+        logger.log(`🤖 Claude requested tool [${toolCall.name}]`);
+
+        if (document_tool_content_by_name.has(toolCall.name)) {
+          auditAction({
+            tool_name: toolCall.name,
+            action_type: "reference",
+            input: toolCall.input,
+            output: "",
+            is_error: false,
+          });
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: toolCall.id,
+            content:
+              document_tool_content_by_name.get(toolCall.name) ??
+              `Document not found for tool: ${toolCall.name}`,
+          });
+          continue;
+        }
+
+        if (skill_tool_content_by_name.has(toolCall.name)) {
+          auditAction({
+            tool_name: toolCall.name,
+            action_type: "reference",
+            input: toolCall.input,
+            output: "",
+            is_error: false,
+          });
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: toolCall.id,
+            content:
+              skill_tool_content_by_name.get(toolCall.name) ??
+              `Skill not found for tool: ${toolCall.name}`,
+          });
+          continue;
+        }
+
+        const result = await mcpClient.callTool({
+          name: toolCall.name,
+          arguments: toolCall.input as Record<string, unknown>,
+        });
+
+        // The SDK's inferred content type is a deeply nested union that TS
+        // collapses to `unknown` at this depth; narrow to what we use here.
+        const content = result.content as Array<{
+          type: string;
+          text?: string;
+        }>;
+        const toolOutputText = content
+          .filter((item) => item.type === "text")
+          .map((item) => item.text ?? "")
+          .join("\n");
+
+        auditAction({
+          tool_name: toolCall.name,
+          action_type: getActionType(toolCall.name),
+          input: toolCall.input,
+          output: toolOutputText,
+          is_error:
+            !!result.isError ||
+            (result.structuredContent as Record<string, unknown> | undefined)
+              ?.status === "error",
+        });
+
+        if (toolCall.name == "send_whatsapp_message" && !result.isError) {
+          const structuredContent = result.structuredContent as
+            | Record<string, unknown>
+            | undefined;
+          const chat_id = structuredContent?.["chat_id"] as string | undefined;
+          const message_id = structuredContent?.["message_id"] as
+            | string
+            | undefined;
+          logger.log("chat ID ", chat_id);
+
+          if (structuredContent?.status == "ok") {
+            markSlackRepliesRelayed(slack_context.pending_reply_ids);
+
+            const cg_id = caregiver?.caregiver["cg_id"] as number;
+            const saveChat = (chat_id: string) =>
+              upsertCMChat({ cg_id, chat_id });
+
+            // Timelines may not have assigned the chat yet: resolve it in the
+            // background so the caregiver's reply is still recognised.
+            if (chat_id) {
+              run_chat_id = chat_id;
+              saveChat(chat_id);
+            }
+            else if (message_id) resolveChatIdLater(message_id, saveChat);
+          }
+        }
+
+        // Link the Slack thread the agent just opened to this caregiver, so
+        // employee replies in it can be routed back to the conversation.
+        const slack_purpose = SLACK_TOOL_PURPOSE[toolCall.name];
+        if (slack_purpose && !result.isError && hp_unique_id) {
+          const structuredContent = result.structuredContent as
+            | Record<string, unknown>
+            | undefined;
+          const channel_id = structuredContent?.["channel_id"] as
+            | string
+            | undefined;
+          const thread_ts = structuredContent?.["thread_ts"] as
+            | string
+            | undefined;
+          logger.debug(
+            "tools- slack thread " +
+              slack_purpose +
+              " " +
+              channel_id +
+              " " +
+              thread_ts,
+          );
+          if (channel_id && thread_ts) {
+            recordSlackThread({
+              hp_unique_id,
+              chat_id,
+              agent_key: agentKey,
+              purpose: slack_purpose,
+              channel_id,
+              thread_ts,
+              message: String(
+                (toolCall.input as Record<string, unknown>)["message"] ?? "",
+              ),
+            });
+          }
+        }
+
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: toolCall.id,
+          content: toolOutputText,
+        });
+      }
+
+      logger.debug(
+        "tools result ",
+        toolResults.map((res) => ({ content: res.content })),
+      );
+
+      messages.push({
+        role: "user",
+        content: toolResults,
       });
     }
-
-    logger.debug(
-      "tools result ",
-      toolResults.map((res) => ({ content: res.content })),
-    );
-
-    messages.push({
-      role: "user",
-      content: toolResults,
+  } catch (err) {
+    await failAgentRunAudit({
+      run_id,
+      chat_id: run_chat_id,
+      actions: audited_actions,
+      error: err,
+      input_tokens,
+      output_tokens,
     });
+    throw err;
   }
+
+  const audit_usage = await completeAgentRunAudit({
+    run_id,
+    caregiver: caregiver?.caregiver,
+    chat_id: run_chat_id,
+    chat_messages: local_chat_messages,
+    actions: audited_actions,
+    final_response: finalResponseText,
+    input_tokens,
+    output_tokens,
+  });
+  input_tokens += audit_usage.input_tokens;
+  output_tokens += audit_usage.output_tokens;
 
   await recordTenantAgentTokensUsage({
     tenant_id: String(1),
@@ -476,6 +555,7 @@ export async function startAgentConversation() {
       for await (let cg of batch) {
         const caregiver = await getCareGiverDetails(cg.cg_id);
         const chat_history = await getCMChatHistory(cg.cg_id);
+        logger.debug("Caregiver " + cg.cg_id, caregiver);
 
         const resp = await runLoop({
           mcpClient,
@@ -483,6 +563,7 @@ export async function startAgentConversation() {
           agentKey: "welfare_manager",
           chat_messages: chat_history,
           caregiver,
+          trigger_source: "scheduled_outreach",
         });
 
         if (resp) {
@@ -501,7 +582,11 @@ export async function startAgentConversation() {
   }
 }
 
-export async function startAgent(chat_id: string, agent_key: string) {
+export async function startAgent(
+  chat_id: string,
+  agent_key: string,
+  trigger_source: AgentRunTrigger = "caregiver_message",
+) {
   const { mcpClient, anthropicTools } = await connectMcp();
 
   try {
@@ -521,6 +606,7 @@ export async function startAgent(chat_id: string, agent_key: string) {
       agentKey: agent_key,
       caregiver,
       chat_id,
+      trigger_source,
     });
   } finally {
     await mcpClient.close();

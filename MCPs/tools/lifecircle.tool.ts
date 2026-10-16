@@ -229,7 +229,7 @@ export function registerClients(server: McpServer) {
     "get_patient",
     {
       title: "Care Patient details",
-      description: "Get Caregiver's patient details",
+      description: "Get Caregiver's patient details using patient id",
       inputSchema: {
         patient_id: z.number(),
       },

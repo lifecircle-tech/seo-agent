@@ -6,7 +6,7 @@ import {
   isCaregiverPhoneNumber as isCaregiverPhoneNumberModel,
 } from "../models/lc-caregivers.model";
 
-import SAMPLE from "../sample/sample.js";
+import SAMPLE from "../../sample/sample.js";
 
 async function getCareGiverWithActiveBooking({
   limit = 50,
@@ -44,12 +44,12 @@ async function getCareGiverWithActiveBooking({
 
 async function getCareGiverDetails(cg_id: number) {
   try {
-    // const caregiver = SAMPLE.SAMPLE_CG_DATA.find(
+    // const cg = SAMPLE.SAMPLE_CG_DATA.find(
     //   (sample) => sample.cg_id === cg_id,
     // );
-    // if (caregiver) {
+    // if (cg) {
     //   return {
-    //     caregiver: caregiver,
+    //     caregiver: cg,
     //   };
     // }
     // return null;

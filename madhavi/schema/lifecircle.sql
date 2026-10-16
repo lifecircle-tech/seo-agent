@@ -396,3 +396,73 @@ CREATE TABLE IF NOT EXISTS life_digital_slack_reply (
         REFERENCES life_digital_slack_conversation (id)
         ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------
+-- 21. life_digital_agent_run
+--     Audit of every agent run on a caregiver conversation: why it
+--     ran, what it replied, and how the conversation was classified.
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS life_digital_agent_run (
+    id                      BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    hp_unique_id            BIGINT          NULL,
+    caregiver_name          VARCHAR(150)    NULL, -- snapshot, caregivers live in the LC database
+    caregiver_phone         VARCHAR(20)     NULL,
+    chat_id                 VARCHAR(16)     NULL,
+    agent_key               VARCHAR(150)    NOT NULL,
+    trigger_source          VARCHAR(30)     NOT NULL, -- caregiver_message, slack_reply, scheduled_outreach
+    status                  VARCHAR(20)     NOT NULL DEFAULT 'running', -- running, completed, failed
+    last_caregiver_message  TEXT            NULL,
+    reply_message           TEXT            NULL, -- last WhatsApp message the agent sent
+    topic                   VARCHAR(50)     NULL,
+    summary                 TEXT            NULL,
+    severity                VARCHAR(20)     NULL, -- low, medium, high, critical
+    severity_reason         TEXT            NULL,
+    escalated               BOOLEAN         NOT NULL DEFAULT FALSE,
+    error                   TEXT            NULL,
+    input_tokens            INT UNSIGNED    NOT NULL DEFAULT 0,
+    output_tokens           INT UNSIGNED    NOT NULL DEFAULT 0,
+    started_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at            DATETIME        NULL,
+    PRIMARY KEY (id),
+    KEY idx_ldar_hp_started (hp_unique_id, started_at),
+    KEY idx_ldar_started (started_at),
+    KEY idx_ldar_severity_started (severity, started_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------
+-- 22. life_digital_agent_action
+--     Every tool the agent called during a run.
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS life_digital_agent_action (
+    id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    run_id       BIGINT UNSIGNED NOT NULL,
+    tool_name    VARCHAR(150)    NOT NULL,
+    action_type  VARCHAR(30)     NOT NULL, -- whatsapp_message, escalation, suggestion, slack_thread_update, support_ticket, reference, lookup
+    input        JSON            NULL,
+    output       TEXT            NULL,
+    is_error     BOOLEAN         NOT NULL DEFAULT FALSE,
+    created_at   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_ldaa_run_id (run_id),
+    KEY idx_ldaa_type_created (action_type, created_at),
+    CONSTRAINT fk_ldaa_run
+        FOREIGN KEY (run_id) REFERENCES life_digital_agent_run (id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------
+-- 23. life_digital_daily_report
+--     End-of-day report, one row per day (IST).
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS life_digital_daily_report (
+    id                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    report_date       DATE            NOT NULL,
+    metrics           JSON            NOT NULL,
+    narrative         TEXT            NULL,
+    slack_channel_id  VARCHAR(32)     NULL,
+    slack_ts          VARCHAR(32)     NULL,
+    generated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                        ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_lddr_report_date (report_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

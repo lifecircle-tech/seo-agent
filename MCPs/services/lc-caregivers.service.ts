@@ -10,7 +10,7 @@ import {
   getCaregiverTerminationDetails,
   getCaregiverWorkingHistoryModel,
 } from "../models/lc-caregivers.model.js";
-import SAMPLE from "../sample/sample.js";
+import SAMPLE from "../../sample/sample.js";
 
 const required_data = {
   NAME: "name",
