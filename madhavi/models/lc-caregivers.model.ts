@@ -106,8 +106,19 @@ async function getCaregiverHpUniqueIdByPhone(phone: string) {
   return (rows[0]?.hp_unique_id as number | undefined) ?? null;
 }
 
+// Unlike getCaregiverDetails, does not require an active booking.
+async function getCaregiverPhoneByHpUniqueId(hp_unique_id: number) {
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
+    `SELECT phone_number FROM n_hp_profile WHERE hp_unique_id = ? LIMIT 1;`,
+    [hp_unique_id],
+  );
+
+  return (rows[0]?.phone_number as string | undefined) ?? null;
+}
+
 export {
   getCaregiverHpUniqueIdByPhone,
+  getCaregiverPhoneByHpUniqueId,
   getCaregiversWithActiveBooking,
   getCaregiverDetails,
   getCaregiverActiveBookingDetailsModel,

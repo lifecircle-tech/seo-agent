@@ -19,6 +19,7 @@ import {
   generateDailyReport,
   todayReportDate,
 } from "./services/lc-daily-report.service";
+import { handleInboundOptOut } from "./services/lc-opt-out.service";
 
 // Debounce window: if more messages arrive for the same chat within this
 // window, they collapse into a single agent run after the last one.
@@ -121,9 +122,6 @@ export function madhavi_server(app: Express) {
   // lcAgentConversation().catch((err) => {
   //   console.error("startAgentConversation failed:", err);
   // });
-  // tenantAgentConversation().catch((err) => {
-  //   console.error("startAgentConversation failed:", err);
-  // });
 
   // An employee replied in a Slack thread the agent opened: run the agent
   // for that user's chat through the same per-chat queue as WhatsApp
@@ -160,7 +158,16 @@ export function madhavi_server(app: Express) {
 
         // if (is_LC_member) {
         if (is_LC_caregiver) {
-          scheduleAgentRun(chat_id, multiAgentRouter);
+          const hp_unique_id = is_chat_exists.hp_unique_id;
+          const phone = String(body.chat.phone);
+
+          // Opt-out keywords and opted-out people are handled before any
+          // agent runs.
+          scheduleAgentRun(chat_id, async (id) => {
+            if (await handleInboundOptOut({ chat_id: id, hp_unique_id, phone }))
+              return;
+            return multiAgentRouter(id);
+          });
         }
         // } else {
         // scheduleAgentRun(chat_id, tenantAgent);

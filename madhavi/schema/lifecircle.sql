@@ -466,3 +466,28 @@ CREATE TABLE IF NOT EXISTS life_digital_daily_report (
     PRIMARY KEY (id),
     UNIQUE KEY uq_lddr_report_date (report_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------
+-- 24. life_digital_messaging_opt_out
+--     People who asked not to be messaged by the agents on
+--     WhatsApp. One row per phone; while status is 'opted_out'
+--     no agent message is sent to that phone.
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS life_digital_messaging_opt_out (
+    id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    phone_key    VARCHAR(10)     NOT NULL, -- last 10 digits of the phone
+    phone        VARCHAR(20)     NOT NULL,
+    hp_unique_id BIGINT          NULL,
+    chat_id      VARCHAR(16)     NULL,
+    status       VARCHAR(20)     NOT NULL DEFAULT 'opted_out', -- opted_out, opted_in
+    source       VARCHAR(20)     NOT NULL, -- keyword, agent, manual
+    user_message TEXT            NULL,     -- the person's message that asked to stop
+    reason       TEXT            NULL,
+    opted_out_at DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    opted_in_at  DATETIME        NULL,
+    updated_at   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                   ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_opt_out_phone_key (phone_key),
+    KEY idx_opt_out_hp_unique_id (hp_unique_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

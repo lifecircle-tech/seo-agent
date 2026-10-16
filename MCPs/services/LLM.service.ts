@@ -14,7 +14,7 @@ import { createHash } from "node:crypto";
 import { logger } from "../../madhavi/utils/logger";
 import { lc_pool } from "../../db";
 import { RowDataPacket } from "mysql2";
-import sample from "../sample/sample";
+import sample from "../../sample/sample";
 
 /* ================================================================== *
  * 1. TYPES

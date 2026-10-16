@@ -45,6 +45,7 @@ import {
   type AuditedAction,
 } from "../services/lc-agent-audit.service";
 import type { AgentRunTrigger } from "../models/lc-agent-audit.model";
+import { isPhoneOptedOut } from "../services/lc-opt-out.service";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -100,6 +101,28 @@ TOOL USES:
 - call 'ask_missing_in_slack' tool to report about missing information from document, tool error or suggestion to be made
 `;
 
+// Kept in code, not in the editable agent/tenant prompts: every WhatsApp
+// agent must follow it. Enforcement does not depend on it - an opted-out
+// person cannot be messaged at all (see sendMessage).
+const OPT_OUT_PROMPT = `
+MESSAGING OPT-OUT:
+Call 'record_messaging_opt_out' ONLY when the person's own message clearly and explicitly asks to stop receiving ALL messages from LifeCircle / this assistant, e.g.:
+- "don't message me anymore", "stop sending me messages", "unsubscribe me", "I don't want any messages from you", "mujhe message mat karo"
+
+Do NOT call it when:
+- they want to stop one topic, reminder or question ("stop asking about my leave", "don't send the salary slip again")
+- they are busy, upset, joking or closing the chat ("not now", "leave me alone today", "talk later", "ok bye", "baad mein baat karo")
+- "stop" or "message" means something else ("stop the AC", "message my supervisor", "patient told me to stop")
+- they speak about someone else, or quote or forward someone else's text
+- you are unsure in any way
+
+If they may want to stop all messages but did not say so explicitly, do not opt them out. Ask once whether they want to stop all WhatsApp messages from LifeCircle's assistant, and tell them they can reply STOP.
+
+When you call it:
+- pass user_message as the exact full text of their message, unchanged
+- the tool sends the confirmation itself; do not send any other message afterwards
+`;
+
 export async function connectMcp() {
   const serverUrl = new URL(mcp_url);
   const transport = new StreamableHTTPClientTransport(serverUrl);
@@ -152,6 +175,15 @@ async function runLoop({
 }) {
   const local_chat_messages = [...chat_messages];
   const hp_unique_id = caregiver?.caregiver["cg_id"] as number | undefined;
+
+  // Skip the model call entirely for someone who opted out; sendMessage
+  // would refuse to message them anyway.
+  const phone = caregiver?.caregiver["phone"];
+  if (phone && (await isPhoneOptedOut(String(phone)))) {
+    logger.log(`Skipping agent run: cg ${hp_unique_id} opted out`);
+    return "";
+  }
+
   const { agent_id, prompt } = await getAgentsPrompt({
     key: agentKey,
   });
@@ -166,6 +198,7 @@ async function runLoop({
   mcp_tools.add("report_to_slack");
   mcp_tools.add("ask_missing_in_slack");
   mcp_tools.add("get_caregiver_support_requests");
+  mcp_tools.add("record_messaging_opt_out");
 
   // Care team replies from Slack threads raised about this caregiver
   const slack_context = hp_unique_id
@@ -220,7 +253,7 @@ async function runLoop({
       cache_control: { type: "ephemeral", ttl: "1h" },
     });
 
-  let tools_prompt = TOOLS_PROMPT;
+  let tools_prompt = TOOLS_PROMPT + "\n" + OPT_OUT_PROMPT;
 
   if (document_tools.length > 0 || skill_tools.length > 0) {
     tools_prompt +=
@@ -499,10 +532,6 @@ async function runLoop({
 const CONVERSATION_PAGE_SIZE = 20;
 const CONVERSATION_BATCH_SIZE = 20;
 const CONVERSATION_CONCURRENCY = 5;
-
-// Caregivers already picked up by a scheduler run in this process, so the
-// agent never runs twice on the same caregiver.
-const processedCaregivers = new Set<number>();
 
 // Picks the next caregivers (in the list's date order) that have not been
 // processed yet. A caregiver who already has a CM chat was messaged before

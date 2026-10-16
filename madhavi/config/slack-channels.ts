@@ -30,14 +30,14 @@ function channels(): Record<SlackChannelPurpose, SlackChannelConfig> {
     report: {
       purpose: "report",
       description: "User concerns and emergency reports for the care team",
-      channel_id: process.env.MADHAVI_REPORT_CHANNEL_ID,
+      channel_id: process.env.MADHAVI_REPORT_CHANNEL_ID || "C0C5688UBR8",
       webhook_url: process.env.MADHAVI_REPORT,
       relay_to_user: true,
     },
     suggestion: {
       purpose: "suggestion",
       description: "Missing information, suggestions and tool errors",
-      channel_id: process.env.MADHAVI_SUGGESTION_CHANNEL_ID,
+      channel_id: process.env.MADHAVI_SUGGESTION_CHANNEL_ID || "C0C5688UBR8",
       webhook_url: process.env.MADHAVI_SUGGESTION,
       relay_to_user: false,
     },
@@ -80,7 +80,7 @@ function agentChannels(): SlackAgentChannelConfig[] {
     {
       key: "caregiver_search",
       description: "Employees ask to search caregivers",
-      channel_id: process.env.LEADS_HYD_CHANNEL_ID,
+      channel_id: process.env.LEADS_HYD_CHANNEL_ID || "C0C5688UBR8",
       agent_key: "Search_placement_manager",
     },
   ];

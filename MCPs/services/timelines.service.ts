@@ -1,5 +1,6 @@
 import { setTimeout } from "timers/promises";
 import { logger } from "../../madhavi/utils/logger";
+import { isPhoneOptedOut } from "../../madhavi/models/lc-opt-out.model";
 
 const baseUrl = process.env.TIMELINE_URL;
 
@@ -44,7 +45,11 @@ const CHAT_ID_RETRY_DELAYS_MS = [1000, 2000, 3000, 5000];
 // for later messages to that phone without waiting on Timelines.
 const chatIdByPhone = new Map<string, string>();
 
-async function sendMessage(phone: string, message: string) {
+async function sendMessage(
+  phone: string,
+  message: string,
+  options: { allowOptedOut?: boolean } = {},
+) {
   const token = getTimelineToken();
 
   if (!phone.startsWith("+")) {
@@ -67,6 +72,16 @@ async function sendMessage(phone: string, message: string) {
     return {
       status: "error",
       message: "Message cannot be empty",
+    };
+  }
+
+  // Hard stop for people who opted out: no agent or tool can message them.
+  // Only the opt-out/opt-in confirmation itself may pass allowOptedOut.
+  if (!options.allowOptedOut && (await isPhoneOptedOut(phone))) {
+    return {
+      status: "error",
+      message:
+        "This person has opted out of WhatsApp messages. Do not message them again.",
     };
   }
 

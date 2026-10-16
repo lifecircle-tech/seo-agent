@@ -11,6 +11,7 @@ import {
   registerSupportTicket,
 } from "./lifecircle.tool.js";
 import { registerSlackContext } from "./slack-context.tool.js";
+import { registerMessagingOptOut } from "./opt-out.tool.js";
 
 // Add new tool registrations here as the server grows.
 export function registerTools(server: McpServer) {
@@ -22,4 +23,5 @@ export function registerTools(server: McpServer) {
   registerCaregiversPayment(server);
   registerSupportTicket(server);
   registerSlackContext(server);
+  registerMessagingOptOut(server);
 }

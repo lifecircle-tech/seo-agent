@@ -1,5 +1,5 @@
 import { getCaremanagerDetailsModel } from "../models/lc-care_manager.model.js";
-import SAMPLE from "../sample/sample.js";
+import SAMPLE from "../../sample/sample.js";
 
 async function getCareManagerDetails(cm_id: number) {
   try {
