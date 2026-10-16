@@ -30,6 +30,8 @@ async function getCaregiverDetails(cg_id: number) {
   const [rows] = await lc_pool.query<RowDataPacket[]>(
     `
     SELECT
+      cm.det_id as cm_id,
+	    cm.emp_name as cm_name,
       cg.hp_unique_id,
       nu.id AS user_id,
       cg.fullname,
@@ -41,16 +43,22 @@ async function getCaregiverDetails(cg_id: number) {
     FROM n_hp_profile cg
     LEFT JOIN n_user nu ON nu.hp_unique_id = cg.hp_unique_id
     LEFT JOIN life_gender g ON g.gen_id = cg.gender
-    LEFT JOIN n_booking_hp bh ON bh.hp_unique_id = cg.hp_unique_id
+    LEFT JOIN n_booking_hp bh ON bh.hp_unique_id = cg.hp_unique_id AND bh.status = 120
     LEFT JOIN (
       SELECT
         cg_lang.hp_unique_id, GROUP_CONCAT(master_lang.name SEPARATOR ', ') AS languages
       FROM n_hp_language cg_lang
       JOIN n_master_languages master_lang ON master_lang.id = cg_lang.lang_id
-      WHERE cg_lang.status = (SELECT id FROM n_master_status WHERE code='o_2')
+      WHERE cg_lang.status = 2
       GROUP BY cg_lang.hp_unique_id
     ) AS cg_languages ON cg_languages.hp_unique_id = cg.hp_unique_id
-    WHERE cg.hp_unique_id = ? AND bh.status = 120;
+    LEFT JOIN (
+      SELECT nbh.hp_unique_id, led.emp_name, led.det_id FROM n_bookings nb
+      JOIN n_booking_hp nbh ON nbh.bkng_id = nb.id AND nbh.status = 120  
+      LEFT JOIN life_emp_details led ON led.det_id = nb.hp_manager
+      ORDER BY nb.id DESC
+    ) cm ON cm.hp_unique_id = cg.hp_unique_id
+    WHERE cg.hp_unique_id = ?;
     `,
     [cg_id],
   );

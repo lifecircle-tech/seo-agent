@@ -4,7 +4,11 @@ import { lc_pool } from "../../db";
 async function getCaremanagerDetailsModel(cm_id: number) {
   const [rows] = await lc_pool.query<RowDataPacket[]>(
     `
-    SELECT cm.det_id, cm.emp_name, cm.det_mobile
+    SELECT cm.det_id, cm.emp_name, cm.det_mobile,
+      CASE
+        WHEN cm.emp_gender = 1 THEN 'Male'
+        WHEN cm.emp_gender = 2 THEN 'Female'
+      END as gender
     FROM life_emp_details cm
     WHERE cm.det_id = ?
     `,

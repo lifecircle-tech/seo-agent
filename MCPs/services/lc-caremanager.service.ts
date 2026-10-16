@@ -18,6 +18,7 @@ async function getCareManagerDetails(cm_id: number) {
             cm_id: caremanager.det_id,
             name: caremanager.emp_name,
             phone: caremanager.det_mobile,
+            gender: caremanager.gender,
           },
         }
       : null;

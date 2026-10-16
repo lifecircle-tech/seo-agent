@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { xid, z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   getCaregiverProfileStatus,
@@ -17,6 +17,7 @@ import {
   getSupportTypes,
   getCaregiverSupportTickets,
 } from "../services/lc-support.service.js";
+import { getBookingDetails } from "../services/lc-booking.service.js";
 import { logger } from "../../madhavi/utils/logger.js";
 
 // Caregiver tools
@@ -34,6 +35,8 @@ export function registerCaregiver(server: McpServer) {
         caregiver_profile: z.union([
           z.object({
             profile_status: z.string(),
+            cre_id: z.number().optional(),
+            cre_name: z.string().optional(),
             cg_id: z.number(),
             hp_unique_id: z.number(),
             reason: z.string(),
@@ -43,6 +46,10 @@ export function registerCaregiver(server: McpServer) {
           }),
           z.object({
             profile_status: z.string(),
+            cm_id: z.number().optional(),
+            cm_name: z.string().optional(),
+            cre_id: z.number().optional(),
+            cre_name: z.string().optional(),
             cg_id: z.number(),
             cg_user_id: z.number(),
             hp_unique_id: z.number(),
@@ -102,9 +109,11 @@ export function registerCaregiver(server: McpServer) {
             expected_return: z.string().optional(),
             cg_id: z.number().optional(),
             hp_unique_id: z.number().optional(),
+            cm_id: z.number().optional(),
             client_id: z.number().optional(),
             patient_id: z.number().optional(),
             booking_id: z.number().optional(),
+            cm_name: z.string().optional(),
             client_name: z.string().optional(),
             patient_name: z.string().optional(),
             patient_health_condition: z.string().optional(),
@@ -140,6 +149,9 @@ export function registerCaregiver(server: McpServer) {
             z.object({
               cg_id: z.number(),
               hp_unique_id: z.number(),
+              cm_id: z.number().optional(),
+              patient_id: z.number().optional(),
+              cm_name: z.string().optional(),
               client_name: z.string().optional(),
               patient_name: z.string().optional(),
               patient_condition: z.string().optional(),
@@ -207,6 +219,7 @@ export function registerCareManager(server: McpServer) {
             cm_id: z.number(),
             name: z.string(),
             phone: z.string(),
+            gender: z.string(),
           })
           .optional(),
       }),
@@ -237,10 +250,10 @@ export function registerClients(server: McpServer) {
         patient: z
           .object({
             name: z.string(),
-            age: z.number(),
-            gender: z.string(),
-            relation_with_client: z.string(),
-            health_conditions: z.string(),
+            age: z.number().nullable(),
+            gender: z.string().nullable(),
+            relation_with_client: z.string().nullable(),
+            health_conditions: z.string().nullable(),
           })
           .optional(),
       }),
@@ -266,26 +279,28 @@ export function registerClients(server: McpServer) {
         patient_id: z.number(),
       },
       outputSchema: z.object({
-        care_plan: z.object({
-          care_remark: z.string(),
-          notes: z.string(),
-          medicines: z.array(
-            z.object({
-              med_name: z.string(),
-              dose: z.string(),
-              frequency: z.string(),
-              instruction: z.string(),
-            }),
-          ),
-          care_schedule: z.array(
-            z.object({
-              frequency: z.string(),
-              activity_name: z.string(),
-              how_to: z.string(),
-              category_name: z.string(),
-            }),
-          ),
-        }),
+        care_plan: z
+          .object({
+            care_remark: z.string(),
+            notes: z.string(),
+            medicines: z.array(
+              z.object({
+                med_name: z.string().optional(),
+                dose: z.string().optional(),
+                frequency: z.string().optional(),
+                instruction: z.string().optional(),
+              }),
+            ),
+            care_schedule: z.array(
+              z.object({
+                frequency: z.string(),
+                activity_name: z.string(),
+                how_to: z.string(),
+                category_name: z.string(),
+              }),
+            ),
+          })
+          .or(z.string()),
       }),
     },
     async ({ patient_id }) => {
@@ -456,6 +471,64 @@ export function registerSupportTicket(server: McpServer) {
         content: [{ type: "text", text: JSON.stringify(structuredContent) }],
         structuredContent,
         isError: !Array.isArray(result),
+      };
+    },
+  );
+}
+
+// Booking tools
+export function registerBookings(server: McpServer) {
+  // DECIMAL columns come back from mysql2 as strings
+  const rate = z.union([z.number(), z.string()]).nullable();
+
+  server.registerTool(
+    "get_booking_details",
+    {
+      title: "Booking Details",
+      description:
+        "Get booking details by booking id: patient, client, care manager, offered/final rate, pay type, booking and service start dates, booking status, service city and service type",
+      inputSchema: {
+        booking_id: z.number(),
+      },
+      outputSchema: z.object({
+        booking: z
+          .object({
+            id: z.number(),
+            patient_name: z.string().nullable(),
+            client_name: z.string().nullable(),
+            cm_id: z.number().nullable(),
+            cm_name: z.string().nullable(),
+            offered_rate: rate,
+            final_rate: rate,
+            pay_type: z.string().nullable(),
+            booking_date: z.string().nullable(),
+            service_start_date: z.string().nullable(),
+            service_end_date: z.string().nullable(),
+            booking_status: z.string().nullable(),
+            service_city: z.string().nullable(),
+            service_type: z.string().nullable(),
+            lost_reason: z.string().nullable(),
+          })
+          .nullable(),
+      }),
+    },
+    async ({ booking_id }) => {
+      const result = await getBookingDetails(booking_id);
+      const toIso = (d: unknown) =>
+        d ? new Date(d as string).toISOString() : null;
+      const booking = result
+        ? {
+            ...result,
+            booking_date: toIso(result.booking_date),
+            service_start_date: toIso(result.service_start_date),
+            service_end_date: toIso(result.service_end_date),
+          }
+        : null;
+      logger.debug("[get_booking_details] " + booking_id, booking);
+
+      return {
+        content: [{ type: "text", text: JSON.stringify({ booking }) }],
+        structuredContent: { booking },
       };
     },
   );

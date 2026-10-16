@@ -25,10 +25,10 @@ async function getPatientDetail(patient_id: number) {
       ? {
           patient: {
             name: patient.first_name || undefined,
-            gender: patient.gender || undefined,
-            age: new Date().getFullYear() - patient.yob || undefined,
-            relation_with_client: patient.relation || undefined,
-            health_conditions: patient.health_conditions || undefined
+            gender: patient.gender || null,
+            age: new Date().getFullYear() - patient.yob || null,
+            relation_with_client: patient.relation || null,
+            health_conditions: patient.health_conditions || null,
           },
         }
       : null;
@@ -42,19 +42,23 @@ async function getPatientCarePlan(patient_id: number) {
   try {
     const carePlan = await getPatientCarePlansModel(patient_id);
     const careSchedule = await getPatientCareScheduleModel(patient_id);
+
+    if (carePlan === null) {
+      return "not available";
+    }
     const careMedicine = await getPatientMedicinesModel(carePlan.id);
 
     const response = {
       care_remark: carePlan.care_objective_type_remarks,
       care_schedule: careSchedule,
       medicines: careMedicine,
-      notes: carePlan.notes
-    }
+      notes: carePlan.notes,
+    };
 
     return response;
   } catch (err) {
     console.log("[getPatientCarePlan]", err);
-    return [];
+    return "not available";
   }
 }
 

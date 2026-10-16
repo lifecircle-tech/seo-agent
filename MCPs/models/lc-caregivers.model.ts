@@ -73,6 +73,10 @@ async function getCaregiverDetailsModel(cg_id: number) {
 async function getCaregiverProfileDetailsModel(cg_id: number) {
   const [rows] = await lc_pool.query<RowDataPacket[]>(
     `SELECT
+      cm.det_id as cm_id,
+	    cm.emp_name as cm_name,
+      led.det_id as cre_id,
+      led.emp_name as cre_name,
       hp.hp_unique_id,
       nu.id as user_id,
       hp.fullname as name,
@@ -108,7 +112,7 @@ async function getCaregiverProfileDetailsModel(cg_id: number) {
         hp_lang.hp_unique_id, GROUP_CONCAT(master_lang.name SEPARATOR ', ') AS languages
       FROM n_hp_language hp_lang
       JOIN n_master_languages master_lang ON master_lang.id = hp_lang.lang_id
-      WHERE hp_lang.status = (SELECT id FROM n_master_status WHERE code='o_2')
+      WHERE hp_lang.status = 2
       GROUP BY hp_lang.hp_unique_id
     ) AS hl ON hl.hp_unique_id = hp.hp_unique_id
     LEFT JOIN life_marital lm ON lm.mar_id = hp.marital_status
@@ -132,6 +136,13 @@ async function getCaregiverProfileDetailsModel(cg_id: number) {
       WHERE hpl.status = 2
       GROUP BY hpl.hp_unique_id
 	  ) loc ON loc.hp_unique_id = hp.hp_unique_id
+    LEFT JOIN (
+      SELECT nbh.hp_unique_id, led.emp_name, led.det_id FROM n_bookings nb
+      JOIN n_booking_hp nbh ON nbh.bkng_id = nb.id AND nbh.status = 120  
+      LEFT JOIN life_emp_details led ON led.det_id = nb.hp_manager
+      ORDER BY nb.id DESC
+    ) cm ON cm.hp_unique_id = hp.hp_unique_id
+    LEFT JOIN life_emp_details led ON led.det_id = hp.hp_executive AND led.det_status = 1
     WHERE hp.hp_unique_id = ?;
   `,
     [cg_id],
@@ -234,8 +245,10 @@ async function getCaregiverWorkingHistoryModel(cg_id: number) {
       lcp.cg_unique_id,
       t.cg_id,
       t.client_id,
+      nb.hp_manager as cm_id,
       nb.id AS booking_id,
       nb.patient_id,
+      emp.emp_name AS cm_name,
       TRIM(nu.first_name) AS client_name,
       np.first_name AS patient_name,
       service_category.name AS service_category_name,
@@ -271,6 +284,7 @@ async function getCaregiverWorkingHistoryModel(cg_id: number) {
     ) t
     JOIN life_cg_personal lcp ON lcp.cg_id = t.cg_id
     LEFT JOIN n_bookings nb ON nb.old_client_id = t.client_id
+    LEFT JOIN life_emp_details emp ON emp.det_id = nb.hp_manager
     LEFT JOIN n_user nu ON nu.id = nb.usr_id
     LEFT JOIN n_patient np ON np.id = nb.patient_id
     LEFT JOIN n_service_city service_city ON service_city.id = nb.service_city_id

@@ -66,6 +66,10 @@ async function getCareGiverDetails(cg_id: number) {
         age: getAgeFromDOB(caregiver.dob),
         languages: caregiver.languages,
         booking_id: caregiver.booking_id || undefined,
+        ...(caregiver.booking_id && {
+          cm_id: caregiver.cm_id,
+          cm_name: caregiver.cm_name,
+        }),
       },
     };
   } catch (err) {

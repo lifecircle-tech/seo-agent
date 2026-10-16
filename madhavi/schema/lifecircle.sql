@@ -369,11 +369,6 @@ CREATE TABLE IF NOT EXISTS life_digital_slack_conversation (
     KEY idx_ldsc_chat_id (chat_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Migration for databases created before uq_slack_thread_user:
--- ALTER TABLE life_digital_slack_conversation
---     ADD UNIQUE KEY uq_slack_thread_user (channel_id, thread_ts, hp_unique_id),
---     DROP INDEX uq_slack_thread;
-
 -- ---------------------------------------------------------
 -- 20. life_digital_slack_reply
 --     Employee replies posted in a tracked Slack thread.

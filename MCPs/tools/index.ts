@@ -9,6 +9,7 @@ import {
   registerCareManager,
   registerClients,
   registerSupportTicket,
+  registerBookings,
 } from "./lifecircle.tool.js";
 import { registerSlackContext } from "./slack-context.tool.js";
 import { registerMessagingOptOut } from "./opt-out.tool.js";
@@ -22,6 +23,7 @@ export function registerTools(server: McpServer) {
   registerClients(server);
   registerCaregiversPayment(server);
   registerSupportTicket(server);
+  registerBookings(server);
   registerSlackContext(server);
   registerMessagingOptOut(server);
 }

@@ -30,8 +30,8 @@ async function getPatientDetailByIdModel(patient_id: number) {
     LEFT JOIN (SELECT bhc.booking_id, mhc.name AS condition_name
       FROM n_booking_healthcondtions bhc
       JOIN n_master_healthcondtions mhc ON bhc.healthcondtions_id = mhc.id
-    ) as hc ON hc.booking_id = bh.bkng_id
-    WHERE p.id = ? AND bh.status = 120;
+    ) as hc ON hc.booking_id = bh.bkng_id AND bh.status = 120
+    WHERE p.id = ?;
     `,
     [patient_id],
   );
