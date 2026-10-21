@@ -7,10 +7,13 @@ import {
   getCaregiverQualificationsModel,
   getCaregiverReferencesModel,
   getCaregiverShiftPreferenceModel,
-  getCaregiverTerminationDetails,
+  getCaregiversPaymentDeductionDetailsModel,
+  getCaregiversPaymentsDetailsModel,
+  getCaregiverTerminationDetailsModel,
   getCaregiverWorkingHistoryModel,
 } from "../models/lc-caregivers.model.js";
-import SAMPLE from "../../sample/sample.js";
+import { logger } from "../../madhavi/utils/logger.js";
+// import SAMPLE from "../../sample/sample.js";
 
 const required_data = {
   NAME: "name",
@@ -69,6 +72,8 @@ async function getCaregiverProfileStatus(cg_id: number) {
         hp_unique_id: cg_profile.hp_unique_id,
         reason: "missing details",
         onboarding_status: cg_profile.onboarding_status,
+        livein_pay: cg_profile.livein_pay || undefined,
+        liveout_pay: cg_profile.liveout_pay || undefined,
         missing_data: missing_data.length ? missing_data : undefined,
         missing_documents: missing_documents.length
           ? missing_documents
@@ -112,6 +117,8 @@ async function getCaregiverProfileStatus(cg_id: number) {
       dob: new Date(cg_profile.dob).toISOString(),
       languages: cg_profile.languages,
       marital_status: cg_profile.marital_status,
+      livein_pay: cg_profile.livein_pay || undefined,
+      liveout_pay: cg_profile.liveout_pay || undefined,
       address: address,
       preferred_locations: preferred_locations.map((loc) => ({
         city: loc.name,
@@ -127,7 +134,7 @@ async function getCaregiverProfileStatus(cg_id: number) {
       created_on: new Date(cg_profile.created_on).toISOString(),
     };
   } catch (err) {
-    console.log("[getCaregiverProfileStatus]", err);
+    logger.error("[getCaregiverProfileStatus]", err);
     return null;
   }
 }
@@ -142,7 +149,7 @@ async function getCaregiverWorkingStatus(cg_id: number) {
 
     const [recent_working] = await getCaregiverWorkingHistoryModel(cg_id);
     const [recent_leave] = await getCaregiverLeaveRequestsHistoryModel(cg_id);
-    const termination_detail = await getCaregiverTerminationDetails(cg_id);
+    const termination_detail = await getCaregiverTerminationDetailsModel(cg_id);
 
     if (termination_detail) {
       return {
@@ -164,7 +171,11 @@ async function getCaregiverWorkingStatus(cg_id: number) {
       timeZone: "Asia/Kolkata",
     });
 
-    if (recent_working && recent_working.merged_to_date >= today) {
+    if (
+      recent_working &&
+      recent_working.status == 120 &&
+      recent_working.merged_to_date >= today
+    ) {
       return {
         status: "working",
         from_date: recent_working.merged_from_date,
@@ -191,7 +202,7 @@ async function getCaregiverWorkingStatus(cg_id: number) {
 
     return null;
   } catch (err) {
-    console.log("[getCaregiverWorkingStatus]", err);
+    logger.error("[getCaregiverWorkingStatus]", err);
     return null;
   }
 }
@@ -272,28 +283,95 @@ async function getCaregiverWorkingHistory(cg_id: number) {
           patient_condition: [...conditions].join(", "),
           from_date: work.merged_from_date,
           to_date:
-            work.merged_to_date >= today ? undefined : work.merged_to_date,
+            work.status != 120
+              ? work.merged_to_date
+              : work.merged_to_date >= today
+                ? undefined
+                : work.merged_to_date,
         };
       });
 
     return history;
   } catch (err) {
-    console.log("[getCaregiverWorkingHistory]", err);
+    logger.error("[getCaregiverWorkingHistory]", err);
     return null;
   }
 }
 
-async function getCaregiverPaymentInfo(cg_id: number) {
+async function getCaregiverPaymentInfo(hp_id: number) {
   try {
-    console.log("payment ", SAMPLE.SAMPLE_CG_PAYMENT_DATA);
+    const payment_details = await getCaregiversPaymentsDetailsModel(hp_id);
+    if (!payment_details.length) {
+      return null;
+    }
+    const cg_id = payment_details[0].cg_id;
 
-    const payment_info = SAMPLE.SAMPLE_CG_PAYMENT_DATA.find(
-      (p) => p.cg_id == cg_id,
-    );
+    const deductionDetails =
+      await getCaregiversPaymentDeductionDetailsModel(cg_id);
 
-    return payment_info;
+    const final_details = payment_details.map((p) => {
+      const ded = deductionDetails.find(
+        (d) => new Date(d.month).getTime() == new Date(p.from_date).getTime(),
+      );
+      const ded_details = ded?.deductions
+        ? JSON.parse(ded.deductions).map((d: any) => ({
+            amount: d.amount,
+            reason: d.reason,
+          }))
+        : [];
+      const add_details = ded?.additional
+        ? JSON.parse(ded.additional).map((d: any) => ({
+            amount: d.amount,
+            reason: d.reason,
+          }))
+        : [];
+
+      if (p.adv_deductions) {
+        ded_details.push({
+          amount: p.adv_deductions,
+          reason: "Advance deduction",
+        });
+      }
+      if (p.hostel_deductions) {
+        ded_details.push({
+          amount: p.hostel_deductions,
+          reason: "Hostel deduction",
+        });
+      }
+      if (p.travel_deductions) {
+        ded_details.push({
+          amount: p.travel_deductions,
+          reason: "Travel deduction",
+        });
+      }
+      if (p.tds_deductions) {
+        ded_details.push({ amount: p.tds_deductions, reason: "TDS deduction" });
+      }
+      if (p.recovery_amount) {
+        ded_details.push({
+          amount: p.recovery_amount,
+          reason: "Recovery_amount",
+        });
+      }
+
+      return {
+        from_date: p.from_date,
+        to_date: p.to_date,
+        expected_work_days: p.expected_work_days,
+        days_worked: p.days_worked,
+        worked_earning: p.worked_earning,
+        additional_earning: add_details.length ? add_details : undefined,
+        deductions: ded_details.length ? ded_details : undefined,
+        net_payable: p.net_payable,
+        paid_on: p.paid_on,
+        pay_mode: p.pay_mode,
+        tds_percentage: p.tds_percentage,
+      };
+    });
+
+    return final_details;
   } catch (err) {
-    console.log("[getCaregiverPaymentInfo]", err);
+    logger.error("[getCaregiverPaymentInfo]", err);
     return null;
   }
 }

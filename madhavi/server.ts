@@ -105,18 +105,18 @@ function scheduleAgentRun(
 
 // End of day (11:55 PM IST): build the day's agent conversation report,
 // store it and post it to Slack.
-cron.schedule(
-  "0 20 * * *",
-  () =>
-    generateDailyReport(todayReportDate(), { notify: true }).catch((err) => {
-      logger.error("Daily agent report failed:", err);
-    }),
-  {
-    timezone: "Asia/Kolkata",
-    name: "Daily Caregiver Agent Report",
-    noOverlap: true,
-  },
-);
+// cron.schedule(
+//   "0 18 * * *",
+//   () =>
+//     generateDailyReport(todayReportDate(), { notify: true }).catch((err) => {
+//       logger.error("Daily agent report failed:", err);
+//     }),
+//   {
+//     timezone: "Asia/Kolkata",
+//     name: "Daily Caregiver Agent Report",
+//     noOverlap: true,
+//   },
+// );
 
 export function madhavi_server(app: Express) {
   // lcAgentConversation().catch((err) => {

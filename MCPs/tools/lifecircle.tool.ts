@@ -41,6 +41,8 @@ export function registerCaregiver(server: McpServer) {
             hp_unique_id: z.number(),
             reason: z.string(),
             onboarding_status: z.string(),
+            livein_pay: z.string().optional(),
+            liveout_pay: z.string().optional(),
             missing_data: z.array(z.string()).optional(),
             missing_documents: z.array(z.string()).optional(),
           }),
@@ -60,6 +62,8 @@ export function registerCaregiver(server: McpServer) {
             address: z.string(),
             languages: z.string().optional(),
             marital_status: z.string().optional(),
+            livein_pay: z.string().optional(),
+            liveout_pay: z.string().optional(),
             preferred_locations: z.array(
               z.object({
                 city: z.string(),
@@ -316,39 +320,60 @@ export function registerClients(server: McpServer) {
 
 // Tools related to caregiver's payment
 export function registerCaregiversPayment(server: McpServer) {
+  // DECIMAL columns come back from mysql2 as strings
+  const amount = z.union([z.number(), z.string()]).nullable();
+  const adjustment = z.object({
+    amount,
+    reason: z.string().nullable(),
+  });
+
   server.registerTool(
-    "get_caregiver_payment_info",
+    "get_caregiver_payment_history",
     {
-      title: "Caregivers Payment Info",
+      title: "Caregiver Payment History",
       description:
-        "Get Caregiver's payment info, salary, base salary, payable amount, deduction, processing status",
+        "Get caregiver's salary payment history per pay period: expected vs worked days, worked earning, additional earnings and deductions with reasons, net payable, paid date, pay mode and TDS percentage",
       inputSchema: {
         cg_id: z.number(),
       },
       outputSchema: z.object({
-        payment_info: z
-          .object({
-            cg_id: z.number(),
-            time_period: z.string(),
-            base_salary: z.number(),
-            total_payable: z.number(),
-            due_date: z.string(),
-            deduction: z.object({
-              unpaid_leaves: z.number(),
+        payment_history: z
+          .array(
+            z.object({
+              from_date: z.string().nullable(),
+              to_date: z.string().nullable(),
+              expected_work_days: amount,
+              days_worked: amount,
+              worked_earning: amount,
+              additional_earning: z.array(adjustment).optional(),
+              deductions: z.array(adjustment).optional(),
+              net_payable: amount,
+              paid_on: z.string().nullable(),
+              pay_mode: z.string().nullable(),
+              tds_percentage: amount,
             }),
-          })
-          .optional(),
+          )
+          .nullable(),
       }),
     },
     async ({ cg_id }) => {
       const result = await getCaregiverPaymentInfo(cg_id);
+      const toIso = (d: unknown) =>
+        d ? new Date(d as string).toISOString() : null;
 
-      const payment_info = {
-        payment_info: result,
-      };
+      const payment_history = result
+        ? result.map((p) => ({
+            ...p,
+            from_date: toIso(p.from_date),
+            to_date: toIso(p.to_date),
+            paid_on: toIso(p.paid_on),
+          }))
+        : null;
+      logger.debug("[get_caregiver_payment_history] " + cg_id, payment_history);
+
       return {
-        content: [{ type: "text", text: JSON.stringify(payment_info) }],
-        structuredContent: payment_info,
+        content: [{ type: "text", text: JSON.stringify({ payment_history }) }],
+        structuredContent: { payment_history },
       };
     },
   );
@@ -484,7 +509,7 @@ export function registerBookings(server: McpServer) {
   server.registerTool(
     "get_booking_details",
     {
-      title: "Booking Details",
+      title: "Get Booking Details",
       description:
         "Get booking details by booking id: patient, client, care manager, offered/final rate, pay type, booking and service start dates, booking status, service city and service type",
       inputSchema: {

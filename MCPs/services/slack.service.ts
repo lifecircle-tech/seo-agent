@@ -5,8 +5,6 @@ import {
 } from "../../madhavi/config/slack-channels.js";
 
 const api_base_url = process.env.MADHAVI_WEBHOOK || "";
-const madhavi_report = process.env.MADHAVI_REPORT || "";
-const madhavi_suggestion = process.env.MADHAVI_SUGGESTION || "";
 
 async function notifyCareManager(cm_id: number, message: string) {
   //   const response = await fetch(api_base_url as string, {
@@ -49,8 +47,8 @@ async function callSlackApi(
   method: string,
   init: { body?: Record<string, unknown>; query?: Record<string, string> },
 ) {
-  const token = process.env.SLACK_BOT_TOKEN;
-  if (!token) throw new Error("Missing env var SLACK_BOT_TOKEN");
+  const token = process.env.SLACK_BOT_TOKEN_MADHAVI;
+  if (!token) throw new Error("Missing env var SLACK_BOT_TOKEN_MADHAVI");
 
   const url = new URL(`${slack_api_url}/${method}`);
   Object.entries(init.query ?? {}).forEach(([k, v]) =>
@@ -84,7 +82,7 @@ async function postToSlackChannel(
 ): Promise<SlackPostResult> {
   const channel = getSlackChannel(purpose);
 
-  if (channel?.channel_id && process.env.SLACK_BOT_TOKEN) {
+  if (channel?.channel_id && process.env.SLACK_BOT_TOKEN_MADHAVI) {
     try {
       const data = await callSlackApi("chat.postMessage", {
         body: { channel: channel.channel_id, text },

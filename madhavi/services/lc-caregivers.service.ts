@@ -6,7 +6,7 @@ import {
   isCaregiverPhoneNumber as isCaregiverPhoneNumberModel,
 } from "../models/lc-caregivers.model";
 
-import SAMPLE from "../../sample/sample.js";
+// import SAMPLE from "../../sample/sample.js";
 
 async function getCareGiverWithActiveBooking({
   limit = 50,

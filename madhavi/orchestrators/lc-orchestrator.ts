@@ -239,7 +239,7 @@ async function runLoop({
       type: "text",
       text:
         system_prompt +
-        "\n\n NOTES:\n- You don't have access to update any data behave of users. Always ask user to update data themselves." +
+        "\n\n NOTES:\n- You don't have access to update any data behalf of users. Always ask user to update data themselves." +
         "\n- As of now, you can only create support ticket (if allowed)." +
         "\n- If open support ticket is present for similar concern, do not report in slack",
       cache_control: { type: "ephemeral", ttl: "1h" },

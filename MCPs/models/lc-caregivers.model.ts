@@ -96,6 +96,8 @@ async function getCaregiverProfileDetailsModel(cg_id: number) {
       hp.country_c as country,
       hp.pincode_c as pincode,
       lm.mar_name as marital_status,
+      hp_rate.livein_pay AS livein_pay,
+      hp_rate.liveout_pay AS liveout_pay,
       hp.experience,
       ref.count as \`references\`,
       shift.count as shift_preferences,
@@ -143,6 +145,34 @@ async function getCaregiverProfileDetailsModel(cg_id: number) {
       ORDER BY nb.id DESC
     ) cm ON cm.hp_unique_id = hp.hp_unique_id
     LEFT JOIN life_emp_details led ON led.det_id = hp.hp_executive AND led.det_status = 1
+    LEFT JOIN (
+      SELECT
+        ranked.hp_unique_id AS hp_unique_id,
+        ranked.livein_pay AS livein_pay,
+        ranked.liveout_pay AS liveout_pay
+      FROM (
+        SELECT
+          n_hp_rate.id AS id,
+          n_hp_rate.hp_unique_id AS hp_unique_id,
+          n_hp_rate.livein_pay AS livein_pay,
+          n_hp_rate.liveout_pay AS liveout_pay,
+          n_hp_rate.monthly_livein_pay AS monthly_livein_pay,
+          n_hp_rate.monthly_liveout_pay AS monthly_liveout_pay,
+          n_hp_rate.hp_effect_date AS hp_effect_date,
+          n_hp_rate.created_on AS created_on,
+          n_hp_rate.created_by AS created_by,
+          n_hp_rate.updated_on AS updated_on,
+          n_hp_rate.updated_by AS updated_by,
+          n_hp_rate.status AS status,
+          row_number() OVER (
+            PARTITION BY n_hp_rate.hp_unique_id
+            ORDER BY n_hp_rate.id DESC
+          ) AS rn
+        FROM n_hp_rate
+        WHERE n_hp_rate.status = 2
+      ) ranked
+      WHERE (ranked.rn = 1)
+    ) hp_rate ON hp_rate.hp_unique_id = hp.hp_unique_id
     WHERE hp.hp_unique_id = ?;
   `,
     [cg_id],
@@ -242,6 +272,7 @@ async function getCaregiverWorkingHistoryModel(cg_id: number) {
   const [rows] = await lc_pool.query<RowDataPacket[]>(
     `
     SELECT 
+      nhp.status,
       lcp.cg_unique_id,
       t.cg_id,
       t.client_id,
@@ -297,6 +328,7 @@ async function getCaregiverWorkingHistoryModel(cg_id: number) {
       JOIN n_master_healthcondtions mhc ON bhc.healthcondtions_id = mhc.id
       GROUP BY bhc.booking_id
     ) as hc ON hc.booking_id = nb.id
+    LEFT JOIN n_booking_hp nhp ON nhp.bkng_id = nb.id AND nhp.hp_unique_id = lcp.cg_unique_id AND nhp.status = 120
     WHERE lcp.cg_unique_id = ?
     GROUP BY 
       lcp.cg_unique_id,
@@ -312,7 +344,7 @@ async function getCaregiverWorkingHistoryModel(cg_id: number) {
   return rows;
 }
 
-async function getCaregiverTerminationDetails(cg_id: number) {
+async function getCaregiverTerminationDetailsModel(cg_id: number) {
   const [rows] = await lc_pool.query<RowDataPacket[]>(
     `
     SELECT hp.hp_unique_id, hp.fullname, hp.status, nhr.reject_reason, lcp.cg_term_date
@@ -325,6 +357,72 @@ async function getCaregiverTerminationDetails(cg_id: number) {
   );
 
   return rows[0];
+}
+
+async function getCaregiversPaymentsDetailsModel(cg_id: number) {
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
+    `
+    SELECT
+      cpa.cg_id,
+      cpa.pay_ac_amount as net_payable,
+      cpa.pay_ac_mode as pay_mode,
+      cpa.pay_ac_date as paid_on,
+      cpo.from_date,
+      cpo.to_date,
+      cpo.total_days_worked as expected_work_days,
+      cpo.present_days as days_worked,
+      cpo.worked_earning,
+      cpo.adv_deductions,
+      cpo.hostel_deductions,
+      cpo.extra_travel as travel_deductions,
+      cpo.tds_amnt as tds_deductions,
+      cpo.tds_per as tds_percentage,
+      cpo.recovery_amount,
+      cpo.process_status
+    FROM life_cg_payment_ac cpa
+    JOIN life_cg_personal lcp ON lcp.cg_id = cpa.cg_id
+    LEFT JOIN life_cg_payment_op cpo ON cpo.pay_op_id = cpa.pay_op_id
+    WHERE lcp.cg_unique_id = ?
+    ORDER BY cpo.created_on DESC;
+    `,
+    [cg_id],
+  );
+
+  return rows;
+}
+
+async function getCaregiversPaymentDeductionDetailsModel(cg_id: number) {
+  await lc_pool.query("SET SESSION group_concat_max_len = 5000");
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
+    `
+    SELECT pas.cg_id, pas.month,
+      CONCAT(
+        '[',
+        GROUP_CONCAT(
+          CASE
+            WHEN pas.type = 0 THEN JSON_OBJECT('type', pas.type, 'amount', pas.amount, 'reason', arc.reason)
+          END
+        ),
+        ']'
+      ) as deductions,
+      CONCAT(
+        '[',
+        GROUP_CONCAT(
+          CASE
+            WHEN pas.type = 1 THEN JSON_OBJECT('type', pas.type, 'amount', pas.amount, 'reason', arc.reason)
+          END
+        ),
+        ']'
+      ) as additional
+    FROM cg_pay_add_sub pas
+    LEFT JOIN add_red_cat arc ON arc.id = pas.reason
+    WHERE pas.status = 0 and pas.cg_id = ?
+    GROUP BY pas.month;
+    `,
+    [cg_id],
+  );
+
+  return rows;
 }
 
 export {
@@ -340,5 +438,7 @@ export {
   getCaregiverReferencesModel,
   getCaregiverLeaveRequestsHistoryModel,
   getCaregiverWorkingHistoryModel,
-  getCaregiverTerminationDetails,
+  getCaregiverTerminationDetailsModel,
+  getCaregiversPaymentsDetailsModel,
+  getCaregiversPaymentDeductionDetailsModel,
 };
