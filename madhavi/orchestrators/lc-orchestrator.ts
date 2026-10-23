@@ -46,6 +46,7 @@ import {
 } from "../services/lc-agent-audit.service";
 import type { AgentRunTrigger } from "../models/lc-agent-audit.model";
 import { isPhoneOptedOut } from "../services/lc-opt-out.service";
+import { getRecruitmentPromptContext } from "../services/lc-recruitment.service";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -210,6 +211,15 @@ async function runLoop({
     mcp_tools.add("reply_in_slack_thread");
   }
 
+  // Job offers this caregiver has not finished answering
+  const recruitment_prompt = hp_unique_id
+    ? await getRecruitmentPromptContext(hp_unique_id)
+    : "";
+  if (recruitment_prompt) {
+    mcp_tools.add("update_recruitment_status");
+    mcp_tools.add("get_booking_details");
+  }
+
   const document_tools = await getAgentDocumentTools({ agent_id });
   const skill_tools = await getAgentSkillTools({ agent_id });
   const document_tool_content_by_name = new Map(
@@ -280,6 +290,8 @@ async function runLoop({
   CONVERSATION HISTORY:\n${JSON.stringify(local_chat_messages)}
 
   ${slack_context.prompt}
+
+  ${recruitment_prompt}
 
   Using above conversation history, write message what to reply.
   Communicate with person and send message using 'send_whatsapp_message' tool.

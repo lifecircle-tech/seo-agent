@@ -73,6 +73,8 @@ export interface SlackAgentChannelConfig {
   agent_key: string;
   // MCP tools added on top of the agent's tools granted in the database.
   tools?: string[];
+  // Granted tools this channel's agent must not use.
+  exclude_tools?: string[];
 }
 
 function agentChannels(): SlackAgentChannelConfig[] {
@@ -82,6 +84,20 @@ function agentChannels(): SlackAgentChannelConfig[] {
       description: "Employees ask to search caregivers",
       channel_id: process.env.LEADS_HYD_CHANNEL_ID || "C0C5688UBR8",
       agent_key: "Search_placement_manager",
+      tools: [
+        "caregiver_llm_search",
+        "get_booking_details",
+        "get_booking_recruitment",
+        "check_caregivers_for_booking",
+        "contact_caregiver_for_booking",
+        "message_booking_caregiver",
+        "update_recruitment_status",
+        "place_caregiver_for_booking",
+        "close_booking_recruitment",
+      ],
+      // Caregivers are messaged only through the recruitment tools, so every
+      // message about a booking is tracked against it.
+      exclude_tools: ["send_whatsapp_message"],
     },
   ];
 }

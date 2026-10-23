@@ -24,7 +24,7 @@ async function getPatientDetail(patient_id: number) {
     return patient
       ? {
           patient: {
-            name: patient.first_name || undefined,
+            name: patient.first_name || null,
             gender: patient.gender || null,
             age: new Date().getFullYear() - patient.yob || null,
             relation_with_client: patient.relation || null,

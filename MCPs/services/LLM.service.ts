@@ -783,6 +783,7 @@ const caregivers: Schema = {
       "name",
       "phone_number",
       "branch",
+      "languages",
       "profile_status",
       "working_status",
       "created_on",
@@ -794,14 +795,13 @@ const caregivers: Schema = {
       "phone_number:str",
       "dob:date",
       "gender:str{Male|Female|Other}",
-      "branch_city:str~branch city|branch",
+      "branch_city:str~branch city|branch|city",
       "livein_pay:num~daily wages|daily pay|perday#daily wages for live-in shift",
       "liveout_pay:num~daily wages|daily pay|perday#daily wages for live-out shift",
       "skill_type:str~skill|skills|service{'Caregiving'|'Therapy'|'Nursing'|'Physiotherapy'}",
       "languages:str#comma-separated list of languages",
       "shift_preferences:str~shift|shifts{Live-In|Live-Out|Live-Out-Day|Live-Out-Night}#comma-separated list of shift preferences",
-      "current_address:str~address|city#current address with city, state, pincode",
-      "profile_status:str~profile|status{completed|incomplete|under background verification|rejected}",
+      "profile_status:str~profile|status{completed|incomplete=in registration, profile created|under background verification=in registration,profile submitted|rejected=internally rejected}",
       "working_status:str~working|booking{working|bench|on leave}",
       "leave_from:date~leave|from#leave start date in ISO format (YYYY-MM-DD)",
       "expected_leave_end:date~leave|to#expected leave end date in ISO format (YYYY-MM-DD)",
@@ -852,10 +852,10 @@ export async function searchCaregiverLLM(question: string) {
 
     const query = await caregiverSqlGenerator(question);
     if (query.valid) {
-      logger.log("query ", query.sql);
+      logger.log("query", query.sql);
 
       const result = await searchCaregiver(query.sql);
-      return result;
+      return result.map((r) => ({ ...r, cg_id: r.hp_unique_id }));
     } else {
       throw new Error(query.reason);
     }

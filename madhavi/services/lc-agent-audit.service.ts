@@ -86,6 +86,7 @@ export function getActionType(tool_name: string) {
   if (tool_name === "send_whatsapp_message") return "whatsapp_message";
   if (tool_name === "create_support_ticket") return "support_ticket";
   if (tool_name === "reply_in_slack_thread") return "slack_thread_update";
+  if (tool_name === "update_recruitment_status") return "recruitment_update";
 
   const slack_purpose = SLACK_TOOL_PURPOSE[tool_name];
   if (slack_purpose === "report") return "escalation";

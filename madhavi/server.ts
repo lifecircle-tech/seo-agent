@@ -20,6 +20,10 @@ import {
   todayReportDate,
 } from "./services/lc-daily-report.service";
 import { handleInboundOptOut } from "./services/lc-opt-out.service";
+import {
+  markOverdueNoResponse,
+  recordCaregiverReply,
+} from "./services/lc-recruitment.service";
 
 // Debounce window: if more messages arrive for the same chat within this
 // window, they collapse into a single agent run after the last one.
@@ -105,18 +109,26 @@ function scheduleAgentRun(
 
 // End of day (11:55 PM IST): build the day's agent conversation report,
 // store it and post it to Slack.
-// cron.schedule(
-//   "0 18 * * *",
-//   () =>
-//     generateDailyReport(todayReportDate(), { notify: true }).catch((err) => {
-//       logger.error("Daily agent report failed:", err);
-//     }),
-//   {
-//     timezone: "Asia/Kolkata",
-//     name: "Daily Caregiver Agent Report",
-//     noOverlap: true,
-//   },
-// );
+cron.schedule(
+  "0 18 * * *",
+  () =>
+    generateDailyReport(todayReportDate(), { notify: true }).catch((err) => {
+      logger.error("Daily agent report failed:", err);
+    }),
+  {
+    timezone: "Asia/Kolkata",
+    name: "Daily Caregiver Agent Report",
+    noOverlap: true,
+  },
+);
+
+// Every 15 minutes: caregivers contacted for a booking who have not
+// replied within the reply window are marked 'no_response'. DB only, no
+// messages are sent.
+cron.schedule("*/15 9-17 * * *", () => markOverdueNoResponse(), {
+  name: "Recruitment No Response",
+  noOverlap: true,
+});
 
 export function madhavi_server(app: Express) {
   // lcAgentConversation().catch((err) => {
@@ -160,6 +172,10 @@ export function madhavi_server(app: Express) {
         if (is_LC_caregiver) {
           const hp_unique_id = is_chat_exists.hp_unique_id;
           const phone = String(body.chat.phone);
+
+          // A reply to a job offer stops it from going 'no_response';
+          // recorded before the agent run so its context is current.
+          await recordCaregiverReply(hp_unique_id);
 
           // Opt-out keywords and opted-out people are handled before any
           // agent runs.

@@ -432,7 +432,7 @@ CREATE TABLE IF NOT EXISTS life_digital_agent_action (
     id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     run_id       BIGINT UNSIGNED NOT NULL,
     tool_name    VARCHAR(150)    NOT NULL,
-    action_type  VARCHAR(30)     NOT NULL, -- whatsapp_message, escalation, suggestion, slack_thread_update, support_ticket, reference, lookup
+    action_type  VARCHAR(30)     NOT NULL, -- whatsapp_message, escalation, suggestion, slack_thread_update, support_ticket, recruitment_update, reference, lookup
     input        JSON            NULL,
     output       TEXT            NULL,
     is_error     BOOLEAN         NOT NULL DEFAULT FALSE,
@@ -485,4 +485,80 @@ CREATE TABLE IF NOT EXISTS life_digital_messaging_opt_out (
     PRIMARY KEY (id),
     UNIQUE KEY uq_opt_out_phone_key (phone_key),
     KEY idx_opt_out_hp_unique_id (hp_unique_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------
+-- 25. life_digital_recruitment_lead
+--     One row per booking (lead) the agents recruit a caregiver
+--     for. The booking itself lives in the LC database
+--     (n_bookings.id). While 'open', caregivers can be contacted
+--     for it; 'filled' once a caregiver is placed; 'closed' when
+--     recruitment stopped without a placement.
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS life_digital_recruitment_lead (
+    id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    booking_id   BIGINT          NOT NULL,
+    status       VARCHAR(20)     NOT NULL DEFAULT 'open', -- open, filled, closed
+    close_reason TEXT            NULL,
+    opened_at    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    closed_at    DATETIME        NULL, -- set when filled or closed
+    updated_at   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                   ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_ldrl_booking_id (booking_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------
+-- 26. life_digital_recruitment_candidate
+--     One row per caregiver approached for a lead, holding their
+--     current recruitment status. A caregiver is approached at
+--     most once per lead, so a released caregiver is never
+--     contacted again for the same booking.
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS life_digital_recruitment_candidate (
+    id                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    lead_id           BIGINT UNSIGNED NOT NULL,
+    hp_unique_id      BIGINT          NOT NULL,
+    caregiver_name    VARCHAR(150)    NULL, -- snapshot, caregivers live in the LC database
+    caregiver_phone   VARCHAR(20)     NULL,
+    status            VARCHAR(20)     NOT NULL DEFAULT 'contacted', -- contacted, on_hold, no_response, placed, released
+    release_reason    VARCHAR(30)     NULL, -- declined, not_selected, left_booking, recruitment_completed, booking_closed
+    note              TEXT            NULL, -- latest note: the caregiver's answer, conditions, expected pay
+    contacted_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    response_due_at   DATETIME        NOT NULL, -- still 'contacted' with no reply by then -> 'no_response'
+    responded_at      DATETIME        NULL,     -- first reply after being contacted
+    status_changed_at DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- hp_unique_id while on hold, else NULL: with the unique key below a
+    -- caregiver can be on hold for only one booking at a time
+    on_hold_hp_unique_id BIGINT GENERATED ALWAYS AS
+        (IF(status = 'on_hold', hp_unique_id, NULL)) STORED,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_ldrc_lead_caregiver (lead_id, hp_unique_id),
+    UNIQUE KEY uq_ldrc_on_hold (on_hold_hp_unique_id),
+    KEY idx_ldrc_hp_status (hp_unique_id, status),
+    KEY idx_ldrc_status_due (status, response_due_at),
+    CONSTRAINT fk_ldrc_lead
+        FOREIGN KEY (lead_id) REFERENCES life_digital_recruitment_lead (id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------
+-- 27. life_digital_recruitment_event
+--     History of every status change of a candidate.
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS life_digital_recruitment_event (
+    id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    candidate_id BIGINT UNSIGNED NOT NULL,
+    from_status  VARCHAR(20)     NULL, -- NULL when first contacted
+    to_status    VARCHAR(20)     NOT NULL,
+    reason       VARCHAR(30)     NULL, -- release reason, or late_reply
+    note         TEXT            NULL,
+    source       VARCHAR(20)     NOT NULL, -- agent, system
+    created_at   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_ldre_candidate_created (candidate_id, created_at),
+    CONSTRAINT fk_ldre_candidate
+        FOREIGN KEY (candidate_id)
+        REFERENCES life_digital_recruitment_candidate (id)
+        ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

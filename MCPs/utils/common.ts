@@ -42,7 +42,14 @@ function getAgeFromDOB(dob: Date | string) {
   return age;
 }
 
+// Phones are stored with or without the country code; WhatsApp needs it.
+function toWhatsappPhone(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length === 10 ? `+91${digits}` : `+${digits}`;
+}
+
 export {
+  toWhatsappPhone,
   getAgeFromDOB,
   normalizePagination,
   parsePaginationQuery,

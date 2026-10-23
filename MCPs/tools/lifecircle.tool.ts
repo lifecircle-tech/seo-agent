@@ -253,7 +253,7 @@ export function registerClients(server: McpServer) {
       outputSchema: z.object({
         patient: z
           .object({
-            name: z.string(),
+            name: z.string().nullable(),
             age: z.number().nullable(),
             gender: z.string().nullable(),
             relation_with_client: z.string().nullable(),
@@ -518,21 +518,19 @@ export function registerBookings(server: McpServer) {
       outputSchema: z.object({
         booking: z
           .object({
-            id: z.number(),
-            patient_name: z.string().nullable(),
+            booking_id: z.number(),
             client_name: z.string().nullable(),
             cm_id: z.number().nullable(),
             cm_name: z.string().nullable(),
-            offered_rate: rate,
+            base_rate: rate,
             final_rate: rate,
             pay_type: z.string().nullable(),
             booking_date: z.string().nullable(),
             service_start_date: z.string().nullable(),
             service_end_date: z.string().nullable(),
             booking_status: z.string().nullable(),
-            service_city: z.string().nullable(),
-            service_type: z.string().nullable(),
-            lost_reason: z.string().nullable(),
+            patient_details: z.record(z.string(), z.any()),
+            enquired_caregiver: z.record(z.string(), z.any()),
           })
           .nullable(),
       }),
@@ -549,7 +547,6 @@ export function registerBookings(server: McpServer) {
             service_end_date: toIso(result.service_end_date),
           }
         : null;
-      logger.debug("[get_booking_details] " + booking_id, booking);
 
       return {
         content: [{ type: "text", text: JSON.stringify({ booking }) }],

@@ -119,6 +119,8 @@ async function handleAgentChannelMention(
 
     answer = await runSlackChannelAgent({
       agent_key: agent_channel.agent_key,
+      extra_tools: agent_channel.tools ?? [],
+      exclude_tools: agent_channel.exclude_tools ?? [],
       thread,
       slack_thread: {
         channel_id: channel,
@@ -166,7 +168,7 @@ export async function startSlackBridge(onReply: SlackReplyHandler) {
     receiver,
     //   logLevel: LogLevel.DEBUG,
   });
-
+  
   app.event("app_mention", async ({ event, body, client, context }) => {
     // Bolt acks Socket Mode events before this runs — just dedupe
     if (context.retryNum || isDuplicateEvent(body.event_id)) return;

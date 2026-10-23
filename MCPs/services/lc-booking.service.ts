@@ -6,21 +6,19 @@ async function getBookingDetails(booking_id: number) {
 
     return booking
       ? {
-          id: booking.id,
-          patient_name: booking.patient_name,
+          booking_id: booking.id,
           client_name: booking.client_name,
           cm_id: booking.cm_id,
           cm_name: booking.cm_name,
-          offered_rate: booking.offered_rate,
+          base_rate: booking.base_rate,
           final_rate: booking.final_rate,
           pay_type: booking.pay_type,
           booking_date: booking.booking_date,
           service_start_date: booking.service_start_date,
-          service_end_date: booking.service_end_date,
+          service_end_date: null,
           booking_status: booking.booking_status,
-          service_city: booking.service_city,
-          service_type: booking.service_type,
-          lost_reason: booking.lost_reason,
+          patient_details: booking.patient_details,
+          enquired_caregiver: booking.enquired_caregiver,
         }
       : null;
   } catch (err) {

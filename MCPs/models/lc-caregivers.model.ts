@@ -425,8 +425,20 @@ async function getCaregiversPaymentDeductionDetailsModel(cg_id: number) {
   return rows;
 }
 
+async function getCaregiverContactModel(hp_unique_id: number) {
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
+    `SELECT fullname, phone_number FROM n_hp_profile WHERE hp_unique_id = ? LIMIT 1;`,
+    [hp_unique_id],
+  );
+
+  return rows[0] as
+    | { fullname: string | null; phone_number: string | null }
+    | undefined;
+}
+
 export {
   isCaregiverPhoneNumberModel,
+  getCaregiverContactModel,
   getCaregiversWithActiveBookingModel,
   getCaregiverDetailsModel,
   getCaregiverProfileDetailsModel,

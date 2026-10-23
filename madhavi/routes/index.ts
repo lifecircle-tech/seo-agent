@@ -16,6 +16,7 @@ import tenantAgentToolAccessRoutes from "./tenant_agent_tool_access.routes.js";
 import tenantAgentTokensUsageRoutes from "./tenant_agent_tokens_usage.routes.js";
 import mcpToolsRoutes from "./mcp_tools.routes.js";
 import agentAuditRoutes from "./lc-agent-audit.routes.js";
+import recruitmentRoutes from "./lc-recruitment.routes.js";
 
 // Note: only the active-tools list is exposed for mcp_tools by design.
 const router = Router();
@@ -37,5 +38,6 @@ router.use("/tenant-agent-tool-access", tenantAgentToolAccessRoutes);
 router.use("/tenant-agent-tokens-usage", tenantAgentTokensUsageRoutes);
 router.use("/mcp-tool", mcpToolsRoutes);
 router.use("/agent-audit", agentAuditRoutes);
+router.use("/recruitment", recruitmentRoutes);
 
 export default router;
