@@ -1,6 +1,9 @@
+import "dotenv/config";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "somesecret";
+// No fallback: a guessable default would let anyone mint valid tokens.
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error("[malti auth] JWT_SECRET is not set — refusing to start");
 
 export function requireAuth(req, res, next) {
   const header = req.headers.authorization;

@@ -243,15 +243,21 @@ export async function completeOpportunity(
 export async function ignoreOpportunity(
   id: string,
   actionedBy?: string,
+  reason?: string,
 ): Promise<OpportunityJSON | null> {
   const opportunity = await getOpportunityById(id);
   if (!opportunity) return null;
 
   if (opportunity.actioned_by) return opportunity;
 
+  // The dismiss reason is kept in opportunity_details.dismiss_reason (no schema change)
   const [result] = await pool.query<ResultSetHeader>(
-    `UPDATE opportunities SET status = 'ignore', actioned_by = ?, actioned_at = NOW(3) WHERE id = ?`,
-    [actionedBy ?? null, id],
+    `UPDATE opportunities
+     SET status = 'ignore', actioned_by = ?, actioned_at = NOW(3),
+         opportunity_details = IF(? IS NULL, opportunity_details,
+           JSON_SET(COALESCE(opportunity_details, JSON_OBJECT()), '$.dismiss_reason', ?))
+     WHERE id = ?`,
+    [actionedBy ?? null, reason ?? null, reason ?? null, id],
   );
   if (result.affectedRows === 0) return null;
   return getOpportunityById(id);

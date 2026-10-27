@@ -9,6 +9,7 @@ import { pool } from "../../../db.js";
 import { wpFetch } from "../../../libs/wordpress.js";
 import { logger } from "../../utils/logger.js";
 import { isUrlRedirected, redirectingToURL } from "../../../libs/functions.js";
+import { seoAgentModel } from "../../prompts/index.js";
 
 // ── Retry helpers ─────────────────────────────────────────────────────
 const MAX_RETRIES = 3;
@@ -433,7 +434,7 @@ Return ONLY a JSON object with keys:
 No extra text outside the JSON.`;
 
   const response = await callWithRetry(client, "suggest_link_structure", {
-    model: "claude-sonnet-5",
+    model: seoAgentModel(),
     max_tokens: 8000,
     messages: [{ role: "user", content: prompt }],
   });

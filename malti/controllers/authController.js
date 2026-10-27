@@ -1,7 +1,10 @@
+import "dotenv/config";
 import { legacyPool } from "../models/db.js";
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET  = process.env.JWT_SECRET  ?? "malti_secret";
+// No fallback: a guessable default would let anyone mint valid tokens.
+const JWT_SECRET  = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error("[malti auth] JWT_SECRET is not set — refusing to start");
 const JWT_EXPIRES = process.env.JWT_EXPIRES_IN ?? "7d";
 
 // Replication of malti.php encrypt() — XOR table cipher + double base64

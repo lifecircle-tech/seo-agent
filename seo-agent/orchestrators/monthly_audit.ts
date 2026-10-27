@@ -21,6 +21,7 @@ import {
 } from "../mcp-servers/link-optimiser/server.js";
 import { postSlackMessage } from "../mcp-servers/reporting/server.js";
 import { getAIResponse } from "../services/anthropic.service.js";
+import { seoAgentModel } from "../prompts/index.js";
 
 // ── Config ────────────────────────────────────────────────────────────
 dotenv.config();
@@ -205,7 +206,7 @@ Return ONLY a JSON object with following structure:
 `;
 
   const response = await callWithRetry("monthly_audit", {
-    model: "claude-sonnet-5",
+    model: seoAgentModel(),
     max_tokens: 2000,
     messages: [{ role: "user", content: prompt }],
   });

@@ -13,6 +13,7 @@ import {
 } from "../controllers/opportunities.controller.js";
 import { AuthRequest, requireAuth } from "../../middleware/auth.middleware.js";
 import { logger } from "../utils/logger.js";
+import { recordChange } from "../services/change-impact.service.js";
 
 export function opportunitiesRouter(io: SocketIOServer): Router {
   const router = Router();
@@ -127,6 +128,14 @@ export function opportunitiesRouter(io: SocketIOServer): Router {
             .status(404)
             .json({ success: false, error: "Opportunity not found" });
         }
+        // A person confirmed the work is live — track it (only possible when the opportunity has a URL)
+        await recordChange({
+          site_id: record.site_id,
+          source_type: "opportunity",
+          source_id: record.id,
+          change_type: `opportunity:${record.opportunity_type}`,
+          urls: [(record.opportunity_details as any)?.url],
+        });
         io.emit("opportunity:updated", record);
         res.json({ success: true, record });
       } catch (err) {
@@ -143,7 +152,11 @@ export function opportunitiesRouter(io: SocketIOServer): Router {
     async (req: Request, res: Response) => {
       try {
         const { userId } = (req as AuthRequest).user!;
-        const record = await ignoreOpportunity(req.params.id, String(userId));
+        const reason =
+          typeof req.body?.reason === "string" && req.body.reason.trim()
+            ? req.body.reason.trim().slice(0, 500)
+            : undefined;
+        const record = await ignoreOpportunity(req.params.id, String(userId), reason);
         if (!record) {
           return res
             .status(404)

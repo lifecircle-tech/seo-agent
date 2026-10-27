@@ -361,7 +361,11 @@ export async function publishPost(approvalId: string): Promise<{
 
   const apiUrl = process.env.BACKEND_API_URL ?? "http://localhost:3002";
   const res = await fetch(`${apiUrl}/approvals/${approvalId}`, {
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // GET /approvals/:id requires auth; this is a server-to-server call
+      "x-internal-token": process.env.INTERNAL_API_TOKEN ?? "",
+    },
   });
   if (!res.ok)
     throw new Error(`Approval ${approvalId} not found (${res.status})`);

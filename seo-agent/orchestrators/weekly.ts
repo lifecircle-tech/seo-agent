@@ -50,6 +50,7 @@ import {
 import { KeywordJSON } from "../models/keywords.model.js";
 import { saveLocationInsightReport } from "../services/seo-report.service.js";
 import { getWPPageDetails } from "../services/wordpress.service.js";
+import { seoAgentModel } from "../prompts/index.js";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -553,7 +554,7 @@ async function step5Reporting(
   - summary: string with concise insights and recommendations`;
 
   const response = await callWithRetry(client, "step5", {
-    model: "claude-sonnet-5",
+    model: seoAgentModel(),
     max_tokens: 8192,
     messages: [
       {

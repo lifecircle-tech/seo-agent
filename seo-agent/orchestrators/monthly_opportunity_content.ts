@@ -19,6 +19,7 @@ import {
 // Services
 import { getAIResponse } from "../services/anthropic.service.js";
 import { getAllWPPages } from "../services/wordpress.service.js";
+import { seoAgentModel } from "../prompts/index.js";
 
 // ── Config ────────────────────────────────────────────────────────────
 dotenv.config();
@@ -156,7 +157,7 @@ these rules:
 `;
 
   const response = await getAIResponse("monthly_content_opp", {
-    model: "claude-sonnet-5",
+    model: seoAgentModel(),
     max_tokens: 15000,
     messages: [
       {

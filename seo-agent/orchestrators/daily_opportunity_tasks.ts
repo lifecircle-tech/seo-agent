@@ -6,10 +6,18 @@ import {
 import * as dotenv from "dotenv";
 import { randomUUID } from "node:crypto";
 import { logger } from "../utils/logger.js";
+import { renderPrompt, seoAgentModel } from "../prompts/index.js";
+import {
+  findRankingPagesForKeywords,
+  getMetaRewriteBlocks,
+  normalizeUrl,
+} from "../services/seo-guards.service.js";
 
 import { OpportunityJSON } from "../models/opportunities.model.js";
 import {
   getPlannedOpportunitiesByType,
+  ignoreOpportunity,
+  updateOpportunity,
   updateStatusToCompleted,
 } from "../controllers/opportunities.controller.js";
 import { listSitesConfigs } from "../controllers/sites.controller.js";
@@ -46,6 +54,8 @@ import { getAIResponse } from "../services/anthropic.service.js";
 dotenv.config();
 
 const OPPORTUNITY_LIMIT = 5;
+/** An existing page with this many impressions (or a top-30 position) already "owns" a keyword. */
+const EXISTING_PAGE_MIN_IMPRESSIONS = 10;
 const MAX_RETRIES = 3;
 const RETRY_BACKOFF = [2000, 5000, 10000];
 
@@ -87,7 +97,7 @@ async function callWithRetry(
 
 async function getResponse(label: string, prompt: string) {
   const response = await callWithRetry(label, {
-    model: "claude-sonnet-5",
+    model: seoAgentModel(),
     max_tokens: 15000,
     messages: [{ role: "user", content: prompt }],
   });
@@ -113,6 +123,14 @@ async function processMetaRewriteOpportunity(
   const url: string = details.url;
   const targetKeywords: string[] = details.target_keywords ?? [];
 
+  // Cooldown: don't rewrite the same page's title/description again too soon
+  const blockReason = (await getMetaRewriteBlocks(opp.site_id)).get(normalizeUrl(url));
+  if (blockReason) {
+    await ignoreOpportunity(opp.id, "agent", `Skipped by agent: ${blockReason}`);
+    logger.info(`[daily_opportunity_tasks] meta_rewrite skipped for ${url}: ${blockReason}`);
+    return;
+  }
+
   const wpPage = await getWPPageDetails(opp.site_id, url);
   if (!wpPage) {
     logger.warn(`[daily_opportunity_tasks] Page not found for URL: ${url}`);
@@ -128,14 +146,9 @@ async function processMetaRewriteOpportunity(
     )
   ).flat();
 
-  const prompt = `You are an SEO analyst for '${site.brand_name}'.
-
-Analyze the WordPress page below along with its search performance and keyword
-performance data, then suggest an improved title tag and meta description to
-increase CTR and rankings.
-
-PAGE DETAILS:
-${JSON.stringify({
+  const prompt = renderPrompt("opportunity_meta_rewrite", {
+    brand_name: site.brand_name,
+    page_details: JSON.stringify({
   url: wpPage.url,
   type: wpPage.type,
   current_title: wpPage.title,
@@ -143,30 +156,12 @@ ${JSON.stringify({
   last_modified: wpPage.last_modified,
   target_keywords: targetKeywords,
   canonical_to: wpPage.canonical_url,
-})}
-
-PAGE PERFORMANCE (last 28 days):
-${JSON.stringify(pagePerformance)}
-
-KEYWORD PERFORMANCE (last 28 days):
-${JSON.stringify(keywordPerformance)}
-
-OPPORTUNITY CONTEXT:
-- Reason flagged: ${opp.reasoning}
-- Suggested focus: ${opp.description}
-
-RULES:
-- Title max 60 characters, include the primary keyword near the front.
-- Meta description 150-160 characters, include the primary keyword and a clear
-  value proposition or CTA.
-- Do not fabricate metrics not present in the data above.
-
-Return ONLY a JSON object with keys:
-- priority: 1-3 based on potential impact, 1 = high, 2 = medium, 3 = low
-- suggested_title
-- suggested_description
-- reasoning: simple explanation of what changed and the expected SEO impact
-No extra text.`;
+}),
+    page_performance: JSON.stringify(pagePerformance),
+    keyword_performance: JSON.stringify(keywordPerformance),
+    reason_flagged: opp.reasoning,
+    suggested_focus: opp.description,
+  });
 
   const response = await getResponse("daily_opportunity.meta_rewrite", prompt);
   if (!response) {
@@ -269,60 +264,29 @@ async function processRefreshContentOpportunity(
 
   const contentInstruction =
     pageType === "post"
-      ? `This is a blog post. Rewrite/refresh the FULL page content in Markdown to
-improve ranking — keep what already works, strengthen weak or outdated sections,
-add depth around the target keywords, and weave in the "People Also Ask"
-questions as a dedicated FAQ section near the end.`
-      : `This is a static page (not a blog post). Do NOT rewrite the full page —
-only produce an improved/expanded FAQ section in Markdown (use "## Question"
-headings) that answers the target keywords' intent, incorporating the "People
-Also Ask" questions where relevant.`;
+      ? renderPrompt("refresh_content_post_instruction")
+      : renderPrompt("refresh_content_page_instruction");
 
-  const prompt = `You are an SEO content strategist for '${site.brand_name}'.
-
-CURRENT PAGE CONTENT (Markdown):
-${currentContent}
-
-PAGE DETAILS:
-${JSON.stringify({
+  const prompt = renderPrompt("refresh_content", {
+    brand_name: site.brand_name,
+    current_content: currentContent,
+    page_details: JSON.stringify({
   url: wpPage.url,
   type: pageType,
   current_title: wpPage.title,
   last_modified: wpPage.last_modified,
   target_keywords: targetKeywords,
   canonical_to: wpPage.canonical_url,
-})}
-
-PAGE PERFORMANCE (last 28 days):
-${JSON.stringify(pagePerformance)}
-
-KEYWORD PERFORMANCE (last 28 days):
-${JSON.stringify(keywordPerformance)}
-
-PEOPLE ALSO ASK:
-${JSON.stringify(paaQuestions.map((q) => q.question).slice(0, 8))}
-
-SITE PAGES (Internal link opportunities):
-${JSON.stringify(sitePages)}
-
-OPPORTUNITY CONTEXT:
-- Reason flagged: ${opp.reasoning}
-- Suggested focus: ${opp.description}
-- Sections to update: ${JSON.stringify(details.sections_to_update ?? [])}
-
-INSTRUCTIONS:
-${contentInstruction}
-
-Do not fabricate statistics, studies, or metrics not present in the data above.
-Do not mention about (---) in reasoning.
-If page is city specific, omit the PAA questions that contains different city.
-
-Return ONLY a JSON object with keys:
-- suggested_content: the refreshed content described above, in Markdown
-- reasoning: simple and brief about what changed and the expected SEO impact, in markdown
-- source: list source about any information added from outside like testimonial, pricing
-- paa: return non-modified PAA list used in suggested content
-No extra text.`;
+}),
+    page_performance: JSON.stringify(pagePerformance),
+    keyword_performance: JSON.stringify(keywordPerformance),
+    paa_questions: JSON.stringify(paaQuestions.map((q) => q.question).slice(0, 8)),
+    site_pages: JSON.stringify(sitePages),
+    reason_flagged: opp.reasoning,
+    suggested_focus: opp.description,
+    sections_to_update: JSON.stringify(details.sections_to_update ?? []),
+    content_instruction: contentInstruction,
+  });
 
   const response = await getResponse(
     "daily_opportunity.refresh_content",
@@ -403,6 +367,29 @@ async function processNewContentOpportunity(
     logger.warn(
       `[daily_opportunity_tasks] Page already exists for URL: ${url}`,
     );
+    // Previously left 'planned' and retried every day
+    await ignoreOpportunity(opp.id, "agent", `Skipped by agent: a page already exists at ${url}`);
+    return;
+  }
+
+  // Cannibalisation guard: if an existing page already ranks for the primary keyword,
+  // strengthen that page instead of creating another one competing for the same search.
+  const primaryKeyword = targetKeywords[0];
+  const existing = (await findRankingPagesForKeywords(opp.site_id, primaryKeyword ? [primaryKeyword] : []))
+    .find((p) => p.impressions >= EXISTING_PAGE_MIN_IMPRESSIONS || (p.position != null && p.position <= 30));
+  if (existing) {
+    const note = `Converted by agent: "${existing.keyword}" already ranks on ${existing.url} (position ${existing.position ?? "?"}, ${existing.impressions} impressions) — improving that page instead of creating a competing one.`;
+    await updateOpportunity(opp.id, {
+      opportunity_type: "refresh_content",
+      description: `${note}\n\n${opp.description ?? ""}`.trim(),
+      opportunity_details: {
+        ...details,
+        url: existing.url,
+        converted_from: "new_content",
+        original_new_url: url,
+      },
+    });
+    logger.info(`[daily_opportunity_tasks] ${note}`);
     return;
   }
 
@@ -443,117 +430,23 @@ async function processNewContentOpportunity(
 
   const contentInstruction =
     pageType === "post"
-      ? `This is a idea for new blog post. Write the FULL page content in Markdown to
-improve ranking — add depth around the target keywords, and weave in the "People Also Ask"
-questions as a dedicated FAQ section near the end.`
-      : `This is a idea for new static page (not a blog post). For all static page, a
-fixed template and similar content is used. Only FAQs are dynamic on all static page.
-Do NOT write the full page — only produce an improved/expanded FAQ section in
-Markdown (use "## Question" headings) that answers the target keywords' intent,
-incorporating the "People Also Ask" questions where relevant.
-Omit structure and readability rules for this.
-`;
+      ? renderPrompt("new_content_post_instruction")
+      : renderPrompt("new_content_page_instruction");
 
-  const prompt = `
-  You are an expert SEO content writer and strategist with deep knowledge of on-page 
-SEO, search intent, and readable, high-quality writing. Your job is to turn 
-structured content briefs into publish-ready, SEO-optimized articles that rank well 
-AND genuinely help the reader.
-
-PAGE DETAILS:
-${JSON.stringify({
+  const prompt = renderPrompt("new_content", {
+    page_details: JSON.stringify({
   url: details.url,
   type: pageType,
   title: details.title,
   target_keywords: targetKeywords,
-})}
-
-KEYWORD PERFORMANCE (last 28 days):
-${JSON.stringify(keywordPerformance)}
-
-PEOPLE ALSO ASK:
-${JSON.stringify(paaQuestions.map((q) => q.question).slice(0, 8))}
-
-SITE PAGES (Internal link opportunities):
-${JSON.stringify(sitePages)}
-
-OPPORTUNITY CONTEXT:
-- Reason flagged: ${opp.reasoning}
-- Suggested focus: ${opp.description}
-- Target Audience: Professional caregiver, family member
-- Target Word Count: 1500-2000
-
-INSTRUCTIONS:
-${contentInstruction}
-
-Do not fabricate statistics, studies, or metrics not present in the data above.
-Do not mention about (---) in reasoning.
-If page is city specific, omit the PAA questions that contains different city.
-
-Follow these rules:
-
-1. TITLE & META
-  - Refine the given title if needed (keep it under 60 characters, include the 
-    primary keyword near the front).
-  - Write a meta description (150-160 characters) that includes the primary 
-    keyword and a clear value proposition or CTA.
-
-2. STRUCTURE
-  - Use one H1 (the title).
-  - Break the body into logical H2/H3 sections based on the content description.
-  - Include a short, compelling introduction that states what the reader will 
-    learn and includes the primary keyword within the first 100 words.
-  - End with a conclusion and a clear next step or CTA.
-
-3. KEYWORD USAGE
-  - Use the primary keyword naturally in: title, meta description, intro, at 
-    least one H2, and the conclusion.
-  - Distribute secondary keywords naturally across subheadings and body text.
-  - Do NOT keyword-stuff. Prioritize natural, human-readable language over 
-    exact-match repetition. Use variations and related terms (LSI keywords).
-
-4. READABILITY
-  - Short paragraphs (2-4 sentences).
-  - Use bullet points or numbered lists where helpful.
-  - Use active voice and concrete examples.
-
-5. ON-PAGE SEO EXTRAS
-  - Suggest 2-3 internal linking opportunities (topics/anchor text).
-  - Suggest 1-2 external authoritative sources that could be linked.
-  - Recommend alt text for any implied images based on section content.
-
-6. FAQ SECTION (if PAA questions are provided)
-  - If People Also Ask questions are listed above, include a dedicated FAQ
-    section answering each one concisely (2-4 sentences per answer).
-  - Use the question text verbatim as the H3 heading inside the FAQ section.
-  - Neglect repeated question, if any present.
-  - Include this section near the end of the article, before the conclusion.
-
-Return ONLY a JSON object with keys:
-  - title,
-  - meta_description,
-  - url,
-  - content: the new content described above, in Markdown
-  - suggestions: {
-      internal_links: [
-        { anchor_text, url }
-      ],
-      external_links: [
-        { anchor_text, url }
-      ]
-    },
-  - reason: simple and brief about what changed and the expected SEO impact, in Markdown
-  - images : [{
-      context: ideas about image to generate,
-      alt_text: Alternate text for image,
-      title: title of the image,
-      description: brief detail about image,
-    }],
-  - source: list source about any information added from outside like testimonial, pricing
-  - paa: return non-modified PAA list used in suggested content
-
-Before response check if the JSON is possible to parse in JS code. Return only parsable JSON.
-No extra text.`;
+}),
+    keyword_performance: JSON.stringify(keywordPerformance),
+    paa_questions: JSON.stringify(paaQuestions.map((q) => q.question).slice(0, 8)),
+    site_pages: JSON.stringify(sitePages),
+    reason_flagged: opp.reasoning,
+    suggested_focus: opp.description,
+    content_instruction: contentInstruction,
+  });
 
   const response = await getResponse("daily_opportunity.new_content", prompt);
   logger.debug(
@@ -660,22 +553,28 @@ export async function dailyOpportunityTasks() {
       }
     }
 
-    const refreshContentOpportunities = await getPlannedOpportunitiesByType(
-      "refresh_content",
-      site.site_id,
-      OPPORTUNITY_LIMIT,
-    );
-    logger.info(
-      `[daily_opportunity_tasks] Processing ${refreshContentOpportunities.length} refresh_content opportunities`,
-    );
-    for (const opp of refreshContentOpportunities) {
-      try {
-        await processRefreshContentOpportunity(opp, site, site_pages);
-      } catch (err: any) {
-        logger.error(
-          `[daily_opportunity_tasks] refresh_content failed for opp=${opp.id}: ${err.message}`,
-          err,
-        );
+    // optimize_content and content_gap (from weekly_performance_check) are also
+    // "improve an existing page" work with the same fields (url, target_keywords,
+    // type); the refresh handler passes their description/reasoning to the prompt.
+    // Previously they were created but never processed.
+    for (const type of ["refresh_content", "optimize_content", "content_gap"]) {
+      const existingPageOpportunities = await getPlannedOpportunitiesByType(
+        type,
+        site.site_id,
+        OPPORTUNITY_LIMIT,
+      );
+      logger.info(
+        `[daily_opportunity_tasks] Processing ${existingPageOpportunities.length} ${type} opportunities`,
+      );
+      for (const opp of existingPageOpportunities) {
+        try {
+          await processRefreshContentOpportunity(opp, site, site_pages);
+        } catch (err: any) {
+          logger.error(
+            `[daily_opportunity_tasks] ${type} failed for opp=${opp.id}: ${err.message}`,
+            err,
+          );
+        }
       }
     }
 

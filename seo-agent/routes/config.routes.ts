@@ -5,6 +5,7 @@
 
 import { Router, Request, Response } from "express";
 import { randomUUID } from "node:crypto";
+import { requireAuth } from "../../middleware/auth.middleware.js";
 
 // Import controllers
 import {
@@ -38,7 +39,7 @@ const router = Router();
 // ── Sites Config ──────────────────────────────────────────────────────
 
 // GET /config/sites
-router.get("/sites", async (req: Request, res: Response) => {
+router.get("/sites", requireAuth, async (req: Request, res: Response) => {
   try {
     const limit = req.query.limit ? Number(req.query.limit) : undefined;
     const offset = req.query.offset ? Number(req.query.offset) : undefined;
@@ -61,7 +62,7 @@ router.get("/sites", async (req: Request, res: Response) => {
 });
 
 // POST /config/sites (create or update)
-router.post("/sites", async (req: Request, res: Response) => {
+router.post("/sites", requireAuth, async (req: Request, res: Response) => {
   try {
     const { id, site_id, domain, brand_name, industry, about } = req.body as {
       id?: string;
@@ -114,7 +115,7 @@ router.post("/sites", async (req: Request, res: Response) => {
 });
 
 // DELETE /config/sites
-router.delete("/sites", async (req: Request, res: Response) => {
+router.delete("/sites", requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.body as { id: string };
     if (!id) return res.status(400).json({ error: "id is required" });
@@ -135,7 +136,7 @@ router.delete("/sites", async (req: Request, res: Response) => {
 // ── Cities Config ─────────────────────────────────────────────────────
 
 // GET /config/cities
-router.get("/cities", async (req: Request, res: Response) => {
+router.get("/cities", requireAuth, async (req: Request, res: Response) => {
   try {
     const limit = req.query.limit ? Number(req.query.limit) : undefined;
     const offset = req.query.offset ? Number(req.query.offset) : undefined;
@@ -157,7 +158,7 @@ router.get("/cities", async (req: Request, res: Response) => {
 });
 
 // POST /config/cities (create or update)
-router.post("/cities", async (req: Request, res: Response) => {
+router.post("/cities", requireAuth, async (req: Request, res: Response) => {
   try {
     const { id, site_id, city, state, country, services } = req.body as {
       id?: string;
@@ -220,7 +221,7 @@ router.post("/cities", async (req: Request, res: Response) => {
 });
 
 // DELETE /config/cities
-router.delete("/cities", async (req: Request, res: Response) => {
+router.delete("/cities", requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.body as { id: string };
     if (!id) return res.status(400).json({ error: "id is required" });
@@ -241,7 +242,7 @@ router.delete("/cities", async (req: Request, res: Response) => {
 // ── Keywords Config ───────────────────────────────────────────────────
 
 // GET /config/keywords
-router.get("/keywords", async (req: Request, res: Response) => {
+router.get("/keywords", requireAuth, async (req: Request, res: Response) => {
   try {
     const limit = req.query.limit ? Number(req.query.limit) : undefined;
     const offset = req.query.offset ? Number(req.query.offset) : undefined;
@@ -263,7 +264,7 @@ router.get("/keywords", async (req: Request, res: Response) => {
 });
 
 // POST /config/keywords (create or update)
-router.post("/keywords", async (req: Request, res: Response) => {
+router.post("/keywords", requireAuth, async (req: Request, res: Response) => {
   try {
     const { id, site_id, domain, target_keywords } = req.body as {
       id?: string;
@@ -313,7 +314,7 @@ router.post("/keywords", async (req: Request, res: Response) => {
 });
 
 // DELETE /config/keywords
-router.delete("/keywords", async (req: Request, res: Response) => {
+router.delete("/keywords", requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.body as { id: string };
     if (!id) return res.status(400).json({ error: "id is required" });
@@ -334,7 +335,7 @@ router.delete("/keywords", async (req: Request, res: Response) => {
 // ── Competitors Config ────────────────────────────────────────────────
 
 // GET /config/competitors
-router.get("/competitors", async (req: Request, res: Response) => {
+router.get("/competitors", requireAuth, async (req: Request, res: Response) => {
   try {
     const limit = req.query.limit ? Number(req.query.limit) : undefined;
     const offset = req.query.offset ? Number(req.query.offset) : undefined;
@@ -357,7 +358,7 @@ router.get("/competitors", async (req: Request, res: Response) => {
 });
 
 // POST /config/competitors (create or update)
-router.post("/competitors", async (req: Request, res: Response) => {
+router.post("/competitors", requireAuth, async (req: Request, res: Response) => {
   try {
     const { id, site_id, domain, competitor_domain } = req.body as {
       id?: string;
@@ -405,7 +406,7 @@ router.post("/competitors", async (req: Request, res: Response) => {
 });
 
 // DELETE /config/competitors
-router.delete("/competitors", async (req: Request, res: Response) => {
+router.delete("/competitors", requireAuth, async (req: Request, res: Response) => {
   try {
     const { id } = req.body as { id: string };
     if (!id) return res.status(400).json({ error: "id is required" });

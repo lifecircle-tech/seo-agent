@@ -220,7 +220,11 @@ export async function createApprovalQueue(items: ApprovalQueueItem[]): Promise<{
     try {
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // POST /approvals requires auth; this is a server-to-server call
+          "x-internal-token": process.env.INTERNAL_API_TOKEN ?? "",
+        },
         body: JSON.stringify({
           site_id: item.site_id,
           module: item.module,

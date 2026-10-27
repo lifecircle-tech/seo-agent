@@ -9,6 +9,7 @@
 
 import { Router, Request, Response } from "express";
 import { pool } from "../../db.js";
+import { requireAuth } from "../../middleware/auth.middleware.js";
 import { RowDataPacket } from "mysql2/promise";
 import { logger } from "../utils/logger.js";
 import { getCitiesBySiteId } from "../controllers/cities.controller.js";
@@ -25,7 +26,7 @@ function fmt(d: Date): string {
 }
 
 // GET /sites/:site_id/overview
-router.get("/:site_id/overview", async (req: Request, res: Response) => {
+router.get("/:site_id/overview", requireAuth, async (req: Request, res: Response) => {
   const { site_id } = req.params;
   const { site_url, start_date, end_date } = req.query as {
     site_url?: string;
@@ -89,7 +90,7 @@ router.get("/:site_id/overview", async (req: Request, res: Response) => {
 });
 
 // GET /sites/:site_id/cities/overview
-router.get("/:site_id/cities/overview", async (req: Request, res: Response) => {
+router.get("/:site_id/cities/overview", requireAuth, async (req: Request, res: Response) => {
   const { site_id } = req.params;
   const { start_date, end_date } = req.query as {
     start_date?: string;
