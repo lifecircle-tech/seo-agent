@@ -226,26 +226,49 @@ export function getKeywordClusters(
 
 /**
  * Tool: prioritise_keywords
- * Formula: (volume * 0.4) + ((100 - difficulty) * 0.4) + (position_gap * 0.2)
+ *
+ * Ranks keywords by how WINNABLE and valuable they are, not by raw volume.
+ * The previous formula ((volume*0.4) + ...) was dominated by volume — a 301k-volume
+ * national term scored ~120,000 vs ≤80 for everything else — and it rewarded keywords
+ * we rank worst for. That steered the agent at national head terms it could not win.
+ *
+ * Score (higher = do first):
+ *   position fit × 4   striking distance (4–20) = 1.0, 21–30 = 0.6, top 3 = 0.3 (defend),
+ *                      not ranking / 30+ = 0.15
+ *   log10(volume+1)    demand, on a log scale so big numbers don't swamp everything
+ *   log10(impr+1)×1.5  we already show for it → Google sees us as relevant
+ *   city match × 2     keyword names a city we serve (the business's core searches)
+ *   ease × 1           (100 − difficulty) / 100
  */
-export function prioritiseKeywords(keywords: KeywordOpportunity[]) {
+export function keywordPositionFit(position: number | null | undefined): number {
+  if (position == null || position <= 0) return 0.15; // not ranking
+  if (position < 4) return 0.3; // top 3 — defend, little room to grow
+  if (position <= 20) return 1; // striking distance
+  if (position <= 30) return 0.6;
+  return 0.15;
+}
+
+export function prioritiseKeywords(
+  keywords: KeywordOpportunity[],
+  cityNames: string[] = [],
+) {
   logger.info(`[keyword-researcher] Sorting Keywords by Opportunity...`);
+  const cities = cityNames.map((c) => c.toLowerCase().trim()).filter(Boolean);
+
   return keywords
     .map((k) => {
-      const volScore = k.volume * 0.4;
-      const diffScore = (100 - k.difficulty) * 0.4;
+      const kw = (k.keyword ?? "").toLowerCase();
+      const cityMatch = cities.some((c) => kw.includes(c)) ? 1 : 0;
+      const ease = Math.max(0, Math.min(100, 100 - (Number(k.difficulty) || 0))) / 100;
 
-      // If not ranking, we treat gap as 100 (high opportunity to acquire)
-      // If ranking, the gap is the position itself (higher position = more room to grow)
-      const positionGap = k.current_position ?? 100;
-      const posScore = positionGap * 0.2;
+      const score =
+        keywordPositionFit(k.current_position) * 4 +
+        Math.log10((Number(k.volume) || 0) + 1) +
+        Math.log10((Number(k.impressions) || 0) + 1) * 1.5 +
+        cityMatch * 2 +
+        ease;
 
-      return {
-        ...k,
-        opportunity_score: parseFloat(
-          (volScore + diffScore + posScore).toFixed(2),
-        ),
-      };
+      return { ...k, opportunity_score: parseFloat(score.toFixed(3)) };
     })
     .sort((a, b) => (b.opportunity_score || 0) - (a.opportunity_score || 0));
 }

@@ -9,12 +9,12 @@ import express, { Request, Response, NextFunction } from "express";
 import { createServer } from "node:http";
 import { Server as SocketIOServer } from "socket.io";
 import cors from "cors";
-import cron from "node-cron";
+import cron from "node-cron";   
 
 // Lifecircle MCPs
 import { mountMcpRoutes } from "./MCPs/server/httpTransport";
 import { madhavi_server } from "./madhavi/server";
-
+    
 import { seoAgentRouter } from "./seo-agent/routes/index";
 import { approvalsRouter } from "./seo-agent/routes/approvals.routes.js";
 import { alertsRouter } from "./seo-agent/routes/alerts.routes.js";
@@ -50,8 +50,21 @@ import {
   checkPageContents,
   updateNewKeywordsToFalse,
 } from "./seo-agent/services/schedulers.service.js";
+import { measureDueChanges } from "./seo-agent/services/change-impact.service.js";
+import { weeklyConsolidationSuggestions } from "./seo-agent/orchestrators/weekly_consolidation.js";
+import { snapshotKeywordRanks } from "./seo-agent/services/rank-history.service.js";
 
-cron.schedule(
+// ── Scheduled jobs ────────────────────────────────────────────────────
+// These call Claude, DataForSEO and publish to WordPress. Set CRON_ENABLED=false
+// on QA / local copies so starting the server does not run them.
+const CRON_ENABLED = process.env.CRON_ENABLED !== "false";
+console.log(`[startup] scheduled jobs ${CRON_ENABLED ? "ENABLED" : "disabled (CRON_ENABLED=false)"}`);
+
+function scheduleJob(...args: Parameters<typeof cron.schedule>): void {
+  if (CRON_ENABLED) cron.schedule(...args);
+}
+
+scheduleJob(
   "0 8 * 1,4,7,10 1,3,5",
   () => {
     dailyWPPagesTasks();
@@ -62,7 +75,7 @@ cron.schedule(
   },
 );
 
-cron.schedule(
+scheduleJob(
   "30 8 * * 1",
   () => {
     weeklyTasks();
@@ -73,7 +86,7 @@ cron.schedule(
   },
 );
 
-cron.schedule(
+scheduleJob(
   "45 7 * * 1",
   () => {
     weeklySitemapAdsTasks();
@@ -84,7 +97,7 @@ cron.schedule(
   },
 );
 
-cron.schedule(
+scheduleJob(
   "0 10 * * 1",
   () => {
     weeklyBacklinksMonitorTasks();
@@ -95,7 +108,7 @@ cron.schedule(
   },
 );
 
-cron.schedule(
+scheduleJob(
   "0 7 1 * *",
   () => {
     updateNewKeywordsToFalse();
@@ -107,7 +120,7 @@ cron.schedule(
   },
 );
 
-// cron.schedule(
+// scheduleJob(
 //   "30 7 1 * *",
 //   () => {
 //     opportunityContentGeneration();
@@ -118,7 +131,7 @@ cron.schedule(
 //   },
 // );
 
-cron.schedule(
+scheduleJob(
   "0 8 1 * *",
   () => {
     monthlyAudit();
@@ -129,11 +142,12 @@ cron.schedule(
   },
 );
 
-cron.schedule(
+scheduleJob(
   "0 9 * * 1",
   async () => {
     await weeklyPageChecker();
     await weeklyPerformanceCheck();
+    await weeklyConsolidationSuggestions();
   },
   {
     timezone: "IST",
@@ -141,7 +155,7 @@ cron.schedule(
   },
 );
 
-cron.schedule(
+scheduleJob(
   "0 10 * * *",
   async () => {
     await dailyTechnicalAudit();
@@ -153,7 +167,7 @@ cron.schedule(
   },
 );
 
-cron.schedule(
+scheduleJob(
   "0 18 * * *",
   () => {
     checkPageContents();
@@ -161,6 +175,34 @@ cron.schedule(
   {
     timezone: "IST",
     name: "Check Page Contents",
+  },
+);
+
+// Weekly ranking history — after the Monday 08:30 weekly job has refreshed keyword positions
+scheduleJob(
+  "0 12 * * 1",
+  () => {
+    snapshotKeywordRanks().catch((err) =>
+      console.error("[rank-history] snapshot job failed:", err),
+    );
+  },
+  {
+    timezone: "IST",
+    name: "Weekly Keyword Rank Snapshot",
+  },
+);
+
+// Before/after Search Console results for published changes (28 days after + GSC lag)
+scheduleJob(
+  "30 6 * * *",
+  () => {
+    measureDueChanges().catch((err) =>
+      console.error("[change-impact] measure job failed:", err),
+    );
+  },
+  {
+    timezone: "IST",
+    name: "Measure Change Impact",
   },
 );
 
@@ -286,11 +328,17 @@ console.log(
 );
 
 if (process.env.NODE_ENV !== "test") {
-  // Run each table init separately so we can log exactly which step fails
-  const initSteps: Array<[string, () => Promise<void>]> = [
-    ["seo-agent table", initSEOModels],
-    ["malti tables", initMalti],
-  ];
+  // Run each table init separately so we can log exactly which step fails.
+  // These run CREATE TABLE on DATABASE_URL; set DB_AUTO_INIT=false to skip them
+  // when the schema is managed elsewhere or the database must not be written to.
+  const DB_AUTO_INIT = process.env.DB_AUTO_INIT !== "false";
+  const initSteps: Array<[string, () => Promise<void>]> = DB_AUTO_INIT
+    ? [
+        ["seo-agent table", initSEOModels],
+        ["malti tables", initMalti],
+      ]
+    : [];
+  if (!DB_AUTO_INIT) console.log("[startup] table init skipped (DB_AUTO_INIT=false)");
 
   (async () => {
     // Startup DB reachability check — log before any table work

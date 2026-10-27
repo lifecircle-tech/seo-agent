@@ -7,6 +7,7 @@ import { RowDataPacket } from "mysql2/promise";
 import { pool } from "../../../db.js";
 import { wpFetch } from "../../../libs/wordpress.js";
 import { logger } from "../../utils/logger.js";
+import { seoAgentModel } from "../../prompts/index.js";
 
 // ── Retry helpers ─────────────────────────────────────────────────────
 const MAX_RETRIES = 3;
@@ -129,7 +130,7 @@ No extra text outside the JSON.`;
   );
 
   const response = await callWithRetry(client, "generate_city_page", {
-    model: "claude-sonnet-5",
+    model: seoAgentModel(),
     max_tokens: 12000,
     messages: [{ role: "user", content: prompt }],
   });

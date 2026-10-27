@@ -34,8 +34,8 @@ interface CreateApprovalBody {
 export function approvalsRouter(io: SocketIOServer): Router {
   const router = Router();
 
-  // POST /approvals
-  router.post("/", async (req: Request, res: Response) => {
+  // POST /approvals — UI (JWT) or cms-connector (INTERNAL_API_TOKEN header)
+  router.post("/", requireAuth, async (req: Request, res: Response) => {
     const {
       site_id,
       module,

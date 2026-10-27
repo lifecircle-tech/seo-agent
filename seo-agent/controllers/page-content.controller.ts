@@ -336,7 +336,7 @@ export async function getAcknowledgedPageByUrl(
 ): Promise<PageContentJSON | null> {
   const [rows] = await pool.query<PageContent[]>(
     `SELECT * FROM page_content
-     WHERE url = ? AND status = 21 OR status = 22
+     WHERE url = ? AND status IN (21, 22)
      ORDER BY acknowledged_at DESC
      LIMIT 1`,
     [url],

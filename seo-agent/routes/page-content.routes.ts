@@ -15,6 +15,32 @@ import {
 } from "../controllers/page-content.controller.js";
 import { AuthRequest, requireAuth } from "../../middleware/auth.middleware.js";
 import { logger } from "../utils/logger.js";
+import { recordChange } from "../services/change-impact.service.js";
+import { verifyPageUpdate } from "../services/page-content.service.js";
+
+/** Minimum % of the suggested content that must be on the live page before it can be marked created/updated. */
+const PAGE_MATCH_MIN = Number(process.env.PAGE_MATCH_MIN) || 80;
+
+/**
+ * Returns an error payload when the live page doesn't (yet) contain the suggested
+ * content, or null when it does. If the live page can't be checked (WordPress
+ * unreachable), the action is allowed — the 18:00 check still records the match.
+ */
+async function liveMatchProblem(id: string): Promise<{ error: string; matchPercentage: number } | null> {
+  try {
+    const { matchPercentage } = await verifyPageUpdate(id);
+    if (matchPercentage >= PAGE_MATCH_MIN) return null;
+    return {
+      matchPercentage,
+      error:
+        `The live page matches only ${matchPercentage}% of the suggested content (needs ${PAGE_MATCH_MIN}%). ` +
+        `Publish the content on the website first, then mark it again.`,
+    };
+  } catch (err: any) {
+    logger.warn(`[page-content] live match check skipped for ${id}: ${err.message}`);
+    return null;
+  }
+}
 
 export function pageContentRouter(io: SocketIOServer): Router {
   const router = Router();
@@ -152,6 +178,9 @@ export function pageContentRouter(io: SocketIOServer): Router {
         const { userId } = (req as AuthRequest).user!;
         const { remark } = req.body;
 
+        const notLive = await liveMatchProblem(req.params.id);
+        if (notLive) return res.status(409).json({ success: false, ...notLive });
+
         const record = await createdPageContent(
           req.params.id,
           String(userId),
@@ -161,6 +190,14 @@ export function pageContentRouter(io: SocketIOServer): Router {
           return res
             .status(404)
             .json({ success: false, error: "Record not found" });
+
+        await recordChange({
+          site_id: record.site_id,
+          source_type: "page_content",
+          source_id: record.id,
+          change_type: "page_created",
+          urls: [record.url],
+        });
 
         io.emit("content:updated", record);
         res.json({ success: true, record });
@@ -180,6 +217,9 @@ export function pageContentRouter(io: SocketIOServer): Router {
         const { userId } = (req as AuthRequest).user!;
         const { remark } = req.body;
 
+        const notLive = await liveMatchProblem(req.params.id);
+        if (notLive) return res.status(409).json({ success: false, ...notLive });
+
         const record = await updatedPageContent(
           req.params.id,
           String(userId),
@@ -189,6 +229,14 @@ export function pageContentRouter(io: SocketIOServer): Router {
           return res
             .status(404)
             .json({ success: false, error: "Record not found" });
+
+        await recordChange({
+          site_id: record.site_id,
+          source_type: "page_content",
+          source_id: record.id,
+          change_type: "page_updated",
+          urls: [record.url],
+        });
 
         io.emit("content:updated", record);
         res.json({ success: true, record });

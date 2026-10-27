@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node dist/server.js",
     "dev": "tsx watch server.ts",
-    "build": "tsc",
+    "build": "tsc && node -e \"require('fs').cpSync('seo-agent/prompts','dist/seo-agent/prompts',{recursive:true,filter:(s)=>!s.endsWith('.ts')})\"",
     "inspect": "npx @modelcontextprotocol/inspector@latest"
   },
   "dependencies": {

@@ -90,6 +90,44 @@ async function getPagePerformance(
   return page_metrics;
 }
 
+/**
+ * Totals for one page over an explicit date range (inclusive, yyyy-mm-dd).
+ * Search Console returns no row when the page had no impressions, which is
+ * reported here as zero clicks/impressions and a null position.
+ */
+async function getPagePerformanceBetween(
+  siteUrl: string,
+  pageUrl: string,
+  startDate: string,
+  endDate: string,
+): Promise<{ clicks: number; impressions: number; ctr: number | null; position: number | null }> {
+  const searchConsole = getSearchConsoleClient();
+
+  const results = await searchConsole.searchanalytics.query({
+    siteUrl,
+    requestBody: {
+      startDate,
+      endDate,
+      dimensions: ["page"],
+      dimensionFilterGroups: [
+        {
+          filters: [{ dimension: "page", operator: "equals", expression: pageUrl }],
+        },
+      ],
+      rowLimit: 1,
+    },
+  });
+
+  const row = results.data.rows?.[0];
+  if (!row) return { clicks: 0, impressions: 0, ctr: null, position: null };
+  return {
+    clicks: row.clicks ?? 0,
+    impressions: row.impressions ?? 0,
+    ctr: row.ctr ?? null,
+    position: row.position ?? null,
+  };
+}
+
 async function getSitePerformanceMetrics(
   site_url: string,
   date: { start: string; end: string },
@@ -256,6 +294,7 @@ async function getCityPerformanceMetrics(
 export {
   getKeywordPerformance,
   getPagePerformance,
+  getPagePerformanceBetween,
   getSitePerformanceMetrics,
   getCityPerformanceMetrics,
 };

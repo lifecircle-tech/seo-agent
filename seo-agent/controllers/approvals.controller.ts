@@ -15,6 +15,7 @@ import {
 import { runPageContentAgent } from "../services/page-content.service.js";
 import { logger } from "../utils/logger.js";
 import { isUrlRedirected } from "../../libs/functions.js";
+import { recordChange } from "../services/change-impact.service.js";
 
 // ── Row serialiser ────────────────────────────────────────────────────
 function toJSON(row: Approval): ApprovalJSON {
@@ -201,9 +202,14 @@ export async function approveApproval(
 
   if (result.affectedRows === 0) return null;
 
+  // Publish what was approved: the human-edited content when "Edit & Approve" was
+  // used. (Previously this read approval.updated_content, which was loaded before
+  // the UPDATE above, so edits were saved but the unedited AI version was published.)
+  const approvedContent = (contentToStore ?? undefined) as Record<string, any> | undefined;
+
   // If the approved item is a meta_rewrite, push the change to WordPress.
   if (approval.type === "meta_rewrite") {
-    const c = (approval.updated_content ?? approval.original_content) as {
+    const c = { ...(approval.original_content ?? {}), ...(approvedContent ?? {}) } as {
       // Use updated_content if present, else original
       url?: string;
       suggested_title?: string;
@@ -243,14 +249,28 @@ export async function approveApproval(
   } else if (approval.type === "canonical") {
     type CanonicalUpdate = { id: number; canonical_url: string };
     let items = [] as CanonicalUpdate[];
-    let canonical_url = approval.updated_content?.recommended_primary_url;
+    let canonical_url = approvedContent?.recommended_primary_url;
 
-    for (let url of approval.updated_content?.competing_urls) {
+    for (let url of approvedContent?.competing_urls ?? []) {
       const page = await getWPPageDetails(approval.site_id, url);
       items.push({ id: page?.id, canonical_url } as CanonicalUpdate);
     }
 
     await bulkUpdateCanonicalURL(approval.site_id, items);
+  }
+
+  // Track before/after Search Console results for the published change
+  if (approval.type === "meta_rewrite" || approval.type === "canonical") {
+    await recordChange({
+      site_id: approval.site_id,
+      source_type: "approval",
+      source_id: approval.id,
+      change_type: approval.type,
+      urls:
+        approval.type === "meta_rewrite"
+          ? [approvedContent?.url ?? approval.original_content?.url]
+          : [approvedContent?.recommended_primary_url, ...(approvedContent?.competing_urls ?? [])],
+    });
   }
 
   return approval;

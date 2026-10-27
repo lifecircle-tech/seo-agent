@@ -13,6 +13,8 @@ import { opportunitiesRouter } from "./opportunities.routes.js";
 import { backlinksRouter } from "./backlinks.routes.js";
 import { pagesRouter } from "./pages.routes.js";
 import { paaRouter } from "./paa.routes.js";
+import { changeImpactRouter } from "./change-impact.routes.js";
+import { rankHistoryRouter } from "./rank-history.routes.js";
 
 export function seoAgentRouter (io: SocketIOServer): Router {
     const router = Router();
@@ -28,6 +30,8 @@ export function seoAgentRouter (io: SocketIOServer): Router {
     router.use("/backlinks", backlinksRouter(io));
     router.use("/pages", pagesRouter);
     router.use("/paa", paaRouter);
+    router.use("/change-impact", changeImpactRouter);
+    router.use("/rank-history", rankHistoryRouter);
 
     return router;
 }

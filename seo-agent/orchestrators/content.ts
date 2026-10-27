@@ -4,6 +4,7 @@ import {
   MessageCreateParamsNonStreaming,
 } from "@anthropic-ai/sdk/resources";
 import { logger } from "../utils/logger.js";
+import { renderPrompt, seoAgentModel } from "../prompts/index.js";
 
 const MAX_RETRIES = 3;
 const RETRY_BACKOFF = [2000, 5000, 10000]; // milliseconds between retries
@@ -70,55 +71,17 @@ export async function analyseWithAI(
 
     logger.info("[page-content] Details", page_details);
 
-    const prompt = `You are an SEO content strategist.
-  
-  Analyze the WordPress page below along with its search performance and keyword
-  performance data, then suggest an improved title tag and meta description to
-  increase CTR and rankings.
-
-  CURRENT PAGE CONTENT (Markdown):
-  ${content}
-  
-  PAGE DETAILS:
-  ${JSON.stringify(page_details)}
-
-  PAGE PERFORMANCE (last 28 days):
-  ${JSON.stringify(page_performance)}
-
-  KEYWORD PERFORMANCE (last 28 days):
-  ${JSON.stringify(keyword_performance)}
-
-  PEOPLE ALSO ASK:
-  ${JSON.stringify(paa.map((q) => q.question))}
-
-  SITE PAGES (Internal link opportunities):
-  ${JSON.stringify(site_pages)};
-
-  This is a blog post. Rewrite/refresh the FULL page content in Markdown to
-  improve ranking — keep what already works, strengthen weak or outdated sections,
-  add depth around the target keywords, and weave in the "People Also Ask"
-  questions as a dedicated FAQ section near the end.
-
-  RULES:
-  - primary keyword should be present in h1 heading tag
-  - secondary keywords should me present in subheading
-  - primary and secondary keywords should be present in contents
-  - primary keyword should be present in the first 10% of the content
-  - minimum content should be 1500 words
-  - maximum content should be 2000 words
-  - relate the content with the title and description
-
-  Do not fabricate statistics, studies, or metrics not present in the data above.
-  If page is city specific, omit the PAA questions that contains different city
-
-  Return Only a JSON object with keys:
-  - content: Markdown format, preserving the structure and any important details
-  - reason: simple and brief about what changed and the expected SEO impact
-  - source: list source about any information added from outside like testimonial, pricing
-  `;
+    const prompt = renderPrompt("page_content_post", {
+    current_content: content,
+    page_details: JSON.stringify(page_details),
+    page_performance: JSON.stringify(page_performance),
+    keyword_performance: JSON.stringify(keyword_performance),
+    paa_questions: JSON.stringify(paa.map((q) => q.question)),
+    site_pages: JSON.stringify(site_pages),
+  });
 
     const response = await callWithRetry(client, "step2", {
-      model: "claude-sonnet-5",
+      model: seoAgentModel(),
       max_tokens: 10000,
       messages: [
         {
@@ -163,43 +126,16 @@ export async function analyseFAQwithAI(
 
     logger.info("[page-content.faq] Details", page_details);
 
-    let prompt = `You are an SEO content strategist.
-  
-    Analyze the WordPress page below along with its search performance and keyword
-    performance data, then suggest an improved title tag and meta description to
-    increase CTR and rankings.
-
-    CURRENT PAGE CONTENT (Markdown):
-    ${content}
-    
-    PAGE DETAILS:
-    ${JSON.stringify(page_details)}
-
-    PAGE PERFORMANCE (last 28 days):
-    ${JSON.stringify(page_performance)}
-
-    KEYWORD PERFORMANCE (last 28 days):
-    ${JSON.stringify(keyword_performance)}
-
-    PEOPLE ALSO ASK:
-    ${JSON.stringify(paa.map((q) => q.question))}
-
-    This is a static page (not a blog post). Do NOT rewrite the full page —
-    only produce an improved/expanded FAQ section in Markdown (use "## Question"
-    headings) that answers the target keywords' intent, incorporating the "People
-    Also Ask" questions where relevant.
-
-    Do not fabricate statistics, studies, or metrics not present in the data above.
-    If page is city specific, omit the PAA questions that contains different city
-
-    Return Only a JSON object with keys:
-    - content: Markdown format, preserving the structure and any important details
-    - reason: simple and brief about what changed and the expected SEO impact
-    - source: list source about any information added from outside like testimonial, pricing
-    `;
+    let prompt = renderPrompt("page_content_faq", {
+    current_content: content,
+    page_details: JSON.stringify(page_details),
+    page_performance: JSON.stringify(page_performance),
+    keyword_performance: JSON.stringify(keyword_performance),
+    paa_questions: JSON.stringify(paa.map((q) => q.question)),
+  });
 
     const response = await callWithRetry(client, "step2", {
-      model: "claude-sonnet-5",
+      model: seoAgentModel(),
       max_tokens: 10000,
       messages: [
         {
