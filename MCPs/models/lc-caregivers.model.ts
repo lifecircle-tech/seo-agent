@@ -383,7 +383,8 @@ async function getCaregiversPaymentsDetailsModel(cg_id: number) {
     JOIN life_cg_personal lcp ON lcp.cg_id = cpa.cg_id
     LEFT JOIN life_cg_payment_op cpo ON cpo.pay_op_id = cpa.pay_op_id
     WHERE lcp.cg_unique_id = ?
-    ORDER BY cpo.created_on DESC;
+    ORDER BY cpo.created_on DESC
+    LIMIT 5
     `,
     [cg_id],
   );

@@ -97,7 +97,6 @@ TOOL USES:
 
 "send message tools":
 - call whatsapp message tool to send message to caregivers
-- for emergency, call only 'report_to_slack' tool to send message
 - also call 'report_to_slack' tool to share same message which is sent to care manager
 - call 'ask_missing_in_slack' tool to report about missing information from document, tool error or suggestion to be made
 `;
@@ -174,6 +173,9 @@ async function runLoop({
   chat_id?: string | null;
   trigger_source: AgentRunTrigger;
 }) {
+  const CLAUDE_MODEL = ["welfare_manager"].includes(agentKey)
+    ? "claude-sonnet-5"
+    : "claude-haiku-4-5";
   const local_chat_messages = [...chat_messages];
   const hp_unique_id = caregiver?.caregiver["cg_id"] as number | undefined;
 
@@ -250,8 +252,7 @@ async function runLoop({
       text:
         system_prompt +
         "\n\n NOTES:\n- You don't have access to update any data behalf of users. Always ask user to update data themselves." +
-        "\n- As of now, you can only create support ticket (if allowed)." +
-        "\n- If open support ticket is present for similar concern, do not report in slack",
+        "\n- As of now, you can only create support ticket (if allowed).",
       cache_control: { type: "ephemeral", ttl: "1h" },
     },
   ];
@@ -293,11 +294,10 @@ async function runLoop({
 
   ${recruitment_prompt}
 
+  Before replying to caregiver, follow report to slack instruction from above.
   Using above conversation history, write message what to reply.
   Communicate with person and send message using 'send_whatsapp_message' tool.
-
-  Stop this prompt once message is sent.
-      `,
+`,
     },
   ];
 
@@ -327,8 +327,8 @@ async function runLoop({
     while (true) {
       logger.log("Inside loop...");
       const response = await client.messages.create({
-        model: "claude-haiku-4-5",
-        max_tokens: 1000,
+        model: CLAUDE_MODEL,
+        max_tokens: 5000,
         tools: anthropic_tools,
         system: system_blocks,
         messages,
@@ -444,8 +444,7 @@ async function runLoop({
             if (chat_id) {
               run_chat_id = chat_id;
               saveChat(chat_id);
-            }
-            else if (message_id) resolveChatIdLater(message_id, saveChat);
+            } else if (message_id) resolveChatIdLater(message_id, saveChat);
           }
         }
 

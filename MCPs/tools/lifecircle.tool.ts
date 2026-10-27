@@ -425,6 +425,7 @@ export function registerSupportTicket(server: McpServer) {
         amount: z.number().optional(),
       },
       outputSchema: z.object({
+        ticket_id: z.number().optional(),
         status: z.string(),
       }),
     },
@@ -447,7 +448,10 @@ export function registerSupportTicket(server: McpServer) {
         amount,
       });
 
-      const structured = { status: result };
+      const structured = {
+        ticket_id: result.ticket_id || undefined,
+        status: result.status,
+      };
 
       return {
         content: [{ type: "text", text: JSON.stringify(structured) }],
@@ -469,10 +473,14 @@ export function registerSupportTicket(server: McpServer) {
         support_requests: z
           .array(
             z.object({
+              ticket_id: z.number(),
               support_id: z.number(),
               title: z.string(),
               description: z.string(),
               status: z.enum(["open", "closed"]),
+              from: z.string().optional(),
+              to: z.string().optional(),
+              amount: z.string().optional(),
               created_on: z.string(),
             }),
           )

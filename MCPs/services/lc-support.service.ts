@@ -46,16 +46,16 @@ async function createSupportTicket(data: CreateSupportTicket) {
 
     console.log("payload", payload);
 
-    // return "success";
+    // return { ticket_id: 1233, status: "success" };
     const result = await createSupportTicketModel(data);
     if (result) {
-      return "success";
+      return { ticket_id: result, status: "success" };
     }
 
     throw new Error("Something went wrong");
   } catch (err) {
     console.log("create_support_ticket", err);
-    return "failed";
+    return { status: "failed" };
   }
 }
 
@@ -64,11 +64,19 @@ async function getCaregiverSupportTickets(cg_user_id: number) {
     const tickets = await getCaregiversSupportTicketListModel(cg_user_id);
 
     const support = tickets.map((s) => ({
+      ticket_id: s.id,
       support_id: s.support_type_id,
       title: s.title,
       description: s.description,
-      status: s.status == 18 ? 'open' : 'closed',
-      created_on: s.created_on
+      status: s.status == 18 ? "open" : "closed",
+      created_on: s.created_on,
+      ...(s.support_type_id == 7
+        ? { amount: s.request_param1 }
+        : s.support_type_id == 8
+          ? { from: s.request_param1, to: s.request_param2 }
+          : s.support_type_id == 9
+            ? { from: s.request_param1 }
+            : {}),
     }));
 
     return support;

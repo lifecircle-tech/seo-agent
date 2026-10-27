@@ -73,9 +73,9 @@ export function registerWhatsappMessage(server: McpServer) {
 export function registerSlackMessage(server: McpServer) {
   // Notify a care manager via Slack.
   server.registerTool(
-    "send_slack_message",
+    "send_message_to_cm",
     {
-      title: "Send Slack Message",
+      title: "Send Slack message to CM",
       description:
         "Sends a Slack message to a care manager by care manager id.",
       inputSchema: {

@@ -53,6 +53,7 @@ async function getCaregiversSupportTicketListModel(cg_user_id: number) {
     FROM n_support_requests nsr
     WHERE nsr.user_id = ?
     ORDER BY nsr.created_on DESC
+    LIMIT 5
     `,
     [cg_user_id],
   );

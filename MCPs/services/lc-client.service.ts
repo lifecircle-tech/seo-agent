@@ -8,7 +8,8 @@ import SAMPLE from "../../sample/sample.js";
 
 async function getClientDetails(client_id: number) {
   return {
-    client: SAMPLE.SAMPLE_CLIENT_DATA[0],
+    client: null,
+    // SAMPLE.SAMPLE_CLIENT_DATA[0],
   };
 }
 
