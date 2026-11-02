@@ -74,6 +74,7 @@ async function getCaregiverProfileStatus(cg_id: number) {
         onboarding_status: cg_profile.onboarding_status,
         livein_pay: cg_profile.livein_pay || undefined,
         liveout_pay: cg_profile.liveout_pay || undefined,
+        current_stage: cg_profile.current_stage,
         missing_data: missing_data.length ? missing_data : undefined,
         missing_documents: missing_documents.length
           ? missing_documents
@@ -131,6 +132,7 @@ async function getCaregiverProfileStatus(cg_id: number) {
         name: ref.name,
         relation: ref.relationship,
       })),
+      current_stage: cg_profile.current_stage,
       created_on: new Date(cg_profile.created_on).toISOString(),
     };
   } catch (err) {

@@ -9,6 +9,7 @@ import {
   startAgent as lcAgent,
   startAgentConversation as lcAgentConversation,
   multiAgentRouter,
+  runRegistrationFollowups,
 } from "./orchestrators/lc-orchestrator";
 
 import cron from "node-cron";
@@ -118,6 +119,21 @@ cron.schedule(
   {
     timezone: "Asia/Kolkata",
     name: "Daily Caregiver Agent Report",
+    noOverlap: true,
+  },
+);
+
+// Daily at 10 AM IST: the registration agent follows up with caregivers
+// still in registration who have not been contacted for 3 days.
+cron.schedule(
+  "30 10 * * *",
+  () =>
+    runRegistrationFollowups().catch((err) => {
+      logger.error("Registration follow-up failed:", err);
+    }),
+  {
+    timezone: "Asia/Kolkata",
+    name: "Daily Caregiver Registration Follow-up",
     noOverlap: true,
   },
 );

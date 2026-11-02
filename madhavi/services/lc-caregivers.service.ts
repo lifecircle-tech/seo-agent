@@ -2,9 +2,12 @@ import { getAgeFromDOB } from "../utils/common.js";
 import {
   getCaregiverActiveBookingDetailsModel,
   getCaregiverDetails,
+  getCaregiversInRegistration,
   getCaregiversWithActiveBooking,
   isCaregiverPhoneNumber as isCaregiverPhoneNumberModel,
 } from "../models/lc-caregivers.model";
+import { findAgentCaregiversWithoutContact } from "../models/lc-agent-audit.model";
+import { logger } from "../utils/logger.js";
 
 // import SAMPLE from "../../sample/sample.js";
 
@@ -37,7 +40,7 @@ async function getCareGiverWithActiveBooking({
 
     return caregivers;
   } catch (err) {
-    console.log("[getCareGiverWithActiveBooking]", err);
+    logger.error("[getCareGiverWithActiveBooking]", err);
     return null;
   }
 }
@@ -73,7 +76,7 @@ async function getCareGiverDetails(cg_id: number) {
       },
     };
   } catch (err) {
-    console.log("[getCareGiverDetails]", err);
+    logger.error("[getCareGiverDetails]", err);
     return null;
   }
 }
@@ -99,7 +102,7 @@ async function getCareGiverActiveBookingDetails(cg_id: number) {
       cm_id: booking.hp_manager || undefined,
     };
   } catch (err) {
-    console.log("[getCareGiverActiveBookingDetails]", err);
+    logger.error("[getCareGiverActiveBookingDetails]", err);
     return null;
   }
 }
@@ -108,7 +111,42 @@ async function isCaregiverPhoneNumber(phone: string) {
   return await isCaregiverPhoneNumberModel(phone);
 }
 
+// Caregivers the registration agent has worked with, still in registration,
+// and not contacted for `days` days. Oldest contact first. Conversations
+// live in the Madhavi database and profiles in the LC database, so the two
+// are filtered one after the other.
+async function getCaregiversDueForRegistrationFollowup({
+  agent_key,
+  days,
+  limit,
+}: {
+  agent_key: string;
+  days: number;
+  limit: number;
+}) {
+  try {
+    const not_contacted = await findAgentCaregiversWithoutContact(
+      agent_key,
+      days,
+    );
+    const in_registration = new Set(
+      await getCaregiversInRegistration(
+        not_contacted.map((cg) => cg.hp_unique_id),
+      ),
+    );
+
+    return not_contacted
+      .filter((cg) => in_registration.has(cg.hp_unique_id))
+      .slice(0, limit)
+      .map((cg) => cg.hp_unique_id);
+  } catch (err) {
+    logger.error("[getCaregiversDueForRegistrationFollowup]", err);
+    return [];
+  }
+}
+
 export {
+  getCaregiversDueForRegistrationFollowup,
   getCareGiverDetails,
   getCareGiverWithActiveBooking,
   getCareGiverActiveBookingDetails,

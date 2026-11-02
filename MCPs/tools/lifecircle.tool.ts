@@ -44,6 +44,7 @@ export function registerCaregiver(server: McpServer) {
             livein_pay: z.string().optional(),
             liveout_pay: z.string().optional(),
             missing_data: z.array(z.string()).optional(),
+            current_stage: z.string(),
             missing_documents: z.array(z.string()).optional(),
           }),
           z.object({
@@ -78,6 +79,7 @@ export function registerCaregiver(server: McpServer) {
             references: z.array(
               z.object({ name: z.string(), relation: z.string() }),
             ),
+            current_stage: z.string(),
             created_on: z.string(),
           }),
           z.null(),

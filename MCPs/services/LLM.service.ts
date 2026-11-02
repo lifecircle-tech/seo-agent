@@ -777,7 +777,7 @@ const caregivers: Schema = {
   caregiver_details: {
     // note: "one row per order line; order-level columns repeat on every line, so use COUNT(DISTINCT order_id) to count orders",
     aliases: ["caregivers", "caregiver", "cg", "cgs", "nurse"],
-    always: ["hp_unique_id", "user_id", "name", "phone_number"],
+    always: ["hp_unique_id", "user_id", "name", "phone_number", "languages"],
     defaults: [
       "hp_unique_id",
       "name",

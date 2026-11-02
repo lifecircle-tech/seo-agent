@@ -104,6 +104,17 @@ async function getCaregiverProfileDetailsModel(cg_id: number) {
       q.count as qualifications,
       loc.count as locations,
       hp.registered_on,
+      CASE
+        WHEN hp.status IN (131, 135, 139) THEN 'rejected'
+        WHEN hp.status = 2 THEN 'completed'
+        WHEN hp.status IN (129, 134) THEN 'interview'
+        WHEN hp.status = 128 AND hp.background_verified = 1 THEN 'internal verification'
+        WHEN hp.status = 128 AND hp.background_verified = 2 THEN 'background verification'
+        WHEN hp.status = 128 AND hp.background_verified = 0 THEN 'background verification failed'
+        WHEN hp.status = 128 AND hp.background_verified IS NULL THEN 'profile submitted'
+        WHEN hp.status = 127 THEN 'profile created'
+        ELSE ms.name
+      END as current_stage,
       hp.created_on
     FROM n_hp_profile hp
     LEFT JOIN n_user nu ON nu.hp_unique_id = hp.hp_unique_id

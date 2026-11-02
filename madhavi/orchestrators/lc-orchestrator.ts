@@ -11,6 +11,7 @@ import {
   getCareGiverActiveBookingDetails,
   getCareGiverDetails,
   getCareGiverWithActiveBooking,
+  getCaregiversDueForRegistrationFollowup,
 } from "../services/lc-caregivers.service";
 import {
   getCMChatByChatId,
@@ -283,10 +284,15 @@ async function runLoop({
     cache_control: { type: "ephemeral", ttl: "1h" },
   });
 
+  const trigger_reason =
+    agentKey == "Caregiver_Registration_Manager"
+      ? `Trigger Reason: ${trigger_source}\n\n`
+      : "";
+
   const messages: Anthropic.MessageParam[] = [
     {
       role: "user",
-      content: `CAREGIVER INFO:\n${JSON.stringify(caregiver)}
+      content: `${trigger_reason}CAREGIVER INFO:\n${JSON.stringify(caregiver)}
 
   CONVERSATION HISTORY:\n${JSON.stringify(local_chat_messages)}
 
@@ -732,4 +738,96 @@ work — you only decide who should handle it.
   logger.log(`🤖 Claude requested tool [${toolCall.name}]`);
 
   startAgent(chat_id, toolCall.name);
+}
+
+const REGISTRATION_AGENT_KEY = "Caregiver_Registration_Manager";
+
+async function runRegistrationLoop(
+  mcp: Awaited<ReturnType<typeof connectMcp>>,
+  hp_id: number,
+  trigger_reason: AgentRunTrigger,
+) {
+  const caregiver = await getCareGiverDetails(hp_id);
+  const chat_history = await getCMChatHistory(hp_id);
+
+  return await runLoop({
+    mcpClient: mcp.mcpClient,
+    anthropicTools: mcp.anthropicTools,
+    chat_messages: chat_history || [],
+    agentKey: REGISTRATION_AGENT_KEY,
+    caregiver,
+    trigger_source: trigger_reason,
+  });
+}
+
+export async function runRegistrationManager(
+  hp_id: number,
+  trigger_reason: AgentRunTrigger,
+) {
+  const mcp = await connectMcp();
+
+  try {
+    return await runRegistrationLoop(mcp, hp_id, trigger_reason);
+  } catch (err) {
+    logger.error("[registration manager]", err);
+  } finally {
+    await mcp.mcpClient.close();
+  }
+}
+
+// A caregiver in registration who has not been contacted for this many days
+// gets a follow-up run. The cap keeps one day's run bounded; caregivers left
+// over are still due, oldest contact first, on the next day.
+const REGISTRATION_FOLLOWUP_AFTER_DAYS = 3;
+const REGISTRATION_FOLLOWUP_DAILY_LIMIT = 10;
+const REGISTRATION_FOLLOWUP_CONCURRENCY = 5;
+
+// Runs the registration agent with trigger 'scheduled_followup' for every
+// caregiver due a follow-up. The agent itself decides whether a message is
+// needed; any follow-up run restarts the wait.
+export async function runRegistrationFollowups() {
+  const due = await getCaregiversDueForRegistrationFollowup({
+    agent_key: REGISTRATION_AGENT_KEY,
+    days: REGISTRATION_FOLLOWUP_AFTER_DAYS,
+    limit: REGISTRATION_FOLLOWUP_DAILY_LIMIT,
+  });
+  if (due.length === 0) {
+    logger.log("Registration follow-up: no caregivers due");
+    return;
+  }
+
+  const mcp = await connectMcp();
+
+  let succeeded = 0;
+  let failed = 0;
+
+  try {
+    for (let i = 0; i < due.length; i += REGISTRATION_FOLLOWUP_CONCURRENCY) {
+      const batch = due.slice(i, i + REGISTRATION_FOLLOWUP_CONCURRENCY);
+
+      const results = await Promise.allSettled(
+        batch.map((hp_id) =>
+          runRegistrationLoop(mcp, hp_id, "scheduled_followup"),
+        ),
+      );
+
+      results.forEach((result, idx) => {
+        if (result.status === "fulfilled") {
+          succeeded++;
+        } else {
+          failed++;
+          logger.error(
+            `Registration follow-up failed for cg ${batch[idx]}:`,
+            result.reason,
+          );
+        }
+      });
+    }
+
+    logger.log(
+      `Registration follow-up done: ${succeeded} succeeded, ${failed} failed`,
+    );
+  } finally {
+    await mcp.mcpClient.close();
+  }
 }

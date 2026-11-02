@@ -124,7 +124,29 @@ async function getCaregiverPhoneByHpUniqueId(hp_unique_id: number) {
   return (rows[0]?.phone_number as string | undefined) ?? null;
 }
 
+// Of the given caregivers, those still in registration: profile created,
+// submitted, under verification or interview. Completed (2), rejected
+// (131, 135, 139) and failed background verification are left out.
+async function getCaregiversInRegistration(hp_unique_ids: number[]) {
+  if (hp_unique_ids.length === 0) return [];
+
+  const [rows] = await lc_pool.query<RowDataPacket[]>(
+    `
+    SELECT hp_unique_id FROM n_hp_profile
+    WHERE hp_unique_id IN (?)
+      AND (
+        status IN (127, 129, 134)
+        OR (status = 128 AND (background_verified IS NULL OR background_verified <> 0))
+      );
+    `,
+    [hp_unique_ids],
+  );
+
+  return rows.map((row) => row.hp_unique_id as number);
+}
+
 export {
+  getCaregiversInRegistration,
   getCaregiverHpUniqueIdByPhone,
   getCaregiverPhoneByHpUniqueId,
   getCaregiversWithActiveBooking,

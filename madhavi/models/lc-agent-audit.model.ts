@@ -20,7 +20,10 @@ function parseJson(value: unknown) {
 export type AgentRunTrigger =
   | "caregiver_message"
   | "slack_reply"
-  | "scheduled_outreach";
+  | "scheduled_outreach"
+  | "profile_created"
+  | "profile_updated"
+  | "scheduled_followup";
 
 export interface AgentRun extends RowDataPacket {
   id: number;
@@ -563,6 +566,52 @@ async function getTokenUsageTotals(from: IstDateTime, to: IstDateTime) {
   return rows[0] as { requests: number; total_tokens: number };
 }
 
+// Caregivers the given agent has run for, with no contact in the last
+// `days` days. Contact is a WhatsApp message sent by any agent, a message
+// from the caregiver, or a scheduled follow-up run of this agent (which
+// may have chosen to send nothing). Oldest contact first; never contacted
+// first of all. Opted-out caregivers are left out.
+async function findAgentCaregiversWithoutContact(
+  agent_key: string,
+  days: number,
+) {
+  const [rows] = await madhavi_pool.query<RowDataPacket[]>(
+    `
+      SELECT hp_unique_id, last_contact_at
+      FROM (
+        SELECT agent_cg.hp_unique_id, MAX(c.contacted_at) AS last_contact_at
+        FROM (
+          SELECT DISTINCT hp_unique_id FROM life_digital_agent_run
+          WHERE agent_key = ? AND hp_unique_id IS NOT NULL
+        ) agent_cg
+        LEFT JOIN (
+          SELECT r.hp_unique_id, a.created_at AS contacted_at
+          FROM life_digital_agent_action a
+          JOIN life_digital_agent_run r ON r.id = a.run_id
+          WHERE a.action_type = 'whatsapp_message' AND a.is_error = 0
+          UNION ALL
+          SELECT hp_unique_id, started_at AS contacted_at
+          FROM life_digital_agent_run
+          WHERE trigger_source = 'caregiver_message'
+             OR (agent_key = ? AND trigger_source = 'scheduled_followup')
+        ) c ON c.hp_unique_id = agent_cg.hp_unique_id
+        WHERE NOT EXISTS (
+          SELECT 1 FROM life_digital_messaging_opt_out o
+          WHERE o.hp_unique_id = agent_cg.hp_unique_id
+            AND o.status = 'opted_out'
+        )
+        GROUP BY agent_cg.hp_unique_id
+      ) contact
+      WHERE last_contact_at IS NULL
+         OR last_contact_at < CURRENT_TIMESTAMP - INTERVAL ? DAY
+      ORDER BY last_contact_at IS NOT NULL, last_contact_at ASC;
+    `,
+    [agent_key, agent_key, days],
+  );
+
+  return rows as { hp_unique_id: number; last_contact_at: Date | null }[];
+}
+
 async function findSlackThreadsByHpUniqueId(hp_unique_id: number) {
   const [rows] = await madhavi_pool.query<RowDataPacket[]>(
     `
@@ -599,5 +648,6 @@ export {
   countEscalationsAwaitingReply,
   getSlackReplyStats,
   findSlackThreadsByHpUniqueId,
+  findAgentCaregiversWithoutContact,
   getTokenUsageTotals,
 };
