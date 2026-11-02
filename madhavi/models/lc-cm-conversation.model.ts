@@ -61,8 +61,26 @@ async function getDigitalCMChatByChatId(chat_id: string) {
   return cm_chat;
 }
 
+// Chats with no message sent by the agent in the last `hours`. Every agent
+// reply bumps last_message_timestamp, so this is the last conversation.
+async function getDigitalCMChatsInactiveFor(hours: number) {
+  const [rows] = await madhavi_pool.query<CmConversation[]>(
+    `
+      SELECT hp_unique_id, chat_id, last_message_timestamp, started_at_timestamp
+      FROM life_digital_cm_conversation
+      WHERE chat_id IS NOT NULL
+        AND last_message_timestamp < NOW() - INTERVAL ? HOUR
+      ORDER BY last_message_timestamp ASC;
+    `,
+    [hours],
+  );
+
+  return rows;
+}
+
 export {
   insertDigitalCMChat,
   getDigitalCMChatByHpUniqueId,
   getDigitalCMChatByChatId,
+  getDigitalCMChatsInactiveFor,
 };

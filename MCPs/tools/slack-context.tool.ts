@@ -4,7 +4,10 @@ import {
   postSlackThreadReply,
   readSlackThread,
 } from "../services/slack.service.js";
-import { getSlackThreadsContext } from "../../madhavi/services/lc-slack-conversation.service.js";
+import {
+  getSlackThreadsContext,
+  setSlackThreadCaseStatus,
+} from "../../madhavi/services/lc-slack-conversation.service.js";
 import { getSlackConversationById } from "../../madhavi/models/lc-slack-conversation.model.js";
 
 // Tools that give the agent the care team's Slack context for a user.
@@ -14,7 +17,7 @@ export function registerSlackContext(server: McpServer) {
     {
       title: "Get Slack Context",
       description:
-        "Get the Slack threads raised about a caregiver (by cg_id / hp_unique_id) and the care team's replies to them, newest thread first",
+        "Get the Slack threads raised about a caregiver (by cg_id / hp_unique_id) with every message posted in each thread, read live from Slack, newest thread first",
       inputSchema: {
         hp_unique_id: z.number(),
         limit: z.number().int().min(1).max(20).optional(),
@@ -27,13 +30,11 @@ export function registerSlackContext(server: McpServer) {
             reported_at: z.string(),
             report: z.string(),
             status: z.string(),
-            replies: z.array(
+            messages: z.array(
               z.object({
-                reply_id: z.number(),
                 from: z.string(),
                 message: z.string(),
                 at: z.string(),
-                relay_status: z.string(),
               }),
             ),
           }),
@@ -67,6 +68,7 @@ export function registerSlackContext(server: McpServer) {
             z.object({
               from: z.enum(["agent", "care_team"]),
               user: z.string().optional(),
+              user_name: z.string().optional(),
               text: z.string(),
               ts: z.string(),
             }),
@@ -110,17 +112,18 @@ export function registerSlackContext(server: McpServer) {
     {
       title: "Reply in Slack Thread",
       description:
-        "Post an update in a Slack thread about this person (e.g. their reply to a care team request). Use thread_id from the Slack threads context or 'get_slack_context'",
+        "Post an update in a Slack thread about this person (e.g. their reply to a care team request). Use thread_id from the Slack threads context or 'get_slack_context'. Pass case_status only when the post marks the case RESOLVED (team says it is sorted, waiting for the person to confirm), CLOSED (the person confirmed) or REOPENED (the person says it is not sorted after RESOLVED)",
       inputSchema: {
         thread_id: z.number(),
         message: z.string().max(3000),
+        case_status: z.enum(["resolved", "closed", "reopened"]).optional(),
       },
       outputSchema: z.object({
         status: z.enum(["ok", "error"]),
         message: z.string(),
       }),
     },
-    async ({ thread_id, message }) => {
+    async ({ thread_id, message, case_status }) => {
       const conversation = await getSlackConversationById(thread_id);
       const result = conversation
         ? await postSlackThreadReply(
@@ -132,6 +135,11 @@ export function registerSlackContext(server: McpServer) {
             status: "error" as const,
             message: `Slack thread ${thread_id} not found`,
           };
+
+      // A closed case is no longer followed up by the escalation scheduler
+      if (case_status && result.status === "ok") {
+        await setSlackThreadCaseStatus(thread_id, case_status);
+      }
 
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],

@@ -144,11 +144,32 @@ async function postSlackThreadReply(
   }
 }
 
+// Cache user names so threads don't hit users.info repeatedly
+const slackUserNames = new Map<string, string>();
+
+async function getSlackUserName(user_id: string) {
+  const cached = slackUserNames.get(user_id);
+  if (cached) return cached;
+
+  try {
+    const { user } = await callSlackApi("users.info", {
+      query: { user: user_id },
+    });
+    const name = user?.profile?.display_name || user?.real_name || user_id;
+    slackUserNames.set(user_id, name);
+    return name;
+  } catch (err) {
+    logger.warn(`[getSlackUserName] users.info failed for ${user_id}`, err);
+    return undefined;
+  }
+}
+
 // Reads every message of a Slack thread (paginated), oldest first.
 async function readSlackThread(channel_id: string, thread_ts: string) {
   const messages: {
     from: "agent" | "care_team";
     user?: string;
+    user_name?: string;
     text: string;
     ts: string;
   }[] = [];
@@ -168,6 +189,8 @@ async function readSlackThread(channel_id: string, thread_ts: string) {
       messages.push({
         from: m.bot_id ? "agent" : "care_team",
         user: m.user,
+        user_name:
+          !m.bot_id && m.user ? await getSlackUserName(m.user) : undefined,
         text: m.text ?? "",
         ts: m.ts,
       });

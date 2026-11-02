@@ -115,6 +115,12 @@ async function getCaregiverProfileDetailsModel(cg_id: number) {
         WHEN hp.status = 127 THEN 'profile created'
         ELSE ms.name
       END as current_stage,
+      CASE
+        WHEN background_verified = 0 THEN 'Failed'
+        WHEN background_verified = 1 THEN 'Success'
+        WHEN background_verified = 2 THEN 'Initiated'
+        ELSE null
+      END as bgv_status,
       hp.created_on
     FROM n_hp_profile hp
     LEFT JOIN n_user nu ON nu.hp_unique_id = hp.hp_unique_id

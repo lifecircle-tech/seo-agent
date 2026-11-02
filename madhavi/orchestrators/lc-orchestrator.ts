@@ -124,6 +124,27 @@ When you call it:
 - the tool sends the confirmation itself; do not send any other message afterwards
 `;
 
+const REPLY_TASK_PROMPT = `Before replying to caregiver, follow report to slack instruction from above.
+  Using above conversation history, write message what to reply.
+  Communicate with person and send message using 'send_whatsapp_message' tool.`;
+
+// Scheduled runs are not replies to a new message, so the agent decides
+// whether a message is worth sending at all.
+const SCHEDULED_TASK_PROMPT: Partial<Record<AgentRunTrigger, string>> = {
+  weekly_follow_up: `SCHEDULED WEEKLY FOLLOW-UP:
+  This run was started by the weekly scheduler, not by a new message. You have not talked with this person for over a week.
+  - Send one short, warm check-in with 'send_whatsapp_message', in the language of the conversation: ask how they are and how work is going.
+  - If something was left open in the conversation history (a concern, request or question), ask about that specifically.
+  - Pending care team replies above, if any, must be shared in this message.
+  - Do not repeat the wording of an earlier check-in. Do not report to Slack unless they raised something new that needs it.`,
+  escalation_follow_up: `SCHEDULED ESCALATION FOLLOW-UP:
+  This run was started by the escalation scheduler, not by a new message. This person has an open escalation in the Slack threads above, read live from Slack.
+  - Check the thread messages and their support tickets ('get_caregiver_support_requests') for anything the person has not been told yet.
+  - A care team update, date or resolution not shared yet: share it with 'send_whatsapp_message', attributed to the team, following your escalation rules. When it is resolved, ask them to confirm, and post RESOLVED in the thread.
+  - A message from the person that you have not answered: answer it, and post CLOSED or REOPENED in the thread when it applies.
+  - Nothing new since your last message to the person: send NO WhatsApp message and post NOTHING in Slack. Never send a "still pending" nudge. End with one line saying why nothing was sent.`,
+};
+
 export async function connectMcp() {
   const serverUrl = new URL(mcp_url);
   const transport = new StreamableHTTPClientTransport(serverUrl);
@@ -288,6 +309,10 @@ async function runLoop({
     agentKey == "Caregiver_Registration_Manager"
       ? `Trigger Reason: ${trigger_source}\n\n`
       : "";
+  const scheduled_task = SCHEDULED_TASK_PROMPT[trigger_source];
+  const task_prompt = scheduled_task
+    ? `Current time: ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST\n\n  ${scheduled_task}`
+    : REPLY_TASK_PROMPT;
 
   const messages: Anthropic.MessageParam[] = [
     {
@@ -300,9 +325,7 @@ async function runLoop({
 
   ${recruitment_prompt}
 
-  Before replying to caregiver, follow report to slack instruction from above.
-  Using above conversation history, write message what to reply.
-  Communicate with person and send message using 'send_whatsapp_message' tool.
+  ${task_prompt}
 `,
     },
   ];

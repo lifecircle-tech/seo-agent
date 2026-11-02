@@ -10,10 +10,14 @@ export interface SlackConversation extends RowDataPacket {
   channel_id: string;
   thread_ts: string;
   message: string;
-  status: string;
+  status: SlackConversationStatus;
   created_at: Date;
   updated_at: Date;
 }
+
+// open: raised, or reopened. resolved: team says it is sorted, waiting for
+// the user to confirm. closed: the user confirmed.
+export type SlackConversationStatus = "open" | "resolved" | "closed";
 
 export interface SlackReply extends RowDataPacket {
   id: number;
@@ -168,6 +172,44 @@ async function updateSlackRepliesRelayed(ids: number[]) {
   );
 }
 
+async function updateSlackConversationStatus(
+  id: number,
+  status: SlackConversationStatus,
+) {
+  await madhavi_pool.query<ResultSetHeader>(
+    `UPDATE life_digital_slack_conversation SET status = ? WHERE id = ?;`,
+    [status, id],
+  );
+}
+
+export interface ActiveEscalation extends RowDataPacket {
+  hp_unique_id: number;
+  chat_id: string;
+  purpose: string;
+  agent_key: string | null;
+}
+
+// Escalations (report threads) not closed yet and raised in the last
+// `max_age_days`, newest first. Only users with a WhatsApp chat record,
+// so the agent can find them from the chat.
+async function getActiveEscalations(max_age_days: number) {
+  const [rows] = await madhavi_pool.query<ActiveEscalation[]>(
+    `
+      SELECT sc.hp_unique_id, cm.chat_id, sc.purpose, sc.agent_key
+      FROM life_digital_slack_conversation sc
+      JOIN life_digital_cm_conversation cm ON cm.hp_unique_id = sc.hp_unique_id
+      WHERE sc.purpose = 'report'
+        AND sc.status <> 'closed'
+        AND sc.created_at >= NOW() - INTERVAL ? DAY
+        AND cm.chat_id IS NOT NULL
+      ORDER BY sc.created_at DESC;
+    `,
+    [max_age_days],
+  );
+
+  return rows;
+}
+
 export {
   insertSlackConversation,
   getSlackConversationByThread,
@@ -176,4 +218,6 @@ export {
   insertSlackReply,
   getSlackRepliesByConversationIds,
   updateSlackRepliesRelayed,
+  updateSlackConversationStatus,
+  getActiveEscalations,
 };

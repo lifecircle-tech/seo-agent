@@ -79,6 +79,7 @@ async function getCaregiverProfileStatus(cg_id: number) {
         missing_documents: missing_documents.length
           ? missing_documents
           : undefined,
+        background_verification_status: cg_profile.bgv_status,
       };
     }
 
@@ -134,6 +135,7 @@ async function getCaregiverProfileStatus(cg_id: number) {
       })),
       current_stage: cg_profile.current_stage,
       created_on: new Date(cg_profile.created_on).toISOString(),
+      background_verification_status: cg_profile.bgv_status,
     };
   } catch (err) {
     logger.error("[getCaregiverProfileStatus]", err);

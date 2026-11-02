@@ -357,7 +357,7 @@ CREATE TABLE IF NOT EXISTS life_digital_slack_conversation (
     channel_id   VARCHAR(32)     NOT NULL,
     thread_ts    VARCHAR(32)     NOT NULL,
     message      TEXT            NOT NULL, -- agent's original Slack message
-    status       VARCHAR(20)     NOT NULL DEFAULT 'open', -- open, resolved
+    status       VARCHAR(20)     NOT NULL DEFAULT 'open', -- open, resolved, closed
     created_at   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
                                    ON UPDATE CURRENT_TIMESTAMP,
@@ -404,7 +404,7 @@ CREATE TABLE IF NOT EXISTS life_digital_agent_run (
     caregiver_phone         VARCHAR(20)     NULL,
     chat_id                 VARCHAR(16)     NULL,
     agent_key               VARCHAR(150)    NOT NULL,
-    trigger_source          VARCHAR(30)     NOT NULL, -- caregiver_message, slack_reply, scheduled_outreach
+    trigger_source          VARCHAR(30)     NOT NULL, -- caregiver_message, slack_reply, scheduled_outreach, weekly_follow_up, escalation_follow_up
     status                  VARCHAR(20)     NOT NULL DEFAULT 'running', -- running, completed, failed
     last_caregiver_message  TEXT            NULL,
     reply_message           TEXT            NULL, -- last WhatsApp message the agent sent

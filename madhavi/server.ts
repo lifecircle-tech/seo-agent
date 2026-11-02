@@ -25,15 +25,24 @@ import {
   markOverdueNoResponse,
   recordCaregiverReply,
 } from "./services/lc-recruitment.service";
+import {
+  getWeeklyFollowUpChats,
+  type FollowUpChat,
+} from "./services/lc-follow-up.service";
+import { getActiveEscalationChats } from "./services/lc-slack-conversation.service";
+import type { AgentRunTrigger } from "./models/lc-agent-audit.model";
 
 // Debounce window: if more messages arrive for the same chat within this
 // window, they collapse into a single agent run after the last one.
 const AGENT_RUN_DEBOUNCE_MS = 4000;
 
+type AgentRunner = (chat_id: string) => Promise<any>;
+
 type ChatRunState = {
   timer?: NodeJS.Timeout;
   running: boolean;
-  pendingRerun: boolean;
+  // Latest run requested while one was in flight, run after it
+  pendingAgent?: AgentRunner;
 };
 
 const chatRunStates = new Map<string, ChatRunState>();
@@ -41,22 +50,31 @@ const chatRunStates = new Map<string, ChatRunState>();
 function getChatRunState(chat_id: string): ChatRunState {
   let state = chatRunStates.get(chat_id);
   if (!state) {
-    state = { running: false, pendingRerun: false };
+    state = { running: false };
     chatRunStates.set(chat_id, state);
   }
   return state;
 }
 
+function finishAgentRun(chat_id: string, state: ChatRunState) {
+  state.running = false;
+  const next = state.pendingAgent;
+  if (next) {
+    state.pendingAgent = undefined;
+    triggerAgentRun(chat_id, state, next);
+  }
+}
+
 // Runs the agent for a chat, ensuring only one run is ever in flight per
 // chat_id. If a message arrives while a run is already in progress, it
-// marks a rerun instead of starting a second concurrent run.
+// queues a rerun instead of starting a second concurrent run.
 function triggerAgentRun(
   chat_id: string,
   state: ChatRunState,
-  agent: (chat_id: string) => Promise<any>,
+  agent: AgentRunner,
 ) {
   if (state.running) {
-    state.pendingRerun = true;
+    state.pendingAgent = agent;
     return;
   }
 
@@ -65,13 +83,44 @@ function triggerAgentRun(
     .catch((err) => {
       logger.error(`Agent run failed for chat ${chat_id}:`, err);
     })
-    .finally(() => {
-      state.running = false;
-      if (state.pendingRerun) {
-        state.pendingRerun = false;
-        triggerAgentRun(chat_id, state, agent);
-      }
-    });
+    .finally(() => finishAgentRun(chat_id, state));
+}
+
+// Runs a scheduled agent run for a chat in the same per-chat queue, and
+// resolves when it is done. Skipped when a run for the chat is already
+// waiting or in flight, as that run sees the same conversation.
+async function runScheduledAgent(chat_id: string, agent: AgentRunner) {
+  const state = getChatRunState(chat_id);
+  if (state.running || state.timer) return false;
+
+  state.running = true;
+  try {
+    await agent(chat_id);
+    return true;
+  } catch (err) {
+    logger.error(`Scheduled agent run failed for chat ${chat_id}:`, err);
+    return false;
+  } finally {
+    finishAgentRun(chat_id, state);
+  }
+}
+
+// One caregiver at a time, so a scheduled cycle does not flood the model
+// API or WhatsApp.
+async function runFollowUps(
+  name: string,
+  chats: FollowUpChat[],
+  trigger_source: AgentRunTrigger,
+) {
+  let ran = 0;
+  for (const { chat_id, agent_key } of chats) {
+    const done = await runScheduledAgent(chat_id, (id) =>
+      lcAgent(id, agent_key, trigger_source),
+    );
+    if (done) ran++;
+  }
+
+  logger.log(`${name}: ran ${ran} of ${chats.length} caregivers`);
 }
 
 // Debounces agent runs per chat_id so that a burst of incoming messages
@@ -138,10 +187,50 @@ cron.schedule(
   },
 );
 
+// Monday 9:30 AM IST: welfare check-in with caregivers whose last
+// conversation was over a week ago. Caregivers who have not replied for 3
+// weeks are left alone.
+cron.schedule(
+  "30 9 * * 1",
+  async () => {
+    try {
+      const chats = await getWeeklyFollowUpChats();
+      await runFollowUps("Weekly follow-up", chats, "weekly_follow_up");
+    } catch (err) {
+      logger.error("Weekly follow-up failed:", err);
+    }
+  },
+  {
+    timezone: "Asia/Kolkata",
+    name: "Weekly agent reach out",
+    noOverlap: true,
+  },
+);
+
+// 10 AM and 4 PM IST: run the handling agent for caregivers with an open
+// escalation, so care team updates in the Slack thread reach them.
+cron.schedule(
+  "0 10,16 * * *",
+  async () => {
+    try {
+      const chats = await getActiveEscalationChats();
+      await runFollowUps("Escalation follow-up", chats, "escalation_follow_up");
+    } catch (err) {
+      logger.error("Escalation follow-up failed:", err);
+    }
+  },
+  {
+    timezone: "Asia/Kolkata",
+    name: "Escalation follow-up",
+    noOverlap: true,
+  },
+);
+
 // Every 15 minutes: caregivers contacted for a booking who have not
 // replied within the reply window are marked 'no_response'. DB only, no
 // messages are sent.
 cron.schedule("*/15 9-17 * * *", () => markOverdueNoResponse(), {
+  timezone: "Asia/Kolkata",
   name: "Recruitment No Response",
   noOverlap: true,
 });

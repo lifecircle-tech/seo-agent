@@ -90,13 +90,13 @@ export function extractFAQSection(html: string): string {
   if (!items.length) {
     const questionSel =
       '[class*="faq-question"], [class*="accordion-title"], [class*="accordion-header"], ' +
-      '[class*="question"], [class*="faq-title"]';
+      '[class*="question"], [class*="faq-title"], [class*="faq-q"]';
 
     $(questionSel).each((_: any, qEl: any) => {
       const question = $(qEl).text().replace(/\s+/g, " ").trim();
       const answerSel =
         '[class*="faq-answer"], [class*="accordion-content"], [class*="accordion-body"], ' +
-        '[class*="answer"], [class*="faq-content"]';
+        '[class*="answer"], [class*="faq-content"], [class*="faq-a"]';
       const answer = (
         $(qEl).next(answerSel).text() ||
         $(qEl).siblings(answerSel).first().text() ||

@@ -23,7 +23,9 @@ export type AgentRunTrigger =
   | "scheduled_outreach"
   | "profile_created"
   | "profile_updated"
-  | "scheduled_followup";
+  | "scheduled_followup"
+  | "weekly_follow_up"
+  | "escalation_follow_up";
 
 export interface AgentRun extends RowDataPacket {
   id: number;

@@ -2,14 +2,14 @@ import { App, SocketModeReceiver, type webApi } from "@slack/bolt";
 import { logger } from "../utils/logger";
 import {
   getSlackAgentChannel,
-  getSlackChannel,
   type SlackAgentChannelConfig,
 } from "../config/slack-channels";
 import { runSlackChannelAgent } from "../orchestrators/lc-slack-agent";
 import { getCMChatByHpUniqueId } from "../services/lc-cm-conversation.service";
-import { saveSlackThreadReply } from "../services/lc-slack-conversation.service";
-
-const DEFAULT_AGENT_KEY = "welfare_manager";
+import {
+  getThreadAgentKey,
+  saveSlackThreadReply,
+} from "../services/lc-slack-conversation.service";
 
 export type SlackReplyHandler = (args: {
   chat_id: string;
@@ -246,10 +246,7 @@ export async function startSlackBridge(onReply: SlackReplyHandler) {
         return;
       }
 
-      const agent_key =
-        getSlackChannel(conversation.purpose)?.handler_agent_key ??
-        conversation.agent_key ??
-        DEFAULT_AGENT_KEY;
+      const agent_key = getThreadAgentKey(conversation);
 
       logger.log(
         `[slack-bridge] reply on thread ${conversation.id}, running ${agent_key} for chat ${chat_id}`,

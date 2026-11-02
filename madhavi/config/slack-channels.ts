@@ -86,6 +86,7 @@ function agentChannels(): SlackAgentChannelConfig[] {
       agent_key: "Search_placement_manager",
       tools: [
         "caregiver_llm_search",
+        "search_carejobs_profile",
         "get_booking_details",
         "get_booking_recruitment",
         "check_caregivers_for_booking",

@@ -18,6 +18,7 @@ import {
   getCaregiverSupportTickets,
 } from "../services/lc-support.service.js";
 import { getBookingDetails } from "../services/lc-booking.service.js";
+import { getCarejobsCandidates } from "../services/lc_booking.service.js";
 import { logger } from "../../madhavi/utils/logger.js";
 
 // Caregiver tools
@@ -46,6 +47,7 @@ export function registerCaregiver(server: McpServer) {
             missing_data: z.array(z.string()).optional(),
             current_stage: z.string(),
             missing_documents: z.array(z.string()).optional(),
+            background_verification_status: z.string().nullable(),
           }),
           z.object({
             profile_status: z.string(),
@@ -80,6 +82,7 @@ export function registerCaregiver(server: McpServer) {
               z.object({ name: z.string(), relation: z.string() }),
             ),
             current_stage: z.string(),
+            background_verification_status: z.string().nullable(),
             created_on: z.string(),
           }),
           z.null(),
@@ -204,6 +207,54 @@ export function registerCaregiver(server: McpServer) {
         content: [{ type: "text", text: JSON.stringify(structuredContent) }],
         structuredContent,
         isError: !Array.isArray(result),
+      };
+    },
+  );
+  
+  server.registerTool(
+    "search_carejobs_profile",
+    {
+      title: "Search CareJobs Profiles",
+      description:
+        "Get CareJobs applicants still in the hiring pipeline (stage NEW_LEAD, SCREENING or SUPERVISOR_REVIEW) to find a potential caregiver for a lead: name, gender, date of birth, marital status, phone, current city, languages, shift preference, willingness to relocate, current stage and screening score/result. These are applicants, not onboarded caregivers, so they have no cg_id",
+      outputSchema: z.object({
+        carejobs_candidates: z
+          .array(
+            z.object({
+              name: z.string().nullable(),
+              date_of_birth: z.string().nullable(),
+              age: z.number().nullable(),
+              gender: z.string().nullable(),
+              marital_status: z.string().nullable(),
+              phone_number: z.string().nullable(),
+              current_city: z.string().nullable(),
+              languages: z.string().nullable(),
+              shift_preference: z.string().nullable(),
+              service_type: z.string().nullable(),
+              willing_to_relocate: z.string().nullable(),
+              current_stage: z.string().nullable(),
+              refered_by: z.string().nullable(),
+            }),
+          )
+          .nullable(),
+      }),
+    },
+    async () => {
+      const result = await getCarejobsCandidates();
+      const toIso = (d: unknown) =>
+        d ? new Date(d as string).toISOString() : null;
+      const candidates = result
+        ? result.map((c) => ({
+            ...c,
+            date_of_birth: toIso(c.date_of_birth),
+            willing_to_relocate: c.willing_to_relocate,
+          }))
+        : null;
+      logger.debug("[search_carejobs_candidates]", candidates?.length);
+
+      return {
+        content: [{ type: "text", text: JSON.stringify({ carejobs_candidates: candidates }) }],
+        structuredContent: { carejobs_candidates: candidates },
       };
     },
   );
