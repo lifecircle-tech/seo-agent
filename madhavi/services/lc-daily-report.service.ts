@@ -279,13 +279,13 @@ function formatSlackReport(metrics: DailyMetrics, narrative: string | null) {
 async function postReportToSlack(date: string, text: string) {
   const token =
     process.env.SLACK_BOT_TOKEN_MADHAVI ?? process.env.SLACK_BOT_TOKEN;
-  const channel = "C0C5688UBR8";
-    // process.env.MADHAVI_DAILY_REPORT_CHANNEL_ID ??
-    // getSlackChannel("report")?.channel_id;
+  const channel =
+    process.env.MADHAVI_REPORT_CHANNEL_ID ??
+    getSlackChannel("report")?.channel_id;
 
   if (!token || !channel) {
     logger.warn(
-      "[dailyReport] Slack bot token or MADHAVI_DAILY_REPORT_CHANNEL_ID not set, report not posted",
+      "[dailyReport] Slack bot token or MADHAVI_REPORT_CHANNEL_ID not set, report not posted",
     );
     return;
   }

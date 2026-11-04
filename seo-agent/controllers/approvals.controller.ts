@@ -83,7 +83,12 @@ export async function createApproval(
 }
 
 // ── SORT ──────────────────────────────────────────────────────────────
-const SORTABLE_COLUMNS = new Set(["title", "priority", "created_at", "actioned_at"]);
+const SORTABLE_COLUMNS = new Set([
+  "title",
+  "priority",
+  "created_at",
+  "actioned_at",
+]);
 
 // ── LIST ──────────────────────────────────────────────────────────────
 export async function listApprovals(filters: {
@@ -115,7 +120,7 @@ export async function listApprovals(filters: {
 
   const sortBy =
     filters.sort_by && SORTABLE_COLUMNS.has(filters.sort_by)
-      ? "a."+filters.sort_by
+      ? "a." + filters.sort_by
       : "a.created_at";
   const sortDir = filters.sort_order === "asc" ? "ASC" : "DESC";
   const order = `ORDER BY ${sortBy} ${sortDir}`;
@@ -205,11 +210,16 @@ export async function approveApproval(
   // Publish what was approved: the human-edited content when "Edit & Approve" was
   // used. (Previously this read approval.updated_content, which was loaded before
   // the UPDATE above, so edits were saved but the unedited AI version was published.)
-  const approvedContent = (contentToStore ?? undefined) as Record<string, any> | undefined;
+  const approvedContent = (contentToStore ?? undefined) as
+    | Record<string, any>
+    | undefined;
 
   // If the approved item is a meta_rewrite, push the change to WordPress.
   if (approval.type === "meta_rewrite") {
-    const c = { ...(approval.original_content ?? {}), ...(approvedContent ?? {}) } as {
+    const c = {
+      ...(approval.original_content ?? {}),
+      ...(approvedContent ?? {}),
+    } as {
       // Use updated_content if present, else original
       url?: string;
       suggested_title?: string;
@@ -269,7 +279,10 @@ export async function approveApproval(
       urls:
         approval.type === "meta_rewrite"
           ? [approvedContent?.url ?? approval.original_content?.url]
-          : [approvedContent?.recommended_primary_url, ...(approvedContent?.competing_urls ?? [])],
+          : [
+              approvedContent?.recommended_primary_url,
+              ...(approvedContent?.competing_urls ?? []),
+            ],
     });
   }
 
