@@ -84,6 +84,7 @@ export type AuditedAction = {
 // "reference" itself.
 export function getActionType(tool_name: string) {
   if (tool_name === "send_whatsapp_message") return "whatsapp_message";
+  if (tool_name === "send_whatsapp_template") return "whatsapp_message";
   if (tool_name === "create_support_ticket") return "support_ticket";
   if (tool_name === "reply_in_slack_thread") return "slack_thread_update";
   if (tool_name === "update_recruitment_status") return "recruitment_update";
@@ -147,7 +148,7 @@ async function classifyConversation(args: {
   actions: AuditedAction[];
   final_response: string;
 }) {
-  // Timelines returns the newest message first
+  // Chat history is newest first
   const recent_messages = args.chat_messages
     .slice(0, CLASSIFY_MESSAGE_LIMIT)
     .reverse()

@@ -42,3 +42,6 @@ venv/
 
 # Prisma
 prisma/migrations/
+
+# WhatsApp service media files
+storage/

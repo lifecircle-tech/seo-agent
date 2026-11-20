@@ -1,4 +1,4 @@
-import { getChatMessages } from "./timelines.service.js";
+import { getChatMessages } from "./whatsapp.service";
 import {
   getDigitalCMChatByChatId,
   getDigitalCMChatByHpUniqueId,

@@ -3,10 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp";
 import { logger } from "../utils/logger";
-import {
-  getChatMessages,
-  resolveChatIdLater,
-} from "../services/timelines.service";
+import { getChatMessages } from "../../MCPs/services/whatsapp.service";
 import {
   getCareGiverActiveBookingDetails,
   getCareGiverDetails,
@@ -14,7 +11,7 @@ import {
   getCaregiversDueForRegistrationFollowup,
 } from "../services/lc-caregivers.service";
 import {
-  getCMChatByChatId,
+  getCMChatByWaChatId,
   getCMChatByHpUniqueId,
   getCMChatHistory,
   upsertCMChat,
@@ -124,6 +121,24 @@ When you call it:
 - the tool sends the confirmation itself; do not send any other message afterwards
 `;
 
+// Kept in code: WhatsApp's rule, not a behaviour choice. Added for agents
+// that can message on WhatsApp.
+const WHATSAPP_TEMPLATE_PROMPT = `
+WHATSAPP 24-HOUR WINDOW:
+'send_whatsapp_message' only reaches a person who messaged in the last 24 hours. When it says the person has not, the only message you can send is an approved template:
+- Call 'list_whatsapp_templates' and choose the template whose text fits what you wanted to say. It is sent exactly as written, with only its parameters filled in, so read the whole text.
+- Fill every parameter from facts you have (caregiver info, booking, conversation). Never invent a value; if you do not have one, do not use that template.
+- Send it with 'send_whatsapp_template', at most one template per run.
+- If no template fits, send nothing and end with one line saying so. Do not call 'send_whatsapp_message' again for this person in this run.
+- Once the person replies, you can write freely again.
+`;
+
+// Tools whose successful call sent the caregiver a WhatsApp message
+const WHATSAPP_SEND_TOOLS = new Set([
+  "send_whatsapp_message",
+  "send_whatsapp_template",
+]);
+
 const REPLY_TASK_PROMPT = `Before replying to caregiver, follow report to slack instruction from above.
   Using above conversation history, write message what to reply.
   Communicate with person and send message using 'send_whatsapp_message' tool.`;
@@ -133,16 +148,23 @@ const REPLY_TASK_PROMPT = `Before replying to caregiver, follow report to slack 
 const SCHEDULED_TASK_PROMPT: Partial<Record<AgentRunTrigger, string>> = {
   weekly_follow_up: `SCHEDULED WEEKLY FOLLOW-UP:
   This run was started by the weekly scheduler, not by a new message. You have not talked with this person for over a week.
-  - Send one short, warm check-in with 'send_whatsapp_message', in the language of the conversation: ask how they are and how work is going.
-  - If something was left open in the conversation history (a concern, request or question), ask about that specifically.
-  - Pending care team replies above, if any, must be shared in this message.
-  - Do not repeat the wording of an earlier check-in. Do not report to Slack unless they raised something new that needs it.`,
+  - Send one short, warm check-in in the language of the conversation: ask how they are and how work is going.
+  - They have most likely not messaged in the last 24 hours, so send it as a template: follow WHATSAPP 24-HOUR WINDOW above and choose a check-in template. Use 'send_whatsapp_message' only if the conversation history shows a message from them in the last 24 hours.
+  - If something was left open in the conversation history (a concern, request or question), or care team replies above are pending, mention it when you write freely, or through a template parameter that is meant for it. Otherwise it waits until they reply.
+  - When you write freely, do not repeat the wording of an earlier check-in. Do not report to Slack unless they raised something new that needs it.`,
   escalation_follow_up: `SCHEDULED ESCALATION FOLLOW-UP:
   This run was started by the escalation scheduler, not by a new message. This person has an open escalation in the Slack threads above, read live from Slack.
   - Check the thread messages and their support tickets ('get_caregiver_support_requests') for anything the person has not been told yet.
   - A care team update, date or resolution not shared yet: share it with 'send_whatsapp_message', attributed to the team, following your escalation rules. When it is resolved, ask them to confirm, and post RESOLVED in the thread.
   - A message from the person that you have not answered: answer it, and post CLOSED or REOPENED in the thread when it applies.
   - Nothing new since your last message to the person: send NO WhatsApp message and post NOTHING in Slack. Never send a "still pending" nudge. End with one line saying why nothing was sent.`,
+  scheduled_outreach: `SCHEDULED FIRST OUTREACH:
+  This run was started by the outreach scheduler, not by a new message. This caregiver has an active booking and you have never talked with them, so the empty conversation history is expected. Your job in this run is to START the conversation.
+  - Send one short, warm first message: introduce yourself as Madhavi from Life Circle, their caregiving support, and ask how they are and how work is going. Use their first name.
+  - They have never messaged you, so 'send_whatsapp_message' cannot reach them. Go straight to WHATSAPP 24-HOUR WINDOW above: choose an introduction / first-contact template and send it with 'send_whatsapp_template'.
+  - An empty history is not missing data and not a reason to skip the message or to call 'ask_missing_in_slack'.
+  - Nothing has been raised yet: do not create a ticket and do not report to Slack.
+  - Do not mention milestones, salary, leave or anything you have no data for.`,
 };
 
 export async function connectMcp() {
@@ -225,6 +247,13 @@ async function runLoop({
   mcp_tools.add("get_caregiver_support_requests");
   mcp_tools.add("record_messaging_opt_out");
 
+  // Templates are the only messages allowed outside WhatsApp's 24-hour
+  // window, so an agent that can message can also send them.
+  if (mcp_tools.has("send_whatsapp_message")) {
+    mcp_tools.add("list_whatsapp_templates");
+    mcp_tools.add("send_whatsapp_template");
+  }
+
   // Care team replies from Slack threads raised about this caregiver
   const slack_context = hp_unique_id
     ? await getSlackPromptContext(hp_unique_id)
@@ -287,6 +316,9 @@ async function runLoop({
     });
 
   let tools_prompt = TOOLS_PROMPT + "\n" + OPT_OUT_PROMPT;
+  if (mcp_tools.has("send_whatsapp_template")) {
+    tools_prompt += "\n" + WHATSAPP_TEMPLATE_PROMPT;
+  }
 
   if (document_tools.length > 0 || skill_tools.length > 0) {
     tools_prompt +=
@@ -451,29 +483,29 @@ async function runLoop({
               ?.status === "error",
         });
 
-        if (toolCall.name == "send_whatsapp_message" && !result.isError) {
+        if (WHATSAPP_SEND_TOOLS.has(toolCall.name) && !result.isError) {
           const structuredContent = result.structuredContent as
             | Record<string, unknown>
             | undefined;
           const chat_id = structuredContent?.["chat_id"] as string | undefined;
-          const message_id = structuredContent?.["message_id"] as
-            | string
-            | undefined;
           logger.log("chat ID ", chat_id);
 
           if (structuredContent?.status == "ok") {
-            markSlackRepliesRelayed(slack_context.pending_reply_ids);
+            // A template's fixed text does not carry the care team's
+            // replies: they stay pending until a free-form message.
+            if (toolCall.name === "send_whatsapp_message") {
+              markSlackRepliesRelayed(slack_context.pending_reply_ids);
+            }
 
-            const cg_id = caregiver?.caregiver["cg_id"] as number;
-            const saveChat = (chat_id: string) =>
-              upsertCMChat({ cg_id, chat_id });
-
-            // Timelines may not have assigned the chat yet: resolve it in the
-            // background so the caregiver's reply is still recognised.
+            // Saved so the caregiver's reply is recognised. chat_id is the
+            // WhatsApp chat id (the caregiver's WhatsApp number).
             if (chat_id) {
               run_chat_id = chat_id;
-              saveChat(chat_id);
-            } else if (message_id) resolveChatIdLater(message_id, saveChat);
+              upsertCMChat({
+                cg_id: caregiver?.caregiver["cg_id"] as number,
+                wa_chat_id: chat_id,
+              });
+            }
           }
         }
 
@@ -661,7 +693,7 @@ export async function startAgent(
   try {
     const chat_history = await getChatMessages(chat_id);
 
-    const cm_chat_record = await getCMChatByChatId(chat_id);
+    const cm_chat_record = await getCMChatByWaChatId(chat_id);
     const caregiver = await getCareGiverDetails(
       cm_chat_record?.hp_unique_id as number,
     );
@@ -694,7 +726,7 @@ export async function multiAgentRouter(chat_id: string) {
   const chat_history = await getChatMessages(chat_id);
   const messages = chat_history
     .slice(0, 6)
-    .map((message: any) => {
+    .map((message): Anthropic.MessageParam => {
       return message.sender === "madhavi"
         ? { role: "assistant", content: message.message }
         : { role: "user", content: message.message };

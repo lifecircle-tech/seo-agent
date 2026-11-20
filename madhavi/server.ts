@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { timingSafeEqual } from "node:crypto";
 import { isCaregiverPhoneNumber } from "./services/lc-caregivers.service";
 import { isLCMemberPhoneNumber } from "./services/lc-caremanager.service";
 import {
@@ -14,7 +15,10 @@ import {
 
 import cron from "node-cron";
 import { logger } from "./utils/logger.js";
-import { getDigitalCMChatByChatId } from "./models/lc-cm-conversation.model";
+import {
+  findCMChatForWhatsappMessage,
+  migrateCMChatsToWhatsapp,
+} from "./services/lc-cm-conversation.service";
 import { startSlackBridge } from "./slack/slack-bridge";
 import {
   generateDailyReport,
@@ -235,7 +239,22 @@ cron.schedule("*/15 9-17 * * *", () => markOverdueNoResponse(), {
   noOverlap: true,
 });
 
-export function madhavi_server(app: Express) {
+// The WhatsApp service sends INTERNAL_API_TOKEN with each event it forwards.
+function isFromWhatsappService(token: string | undefined) {
+  const expected = process.env.INTERNAL_API_TOKEN;
+  if (!expected || !token) return false;
+  const a = Buffer.from(token);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export async function madhavi_server(app: Express) {
+  // Conversations from Timelines get their WhatsApp chat id (from the
+  // caregiver's phone) before scheduled runs look for it.
+  // migrateCMChatsToWhatsapp().catch((err) => {
+  //   logger.error("WhatsApp chat id migration failed:", err);
+  // });
+
   // lcAgentConversation().catch((err) => {
   //   console.error("startAgentConversation failed:", err);
   // });
@@ -256,39 +275,51 @@ export function madhavi_server(app: Express) {
     return;
   });
 
+  // Received WhatsApp messages, forwarded by the WhatsApp service
+  // (whatsapp/, WHATSAPP_FORWARD_WEBHOOK_URLS).
   app.post("/digital-manager", async (req, res) => {
-    const body = req.body;
+    if (!isFromWhatsappService(req.get("x-internal-token"))) {
+      logger.warn(
+        `[digital-manager] rejected event without a valid token from ${req.ip}`,
+      );
+      res.sendStatus(401);
+      return;
+    }
 
+    const body = req.body;
     if (
       body.event_type === "message:received:new" &&
       body.chat &&
       !body.chat.is_group &&
       body.chat.phone
     ) {
-      const chat_id = body.chat.chat_id;
-      const is_chat_exists = await getDigitalCMChatByChatId(chat_id);
+      // The WhatsApp chat id (the caregiver's WhatsApp number)
+      const chat_id = String(body.chat.chat_id);
+      const is_chat_exists = await findCMChatForWhatsappMessage(
+        chat_id,
+        String(body.chat.phone),
+      );
 
       if (!!is_chat_exists) {
-        logger.debug("Received request body:", body);
         // const is_LC_member = await isLCMemberPhoneNumber(body.chat.phone);
         const is_LC_caregiver = await isCaregiverPhoneNumber(body.chat.phone);
 
         // if (is_LC_member) {
         if (is_LC_caregiver) {
-          const hp_unique_id = is_chat_exists.hp_unique_id;
-          const phone = String(body.chat.phone);
+        const hp_unique_id = is_chat_exists.hp_unique_id;
+        const phone = String(body.chat.phone);
 
-          // A reply to a job offer stops it from going 'no_response';
-          // recorded before the agent run so its context is current.
-          await recordCaregiverReply(hp_unique_id);
+        // A reply to a job offer stops it from going 'no_response';
+        // recorded before the agent run so its context is current.
+        await recordCaregiverReply(hp_unique_id);
 
-          // Opt-out keywords and opted-out people are handled before any
-          // agent runs.
-          scheduleAgentRun(chat_id, async (id) => {
-            if (await handleInboundOptOut({ chat_id: id, hp_unique_id, phone }))
-              return;
-            return multiAgentRouter(id);
-          });
+        // Opt-out keywords and opted-out people are handled before any
+        // agent runs.
+        scheduleAgentRun(chat_id, async (id) => {
+          if (await handleInboundOptOut({ chat_id: id, hp_unique_id, phone }))
+            return;
+          return multiAgentRouter(id);
+        });
         }
         // } else {
         // scheduleAgentRun(chat_id, tenantAgent);

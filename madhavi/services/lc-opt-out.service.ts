@@ -1,5 +1,5 @@
 import { logger } from "../utils/logger";
-import { getChatMessages, sendMessage } from "./timelines.service";
+import { getChatMessages, sendMessage } from "../../MCPs/services/whatsapp.service";
 import { getCMChatByHpUniqueId } from "./lc-cm-conversation.service";
 import { getCaregiverPhoneByHpUniqueId } from "../models/lc-caregivers.model";
 import {
@@ -168,14 +168,14 @@ async function optOutFromAgent({
   reason: string;
 }): Promise<{ status: "ok" | "error"; message: string }> {
   const cm_chat = await getCMChatByHpUniqueId(hp_unique_id);
-  if (!cm_chat?.chat_id) {
+  if (!cm_chat?.wa_chat_id) {
     return {
       status: "error",
       message: `No WhatsApp chat found for cg_id ${hp_unique_id}. Opt-out not recorded.`,
     };
   }
 
-  const chat_history: ChatMessage[] = await getChatMessages(cm_chat.chat_id);
+  const chat_history: ChatMessage[] = await getChatMessages(cm_chat.wa_chat_id);
   const quote = normalizeMessage(user_message);
   const matched = chat_history
     .filter((m) => m.sender === "caregiver")
@@ -201,7 +201,7 @@ async function optOutFromAgent({
   await optOutPhone({
     phone,
     hp_unique_id,
-    chat_id: cm_chat.chat_id,
+    chat_id: cm_chat.wa_chat_id,
     source: "agent",
     user_message: matched.message,
     reason,

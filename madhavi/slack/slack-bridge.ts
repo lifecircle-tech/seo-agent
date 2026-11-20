@@ -225,9 +225,10 @@ export async function startSlackBridge(onReply: SlackReplyHandler) {
         return;
       }
 
-      const chat_id =
-        conversation.chat_id ??
-        (await getCMChatByHpUniqueId(conversation.hp_unique_id))?.chat_id;
+      // The caregiver's WhatsApp chat. The thread's own chat_id is not used:
+      // threads opened before the move to WhatsApp hold a Timelines id.
+      const chat_id = (await getCMChatByHpUniqueId(conversation.hp_unique_id))
+        ?.wa_chat_id;
 
       if (!chat_id) {
         logger.warn(

@@ -195,13 +195,13 @@ export interface ActiveEscalation extends RowDataPacket {
 async function getActiveEscalations(max_age_days: number) {
   const [rows] = await madhavi_pool.query<ActiveEscalation[]>(
     `
-      SELECT sc.hp_unique_id, cm.chat_id, sc.purpose, sc.agent_key
+      SELECT sc.hp_unique_id, cm.wa_chat_id AS chat_id, sc.purpose, sc.agent_key
       FROM life_digital_slack_conversation sc
       JOIN life_digital_cm_conversation cm ON cm.hp_unique_id = sc.hp_unique_id
       WHERE sc.purpose = 'report'
         AND sc.status <> 'closed'
         AND sc.created_at >= NOW() - INTERVAL ? DAY
-        AND cm.chat_id IS NOT NULL
+        AND cm.wa_chat_id IS NOT NULL
       ORDER BY sc.created_at DESC;
     `,
     [max_age_days],
