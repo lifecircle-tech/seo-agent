@@ -117,7 +117,7 @@ async function getDigitalCMChatsInactiveFor(hours: number) {
       FROM life_digital_cm_conversation
       WHERE wa_chat_id IS NOT NULL
         AND last_message_timestamp < NOW() - INTERVAL ? HOUR
-      ORDER BY last_message_timestamp ASC;
+      ORDER BY last_message_timestamp DESC;
     `,
     [hours],
   );

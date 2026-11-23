@@ -656,7 +656,6 @@ export async function startAgentConversation() {
       for await (let cg of batch) {
         const caregiver = await getCareGiverDetails(cg.cg_id);
         const chat_history = await getCMChatHistory(cg.cg_id);
-        logger.debug("Caregiver " + cg.cg_id, caregiver);
 
         const resp = await runLoop({
           mcpClient,
@@ -697,8 +696,6 @@ export async function startAgent(
     const caregiver = await getCareGiverDetails(
       cm_chat_record?.hp_unique_id as number,
     );
-
-    logger.debug("Caregiver " + chat_id, caregiver);
 
     return await runLoop({
       mcpClient,

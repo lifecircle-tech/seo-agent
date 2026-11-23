@@ -306,20 +306,20 @@ export async function madhavi_server(app: Express) {
 
         // if (is_LC_member) {
         if (is_LC_caregiver) {
-        const hp_unique_id = is_chat_exists.hp_unique_id;
-        const phone = String(body.chat.phone);
+          const hp_unique_id = is_chat_exists.hp_unique_id;
+          const phone = String(body.chat.phone);
 
-        // A reply to a job offer stops it from going 'no_response';
-        // recorded before the agent run so its context is current.
-        await recordCaregiverReply(hp_unique_id);
+          // A reply to a job offer stops it from going 'no_response';
+          // recorded before the agent run so its context is current.
+          await recordCaregiverReply(hp_unique_id);
 
-        // Opt-out keywords and opted-out people are handled before any
-        // agent runs.
-        scheduleAgentRun(chat_id, async (id) => {
-          if (await handleInboundOptOut({ chat_id: id, hp_unique_id, phone }))
-            return;
-          return multiAgentRouter(id);
-        });
+          // Opt-out keywords and opted-out people are handled before any
+          // agent runs.
+          scheduleAgentRun(chat_id, async (id) => {
+            if (await handleInboundOptOut({ chat_id: id, hp_unique_id, phone }))
+              return;
+            return multiAgentRouter(id);
+          });
         }
         // } else {
         // scheduleAgentRun(chat_id, tenantAgent);

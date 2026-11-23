@@ -233,12 +233,12 @@ export async function approveApproval(
       }
     }
 
-    logger.debug("Updating WordPress Meta...", c); // url could be missing, checking...
-    if (c.url && c.suggested_title && c.suggested_description) {
+    logger.debug("Updating WordPress Meta...", c);
+    if ((c.url || approval.original_content.url) && c.suggested_title && c.suggested_description) {
       logger.debug("Check condition Passed");
       const wpResult = await updatePageMeta(
         approval.site_id,
-        c.url,
+        c.url || approval.original_content.url,
         c.suggested_title,
         c.suggested_description,
       );
