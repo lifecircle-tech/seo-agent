@@ -7,7 +7,7 @@
     "start": "node dist/server.js",
     "start:whatsapp": "node dist/whatsapp/server.js",
     "dev": "tsx watch server.ts",
-    "dev:whatsapp": "tsx watch whatsapp/server.ts",
+    "dev:whatsapp": "tsx whatsapp/server.ts",
     "build": "tsc && node -e \"require('fs').cpSync('seo-agent/prompts','dist/seo-agent/prompts',{recursive:true,filter:(s)=>!s.endsWith('.ts')})\"",
     "inspect": "npx @modelcontextprotocol/inspector@latest"
   },
