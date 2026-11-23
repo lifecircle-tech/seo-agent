@@ -1,7 +1,7 @@
 import { logger } from "../utils/logger";
 import { getSlackChannel } from "../config/slack-channels";
 import {
-  getCMChatByChatId,
+  getCMChatByWaChatId,
   getCMChatByHpUniqueId,
   upsertCMChat,
 } from "./lc-cm-conversation.service";
@@ -71,7 +71,7 @@ async function recordSlackThread(args: {
   try {
     const chat_id =
       args.chat_id ??
-      (await getCMChatByHpUniqueId(args.hp_unique_id))?.chat_id ??
+      (await getCMChatByHpUniqueId(args.hp_unique_id))?.wa_chat_id ??
       null;
 
     return await insertSlackConversation({ ...args, chat_id });
@@ -94,7 +94,7 @@ async function linkWhatsappRecipientToSlackThread(args: {
   message: string;
 }) {
   try {
-    const cm_chat = await getCMChatByChatId(args.chat_id);
+    const cm_chat = await getCMChatByWaChatId(args.chat_id);
     const hp_unique_id =
       cm_chat?.hp_unique_id ??
       (await getCaregiverHpUniqueIdByPhone(args.phone));
@@ -108,7 +108,7 @@ async function linkWhatsappRecipientToSlackThread(args: {
 
     // The WhatsApp webhook only handles chats it has a record for
     if (!cm_chat) {
-      await upsertCMChat({ cg_id: hp_unique_id, chat_id: args.chat_id });
+      await upsertCMChat({ cg_id: hp_unique_id, wa_chat_id: args.chat_id });
     }
 
     return await recordSlackThread({ ...args, hp_unique_id });

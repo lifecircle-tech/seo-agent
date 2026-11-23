@@ -1,5 +1,5 @@
 import { logger } from "../utils/logger";
-import { getChatMessages } from "./timelines.service";
+import { getChatMessages } from "../../MCPs/services/whatsapp.service";
 import { getDigitalCMChatsInactiveFor } from "../models/lc-cm-conversation.model";
 import { getActiveEscalationChats } from "./lc-slack-conversation.service";
 
@@ -18,7 +18,7 @@ export type FollowUpChat = {
   agent_key: string;
 };
 
-// Timelines timestamps may be ISO strings or unix seconds / milliseconds.
+// Timestamps may be ISO strings or unix seconds / milliseconds.
 function toTime(value: unknown) {
   if (value == null || value === "") return NaN;
   const n = typeof value === "number" ? value : Number(value);
@@ -43,12 +43,11 @@ async function getWeeklyFollowUpChats(): Promise<FollowUpChat[]> {
   const due: FollowUpChat[] = [];
 
   for (const chat of chats) {
-    if (!chat.chat_id || escalated.has(chat.hp_unique_id)) continue;
+    if (!chat.wa_chat_id || escalated.has(chat.hp_unique_id)) continue;
 
     try {
       // Newest first
-      const history = await getChatMessages(chat.chat_id);
-
+      const history = await getChatMessages(chat.wa_chat_id);
       // A caregiver message the agent did not answer is not in the DB
       const last_message_at = toTime(history[0]?.timestamp);
       if (last_message_at >= inactive_since) continue;
@@ -62,12 +61,12 @@ async function getWeeklyFollowUpChats(): Promise<FollowUpChat[]> {
 
       due.push({
         hp_unique_id: chat.hp_unique_id,
-        chat_id: chat.chat_id,
+        chat_id: chat.wa_chat_id,
         agent_key: "welfare_manager",
       });
     } catch (err) {
       logger.error(
-        `[getWeeklyFollowUpChats] chat ${chat.chat_id} could not be checked`,
+        `[getWeeklyFollowUpChats] chat ${chat.wa_chat_id} could not be checked`,
         err,
       );
     }

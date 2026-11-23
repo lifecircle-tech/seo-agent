@@ -1,4 +1,4 @@
-import { getChatMessages } from "./timelines.service.js";
+import { getChatMessages } from "../../MCPs/services/whatsapp.service";
 import {
   upsertTenantsCmConversation,
   findTenantsCmConversationByCaregiverId,

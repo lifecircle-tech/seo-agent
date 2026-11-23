@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp";
 import { logger } from "../utils/logger";
-import { getChatMessages } from "../services/timelines.service";
+import { getChatMessages } from "../../MCPs/services/whatsapp.service";
 import { recordTenantAgentTokensUsage } from "../services/tenant-token-usage.service";
 import { getAllTenants } from "../services/tenant.service";
 import {
@@ -254,7 +254,11 @@ async function runLoop({
       .map((item) => item.text ?? "")
       .join("\n");
 
-    if (toolCall.name == "send_whatsapp_message" && !result.isError) {
+    if (
+      (toolCall.name == "send_whatsapp_message" ||
+        toolCall.name == "send_whatsapp_template") &&
+      !result.isError
+    ) {
       const structuredContent = result.structuredContent as
         | Record<string, unknown>
         | undefined;

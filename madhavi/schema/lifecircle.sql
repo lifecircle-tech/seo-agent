@@ -274,13 +274,15 @@ CREATE TABLE IF NOT EXISTS tenants_cm_conversation (
 CREATE TABLE IF NOT EXISTS life_digital_cm_conversation (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     hp_unique_id BIGINT NOT NULL,
-    chat_id VARCHAR(16) NULL,
+    chat_id VARCHAR(16) NULL,     -- Timelines chat id, from before the move to WhatsApp
+    wa_chat_id VARCHAR(16) NULL,  -- WhatsApp chat id: the caregiver's WhatsApp number (migrations/005)
     last_message_timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     started_at_timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_hp_unique_id (hp_unique_id),
     KEY idx_id (id),
-    KEY idx_hp_unique_id (hp_unique_id)
+    KEY idx_hp_unique_id (hp_unique_id),
+    KEY idx_wa_chat_id (wa_chat_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------

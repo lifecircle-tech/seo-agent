@@ -92,6 +92,8 @@ function agentChannels(): SlackAgentChannelConfig[] {
         "check_caregivers_for_booking",
         "contact_caregiver_for_booking",
         "message_booking_caregiver",
+        // Templates for caregivers outside WhatsApp's 24-hour window
+        "list_whatsapp_templates",
         "update_recruitment_status",
         "place_caregiver_for_booking",
         "close_booking_recruitment",

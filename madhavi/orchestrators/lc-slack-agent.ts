@@ -13,7 +13,6 @@ import {
 } from "../services/agent.service";
 import { recordTenantAgentTokensUsage } from "../services/tenant-token-usage.service";
 import { linkWhatsappRecipientToSlackThread } from "../services/lc-slack-conversation.service";
-import { resolveChatIdLater } from "../services/timelines.service";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -48,6 +47,7 @@ Message caregivers ONLY with these tools. 'send_whatsapp_message' and 'search_st
 - Staff confirm a caregiver: 'place_caregiver_for_booking' (it releases everyone else on the booking), then in the same run 'message_booking_caregiver' to the placed caregiver and to every released caregiver who was interested or awaiting a reply.
 - Lead closed or client not going ahead: 'close_booking_recruitment', then 'message_booking_caregiver' to every caregiver who was interested or awaiting a reply.
 - Status questions: answer from 'get_booking_recruitment'.
+- WhatsApp only delivers 'message' to a caregiver who messaged in the last 24 hours. When a message tool says they have not, call 'list_whatsapp_templates', choose the template that fits (it is sent exactly as written, only its parameters filled in), and call the same tool again with 'template' instead of 'message', filling every parameter from facts you have. Never invent a value. If no template fits, tell staff the caregiver could not be messaged.
 
 ACTING:
 - Your earlier replies in this thread are only text and prove nothing. What was really done is in the recruitment records and in the "Done in this run" lines under earlier replies.
@@ -352,23 +352,18 @@ export async function runSlackChannelAgent({
           if (
             WHATSAPP_SEND_TOOLS.has(toolCall.name) &&
             !result.isError &&
-            structuredContent?.status === "ok"
+            structuredContent?.status === "ok" &&
+            structuredContent.chat_id
           ) {
-            const link = (chat_id: string) =>
-              linkWhatsappRecipientToSlackThread({
-                ...slack_thread,
-                chat_id,
-                phone: String(structuredContent.phone ?? input["phone"] ?? ""),
-                agent_key,
-                message: String(input["message"] ?? ""),
-              });
-
-            // Timelines may not have assigned the chat yet: link it once known
-            if (structuredContent.chat_id) {
-              await link(String(structuredContent.chat_id));
-            } else if (structuredContent.message_id) {
-              resolveChatIdLater(String(structuredContent.message_id), link);
-            }
+            await linkWhatsappRecipientToSlackThread({
+              ...slack_thread,
+              chat_id: String(structuredContent.chat_id),
+              phone: String(structuredContent.phone ?? input["phone"] ?? ""),
+              agent_key,
+              message: input["message"]
+                ? String(input["message"])
+                : `[template: ${(input["template"] as { name?: string } | undefined)?.name ?? "-"}]`,
+            });
           }
           toolResults.push({
             type: "tool_result",

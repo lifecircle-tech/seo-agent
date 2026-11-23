@@ -1,5 +1,9 @@
 import { toWhatsappPhone } from "../utils/common";
-import { sendMessage } from "./timelines.service";
+import {
+  sendWhatsapp,
+  type SendMessageResult,
+  type TemplateRequest,
+} from "./whatsapp.service";
 import { getCaregiverContactModel } from "../models/lc-caregivers.model";
 import {
   ACTIVE_STATUSES,
@@ -102,6 +106,15 @@ async function checkCaregiversForBooking(booking_id: number, cg_ids: number[]) {
   });
 }
 
+// Why a message was not sent, for the agent. Outside the 24-hour window the
+// same tool can be called again with an approved template.
+function notSentReason(sent: SendMessageResult) {
+  if (sent.code === "outside_session_window") {
+    return "the caregiver has not messaged in the last 24 hours, so WhatsApp only allows an approved template. Call 'list_whatsapp_templates', then call this tool again with 'template' instead of 'message'";
+  }
+  return sent.message.replace(/^(Message|Template) not sent: /, "");
+}
+
 // Sends the job offer and records the caregiver as contacted. The caregiver
 // is claimed for the booking before the message goes out, so two runs can
 // never message them for the same booking; the claim is undone when the
@@ -110,10 +123,13 @@ async function contactCaregiverForBooking({
   booking_id,
   hp_unique_id,
   message,
+  template,
 }: {
   booking_id: number;
   hp_unique_id: number;
-  message: string;
+  // The text, or an approved template (needed outside the 24-hour window)
+  message?: string;
+  template?: TemplateRequest;
 }): Promise<
   Result<{ phone: string; chat_id?: string; message_id?: string }>
 > {
@@ -160,9 +176,9 @@ async function contactCaregiverForBooking({
     return { status: "error", message: `${claim.block} Not contacted.` };
   }
 
-  let sent: Awaited<ReturnType<typeof sendMessage>>;
+  let sent: SendMessageResult;
   try {
-    sent = await sendMessage(phone, message);
+    sent = await sendWhatsapp(phone, { message, template });
   } catch (err: any) {
     sent = { status: "error", message: err.message };
   }
@@ -171,7 +187,7 @@ async function contactCaregiverForBooking({
     await deleteCandidate(claim.candidate_id);
     return {
       status: "error",
-      message: `Message not sent: ${sent.message ?? "unknown error"}. Not recorded as contacted.`,
+      message: `Message not sent: ${notSentReason(sent)}. Not recorded as contacted.`,
     };
   }
 
@@ -195,10 +211,13 @@ async function messageBookingCaregiver({
   booking_id,
   hp_unique_id,
   message,
+  template,
 }: {
   booking_id: number;
   hp_unique_id: number;
-  message: string;
+  // The text, or an approved template (needed outside the 24-hour window)
+  message?: string;
+  template?: TemplateRequest;
 }): Promise<
   Result<{ phone: string; chat_id?: string; message_id?: string }>
 > {
@@ -222,11 +241,11 @@ async function messageBookingCaregiver({
   }
   const phone = toWhatsappPhone(raw_phone);
 
-  const sent = await sendMessage(phone, message);
+  const sent = await sendWhatsapp(phone, { message, template });
   if (sent.status !== "ok") {
     return {
       status: "error",
-      message: `Message not sent: ${sent.message ?? "unknown error"}.`,
+      message: `Message not sent: ${notSentReason(sent)}.`,
     };
   }
 

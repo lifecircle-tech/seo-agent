@@ -52,6 +52,38 @@ function toToolError(tool: string, err: any) {
   });
 }
 
+// What a caregiver is sent: the text, or an approved template when they
+// have not messaged in the last 24 hours.
+const messageInput = {
+  message: z
+    .string()
+    .min(1)
+    .max(1000)
+    .optional()
+    .describe("The WhatsApp text. Only reaches caregivers who messaged in the last 24 hours"),
+  template: z
+    .object({
+      name: z.string().min(1),
+      language: z.string().optional(),
+      parameters: z.record(z.string(), z.string()).optional(),
+    })
+    .optional()
+    .describe(
+      "Instead of 'message': an approved template from 'list_whatsapp_templates', with a value for each of its parameter keys",
+    ),
+};
+
+// Exactly one of message or template
+function messageInputError(input: { message?: string; template?: unknown }) {
+  if (!input.message === !input.template) {
+    return toToolResult({
+      status: "error" as const,
+      message: "Pass either 'message' or 'template', not both and not neither. Nothing was sent.",
+    });
+  }
+  return null;
+}
+
 export function registerRecruitment(server: McpServer) {
   server.registerTool(
     "get_booking_recruitment",
@@ -122,11 +154,11 @@ export function registerRecruitment(server: McpServer) {
     {
       title: "Contact Caregiver For Booking",
       description:
-        "Send a caregiver their FIRST WhatsApp job offer for a booking and record them as contacted. For caregivers already contacted, use 'message_booking_caregiver'. Refuses caregivers who must not be contacted (already contacted or released for this booking, on hold for another booking, booking filled or closed). One caregiver per call",
+        "Send a caregiver their FIRST WhatsApp job offer for a booking and record them as contacted. For caregivers already contacted, use 'message_booking_caregiver'. Refuses caregivers who must not be contacted (already contacted or released for this booking, on hold for another booking, booking filled or closed). Pass 'message', or 'template' when it says the caregiver has not messaged in the last 24 hours. One caregiver per call",
       inputSchema: {
         booking_id: z.number(),
         cg_id: z.number(),
-        message: z.string().min(1).max(1000),
+        ...messageInput,
       },
       outputSchema: z.object({
         ...resultSchema,
@@ -135,12 +167,15 @@ export function registerRecruitment(server: McpServer) {
         message_id: z.string().optional(),
       }),
     },
-    async ({ booking_id, cg_id, message }) => {
+    async ({ booking_id, cg_id, message, template }) => {
+      const invalid = messageInputError({ message, template });
+      if (invalid) return invalid;
       try {
         const result = await contactCaregiverForBooking({
           booking_id,
           hp_unique_id: cg_id,
           message,
+          template,
         });
         return toToolResult(result);
       } catch (err) {
@@ -154,11 +189,11 @@ export function registerRecruitment(server: McpServer) {
     {
       title: "Message Booking Caregiver",
       description:
-        "Send a WhatsApp message to a caregiver already contacted for a booking, whatever their status: selection confirmation to the placed caregiver, case filled/closed to the others, follow-ups and answers. Uses the caregiver's number on record. Does not change their status. One caregiver per call",
+        "Send a WhatsApp message to a caregiver already contacted for a booking, whatever their status: selection confirmation to the placed caregiver, case filled/closed to the others, follow-ups and answers. Uses the caregiver's number on record. Does not change their status. Pass 'message', or 'template' when it says the caregiver has not messaged in the last 24 hours. One caregiver per call",
       inputSchema: {
         booking_id: z.number(),
         cg_id: z.number(),
-        message: z.string().min(1).max(1000),
+        ...messageInput,
       },
       outputSchema: z.object({
         ...resultSchema,
@@ -167,12 +202,15 @@ export function registerRecruitment(server: McpServer) {
         message_id: z.string().optional(),
       }),
     },
-    async ({ booking_id, cg_id, message }) => {
+    async ({ booking_id, cg_id, message, template }) => {
+      const invalid = messageInputError({ message, template });
+      if (invalid) return invalid;
       try {
         const result = await messageBookingCaregiver({
           booking_id,
           hp_unique_id: cg_id,
           message,
+          template,
         });
         return toToolResult(result);
       } catch (err) {
