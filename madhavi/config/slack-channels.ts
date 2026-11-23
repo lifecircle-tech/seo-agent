@@ -100,7 +100,7 @@ function agentChannels(): SlackAgentChannelConfig[] {
       ],
       // Caregivers are messaged only through the recruitment tools, so every
       // message about a booking is tracked against it.
-      exclude_tools: [],
+      exclude_tools: ["send_whatsapp_message"],
     },
     {
       key: "caregiver_search",
@@ -123,7 +123,7 @@ function agentChannels(): SlackAgentChannelConfig[] {
       ],
       // Caregivers are messaged only through the recruitment tools, so every
       // message about a booking is tracked against it.
-      exclude_tools: [],
+      exclude_tools: ["send_whatsapp_message"],
     },
     {
       key: "caregiver_search",
@@ -146,7 +146,7 @@ function agentChannels(): SlackAgentChannelConfig[] {
       ],
       // Caregivers are messaged only through the recruitment tools, so every
       // message about a booking is tracked against it.
-      exclude_tools: [],
+      exclude_tools: ["send_whatsapp_message"],
     },
   ];
 }
