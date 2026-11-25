@@ -28,7 +28,7 @@ export function registerCaregiver(server: McpServer) {
     {
       title: "Caregiver Profile Status",
       description:
-        "Get caregiver's profile status like completed/incompleted, missing information, preferences and qualification",
+        "Get caregiver's profile status like completed/incompleted, missing information, preferences, qualification and pay. Pay is agreed monthly: monthly_livein_pay / monthly_liveout_pay is the figure to offer; livein_pay / liveout_pay are the same pay per day",
       inputSchema: {
         cg_id: z.number(),
       },
@@ -42,8 +42,16 @@ export function registerCaregiver(server: McpServer) {
             hp_unique_id: z.number(),
             reason: z.string(),
             onboarding_status: z.string(),
-            livein_pay: z.string().optional(),
-            liveout_pay: z.string().optional(),
+            livein_pay: z.string().optional().describe("Per day (monthly / 30)"),
+            liveout_pay: z.string().optional().describe("Per day (monthly / 30)"),
+            monthly_livein_pay: z
+              .number()
+              .optional()
+              .describe("Monthly live-in pay: the caregiver's pay figure"),
+            monthly_liveout_pay: z
+              .number()
+              .optional()
+              .describe("Monthly live-out pay: the caregiver's pay figure"),
             missing_data: z.array(z.string()).optional(),
             current_stage: z.string(),
             missing_documents: z.array(z.string()).optional(),
@@ -65,8 +73,16 @@ export function registerCaregiver(server: McpServer) {
             address: z.string(),
             languages: z.string().optional(),
             marital_status: z.string().optional(),
-            livein_pay: z.string().optional(),
-            liveout_pay: z.string().optional(),
+            livein_pay: z.string().optional().describe("Per day (monthly / 30)"),
+            liveout_pay: z.string().optional().describe("Per day (monthly / 30)"),
+            monthly_livein_pay: z
+              .number()
+              .optional()
+              .describe("Monthly live-in pay: the caregiver's pay figure"),
+            monthly_liveout_pay: z
+              .number()
+              .optional()
+              .describe("Monthly live-out pay: the caregiver's pay figure"),
             preferred_locations: z.array(
               z.object({
                 city: z.string(),
@@ -572,7 +588,7 @@ export function registerBookings(server: McpServer) {
     {
       title: "Get Booking Details",
       description:
-        "Get booking details by booking id: patient, client, care manager, offered/final rate, pay type, booking and service start dates, booking status, service city and service type",
+        "Get booking details by booking id: patient (age, weight, languages, conditions), client, care manager, client's price per day (final rate), the caregiver pay ceiling worked out from it, start date, duty timings, client's locality and pincode, special care requirements, booking status, and the enquired service, caregiver gender, shift and city. At lead stage the end date is not known. Fields that were not entered are null",
       inputSchema: {
         booking_id: z.number(),
       },
@@ -586,9 +602,33 @@ export function registerBookings(server: McpServer) {
             base_rate: rate,
             final_rate: rate,
             pay_type: z.string().nullable(),
+            pay_ceiling: z
+              .object({
+                client_price_per_day: z.number(),
+                client_price_per_month: z.number(),
+                caregiver_pay_per_day: z.number(),
+                caregiver_pay_per_month: z.number(),
+              })
+              .nullable()
+              .describe(
+                "Most a caregiver may be paid for this lead: 70% of the client's price. Null when the booking has no daily price",
+              ),
             booking_date: z.string().nullable(),
             service_start_date: z.string().nullable(),
             service_end_date: z.string().nullable(),
+            duty_timings: z
+              .object({ from: z.string(), to: z.string() })
+              .nullable()
+              .describe("Duty hours (HH:MM), null when not entered"),
+            client_area: z
+              .object({
+                locality: z.string().nullable(),
+                pincode: z.string().nullable(),
+              })
+              .nullable()
+              .describe("Client's locality and pincode only, never the full address"),
+            special_care_requirements: z.string().nullable(),
+            other_conditions: z.string().nullable(),
             booking_status: z.string().nullable(),
             patient_details: z.record(z.string(), z.any()),
             enquired_caregiver: z.record(z.string(), z.any()),

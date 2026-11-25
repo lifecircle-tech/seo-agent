@@ -98,6 +98,8 @@ async function getCaregiverProfileDetailsModel(cg_id: number) {
       lm.mar_name as marital_status,
       hp_rate.livein_pay AS livein_pay,
       hp_rate.liveout_pay AS liveout_pay,
+      hp_rate.monthly_livein_pay AS monthly_livein_pay,
+      hp_rate.monthly_liveout_pay AS monthly_liveout_pay,
       hp.experience,
       ref.count as \`references\`,
       shift.count as shift_preferences,
@@ -166,7 +168,9 @@ async function getCaregiverProfileDetailsModel(cg_id: number) {
       SELECT
         ranked.hp_unique_id AS hp_unique_id,
         ranked.livein_pay AS livein_pay,
-        ranked.liveout_pay AS liveout_pay
+        ranked.liveout_pay AS liveout_pay,
+        ranked.monthly_livein_pay AS monthly_livein_pay,
+        ranked.monthly_liveout_pay AS monthly_liveout_pay
       FROM (
         SELECT
           n_hp_rate.id AS id,

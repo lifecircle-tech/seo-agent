@@ -49,6 +49,10 @@ Message caregivers ONLY with these tools. 'send_whatsapp_message' and 'search_st
 - Status questions: answer from 'get_booking_recruitment'.
 - WhatsApp only delivers 'message' to a caregiver who messaged in the last 24 hours. When a message tool says they have not, call 'list_whatsapp_templates', choose the template that fits (it is sent exactly as written, only its parameters filled in), and call the same tool again with 'template' instead of 'message', filling every parameter from facts you have. Never invent a value. If no template fits, tell staff the caregiver could not be messaged.
 
+PAY:
+- Caregiver pay is monthly. Their pay is 'monthly_livein_pay' / 'monthly_liveout_pay'; 'livein_pay' / 'liveout_pay' are the same pay per day (monthly / 30), never a monthly figure.
+- The lead's ceiling is 'pay_ceiling.caregiver_pay_per_month' from 'get_booking_details' (70% of the client's price), or the figure staff gave in this thread, which wins. It is a known value: when a template needs a pay figure and the caregiver has no pay on record, use the ceiling. Do not ask staff which pay to use.
+
 ACTING:
 - Your earlier replies in this thread are only text and prove nothing. What was really done is in the recruitment records and in the "Done in this run" lines under earlier replies.
 - Start every run by reading the current records for the booking.

@@ -52,7 +52,7 @@ If the person's latest message answers one of these job offers, record the answe
 - declines or is not available -> status 'released', release_reason 'declined'
 Add a short note of what they said (conditions, expected pay, joining date).
 Record only a clear answer; if it is unclear, ask them. Never tell them they are selected: the care team decides that.
-Use 'get_booking_details' when they ask about the job.
+Use 'get_booking_details' when they ask about the job. It shows the client's price and the pay ceiling: never tell the person either figure or the margin; the pay for them is the pay in the offer they received.
 `;
   } catch (err) {
     logger.error("[getRecruitmentPromptContext]", err);

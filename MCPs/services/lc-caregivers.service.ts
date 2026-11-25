@@ -15,6 +15,14 @@ import {
 import { logger } from "../../madhavi/utils/logger.js";
 // import SAMPLE from "../../sample/sample.js";
 
+// A caregiver's pay is agreed monthly; the daily figure is monthly / 30.
+// Older rates may have only the daily figure.
+function getMonthlyPay(monthly: unknown, daily: unknown) {
+  if (Number(monthly) > 0) return Math.round(Number(monthly));
+  if (Number(daily) > 0) return Math.round(Number(daily) * 30);
+  return undefined;
+}
+
 const required_data = {
   NAME: "name",
   // NUMBER: "number",
@@ -74,6 +82,14 @@ async function getCaregiverProfileStatus(cg_id: number) {
         onboarding_status: cg_profile.onboarding_status,
         livein_pay: cg_profile.livein_pay || undefined,
         liveout_pay: cg_profile.liveout_pay || undefined,
+        monthly_livein_pay: getMonthlyPay(
+          cg_profile.monthly_livein_pay,
+          cg_profile.livein_pay,
+        ),
+        monthly_liveout_pay: getMonthlyPay(
+          cg_profile.monthly_liveout_pay,
+          cg_profile.liveout_pay,
+        ),
         current_stage: cg_profile.current_stage,
         missing_data: missing_data.length ? missing_data : undefined,
         missing_documents: missing_documents.length
@@ -121,6 +137,14 @@ async function getCaregiverProfileStatus(cg_id: number) {
       marital_status: cg_profile.marital_status,
       livein_pay: cg_profile.livein_pay || undefined,
       liveout_pay: cg_profile.liveout_pay || undefined,
+      monthly_livein_pay: getMonthlyPay(
+        cg_profile.monthly_livein_pay,
+        cg_profile.livein_pay,
+      ),
+      monthly_liveout_pay: getMonthlyPay(
+        cg_profile.monthly_liveout_pay,
+        cg_profile.liveout_pay,
+      ),
       address: address,
       preferred_locations: preferred_locations.map((loc) => ({
         city: loc.name,

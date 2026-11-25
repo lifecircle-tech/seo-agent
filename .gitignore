@@ -45,3 +45,5 @@ prisma/migrations/
 
 # WhatsApp service media files
 storage/
+.env.bak*
+*.code-workspace
