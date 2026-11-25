@@ -16,11 +16,17 @@ import { linkWhatsappRecipientToSlackThread } from "../services/lc-slack-convers
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
-  timeout: 100 * 1000,
+  // The model thinks before answering, so a turn takes longer than on Haiku
+  timeout: 300 * 1000,
   maxRetries: 1,
 });
 
-const SLACK_AGENT_MODEL = "claude-haiku-4-5";
+// Haiku 4.5 asked staff questions the prompt rules out (booking 21195), so the
+// Slack agent runs on Sonnet. Thinking is on by default: effort sets how much,
+// and max_tokens covers the thinking as well as the reply.
+const SLACK_AGENT_MODEL = "claude-sonnet-5";
+const SLACK_AGENT_EFFORT = "high" as const;
+const SLACK_AGENT_MAX_TOKENS = 16000;
 // Upper bound on model turns, so a tool loop can never run forever.
 const MAX_TURNS = 10;
 
@@ -49,13 +55,9 @@ Message caregivers ONLY with these tools. 'send_whatsapp_message' and 'search_st
 - Status questions: answer from 'get_booking_recruitment'.
 - WhatsApp only delivers 'message' to a caregiver who messaged in the last 24 hours. When a message tool says they have not, call 'list_whatsapp_templates', choose the template that fits (it is sent exactly as written, only its parameters filled in), and call the same tool again with 'template' instead of 'message', filling every parameter from facts you have. Never invent a value. If no template fits, tell staff the caregiver could not be messaged.
 
-PAY:
-- Caregiver pay is monthly. Their pay is 'monthly_livein_pay' / 'monthly_liveout_pay'; 'livein_pay' / 'liveout_pay' are the same pay per day (monthly / 30), never a monthly figure.
-- The lead's ceiling is 'pay_ceiling.caregiver_pay_per_month' from 'get_booking_details' (70% of the client's price), or the figure staff gave in this thread, which wins. It is a known value: when a template needs a pay figure and the caregiver has no pay on record, use the ceiling. Do not ask staff which pay to use.
-
 ACTING:
 - Your earlier replies in this thread are only text and prove nothing. What was really done is in the recruitment records and in the "Done in this run" lines under earlier replies.
-- Start every run by reading the current records for the booking.
+- Start every run by reading the current records for the booking: your first step is always a tool call, before any reply.
 - When staff ask for something you can do, do it now with tools in this run, then report. Never write that something is done, sent, placed, released, closed, started or in progress unless a tool in this run returned ok for it.
 - If you still need something from staff, ask for it; do not announce work you have not done.
 - If a tool refuses or fails, tell staff plainly, with its reason.
@@ -121,6 +123,8 @@ const UNVERIFIED_ACTION_NUDGE = `Your reply says something was done or is being 
 - If staff asked for it and you have what you need, call the tools now.
 - If you still need something from staff, ask for it without announcing the work.
 - If you are only reporting records you read in this run, send your reply again without saying you did it.`;
+
+const READ_RECORDS_NUDGE = `Before replying, read the current records for this booking with the tools ('get_booking_details' and 'get_booking_recruitment'), then act on the request.`;
 
 // "Once you confirm the pay, I'll contact caregivers" is a plan, not a claim.
 const CONDITIONAL_SENTENCE = /\b(once|as soon as|after|when|if|until|before)\b/i;
@@ -263,6 +267,7 @@ export async function runSlackChannelAgent({
     let answer = "";
     let turn = 0;
     let nudged = false;
+    let read_nudged = false;
     // Tools that returned ok in this run, and what the run changed
     const succeeded = new Set<string>();
     const done: string[] = [];
@@ -272,14 +277,14 @@ export async function runSlackChannelAgent({
     while (true) {
       const response = await client.messages.create({
         model: SLACK_AGENT_MODEL,
-        max_tokens: 2000,
+        max_tokens: SLACK_AGENT_MAX_TOKENS,
+        output_config: { effort: SLACK_AGENT_EFFORT },
         tools,
         system,
         messages,
-        // The first step of a recruitment run is always a tool call, so the
-        // reply is grounded in the records rather than in earlier replies.
-        ...(turn === 0 &&
-          has_recruitment_tools && { tool_choice: { type: "any" as const } }),
+        // No forced tool_choice: it cannot be combined with thinking. The
+        // prompt asks for a tool call first, and the check below sends the
+        // model back once if not.
       });
       turn++;
       request_completed_at = new Date().toISOString();
@@ -292,6 +297,21 @@ export async function runSlackChannelAgent({
       const toolCalls = response.content.filter(
         (block) => block.type === "tool_use",
       );
+
+      // A recruitment run must read the records before replying, so the
+      // reply is grounded in them rather than in earlier replies.
+      if (
+        toolCalls.length === 0 &&
+        has_recruitment_tools &&
+        succeeded.size === 0 &&
+        !read_nudged &&
+        response.stop_reason !== "refusal"
+      ) {
+        read_nudged = true;
+        logger.warn("[slack agent] replied without reading the records");
+        messages.push({ role: "user", content: READ_RECORDS_NUDGE });
+        continue;
+      }
 
       if (toolCalls.length === 0) {
         answer = response.content
